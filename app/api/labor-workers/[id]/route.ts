@@ -20,7 +20,7 @@ const handler = apiHandlerWithMethod({
    * 示例：
    * /api/labor-workers/clx1a2b3c4d5e6f7g8h9i0j1k2
    */
-  GET: async (req: any, { params }: { params: { id: string } }) => {
+  GET: async (req: any, { params }: { params: { id: string } }, context: any) => {
     const { id } = params
 
     if (!id || typeof id !== 'string') {
@@ -81,7 +81,7 @@ const handler = apiHandlerWithMethod({
    *   "address": "北京市朝阳区"
    * }
    */
-  PUT: async (req: any, { params }: { params: { id: string } }) => {
+  PUT: async (req: any, { params }: { params: { id: string } }, context: any) => {
     const { id } = params
 
     if (!id || typeof id !== 'string') {
@@ -188,7 +188,7 @@ const handler = apiHandlerWithMethod({
    * 示例：
    * /api/labor-workers/clx1a2b3c4d5e6f7g8h9i0j1k2
    */
-  DELETE: async (req: any, { params }: { params: { id: string } }) => {
+  DELETE: async (req: any, { params }: { params: { id: string } }, context: any) => {
     const { id } = params
 
     if (!id || typeof id !== 'string') {

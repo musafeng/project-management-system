@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server'
 import { ApiError } from './errors'
 import { error as errorResponse, success as successResponse } from './response'
 
-export type ApiHandlerFn = (req: Request) => Promise<any>
+export type ApiHandlerFn = (req: Request, ...args: any[]) => Promise<any>
 
 /**
  * API 处理器包装函数
