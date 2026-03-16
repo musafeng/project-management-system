@@ -10,14 +10,19 @@
  * - pageSize: 每页数量（默认 20）
  */
 
-import { apiHandlerWithPermission, success } from '@/lib/api'
+import { NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/api/auth'
+import { success, error as errorResponse } from '@/lib/api'
 import { getActionLogs, getActionLogsCount } from '@/lib/action-log'
 
 type ActionTypeValue = 'CREATE' | 'UPDATE' | 'DELETE'
 
-export const GET = apiHandlerWithPermission({
-  GET: async (req) => {
-    const { searchParams } = new URL(req.url)
+export async function GET(request: Request) {
+  try {
+    // 权限校验：要求登录
+    const user = await getCurrentUser()
+
+    const { searchParams } = new URL(request.url)
     const keyword = searchParams.get('keyword') || undefined
     const action = searchParams.get('action') as ActionTypeValue | undefined
     const resource = searchParams.get('resource') || undefined
@@ -46,15 +51,50 @@ export const GET = apiHandlerWithPermission({
       resource,
     })
 
-    return success({
-      logs,
-      pagination: {
-        page: validPage,
-        pageSize: validPageSize,
-        total,
-        totalPages: Math.ceil(total / validPageSize),
-      },
-    })
-  },
-})
+    return NextResponse.json(
+      success({
+        logs,
+        pagination: {
+          page: validPage,
+          pageSize: validPageSize,
+          total,
+          totalPages: Math.ceil(total / validPageSize),
+        },
+      }),
+      { status: 200 }
+    )
+  } catch (err) {
+    console.error('[API Error]', err)
 
+    if (err instanceof Error) {
+      const message = err.message
+
+      // 未登录
+      if (message.includes('未登录') || message.includes('登录已失效')) {
+        return NextResponse.json(
+          errorResponse('未登录或登录已失效'),
+          { status: 401 }
+        )
+      }
+
+      // 账号被禁用
+      if (message.includes('已被禁用')) {
+        return NextResponse.json(
+          errorResponse('当前账号已被禁用'),
+          { status: 403 }
+        )
+      }
+
+      // 其他错误
+      return NextResponse.json(
+        errorResponse(message),
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(
+      errorResponse('Unknown error occurred'),
+      { status: 500 }
+    )
+  }
+}
