@@ -288,7 +288,6 @@ export default function ActionLogsPage() {
               current: pagination.page,
               pageSize: pagination.pageSize,
               total: pagination.total,
-              totalBoundaryShowSizeChanger: true,
               showSizeChanger: false,
               onChange: (page) => loadLogs(page),
             }}
