@@ -118,25 +118,25 @@ export default function HomePage() {
 
     if (isDingTalk) {
       try {
-        const script = document.createElement('script')
-        script.src = 'https://g.alicdn.com/dingding/dingtalk-pc-api/2.10.0/index.js'
-        script.onload = () => {
-          if ((window as any).dd?.ready) {
-            ;(window as any).dd.ready(() => {
+      const script = document.createElement('script')
+      script.src = 'https://g.alicdn.com/dingding/dingtalk-pc-api/2.10.0/index.js'
+      script.onload = () => {
+        if ((window as any).dd?.ready) {
+          ;(window as any).dd.ready(() => {
               try {
                 ;(window as any).dd.biz.navigation.setTitle({
                   title: '项目收支总览',
                 })
               } catch (err) {
                 console.warn('钉钉导航设置失败:', err)
-              }
+        }
             })
           }
         }
         script.onerror = () => {
           console.warn('钉钉 SDK 加载失败')
-        }
-        document.head.appendChild(script)
+      }
+      document.head.appendChild(script)
         return () => {
           try {
             document.head.removeChild(script)
@@ -370,7 +370,7 @@ export default function HomePage() {
     <div
       style={{
         background: '#fff',
-        borderRadius: 8,
+          borderRadius: 8,
         padding: '20px',
         boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
       }}
@@ -383,8 +383,8 @@ export default function HomePage() {
             fontSize: 20,
             fontWeight: 600,
             color: '#1d1d1f',
-          }}
-        >
+      }}
+    >
           项目收支总览
         </h1>
       </div>
@@ -456,7 +456,7 @@ export default function HomePage() {
           size="small"
           locale={{
             emptyText: '暂无项目数据',
-          }}
+        }}
         />
       </Spin>
 
@@ -469,12 +469,12 @@ export default function HomePage() {
             background: '#fafafa',
             borderRadius: 6,
             border: '1px solid #f0f0f0',
-            display: 'flex',
+              display: 'flex',
             gap: '40px',
             fontSize: 13,
             color: '#595959',
-          }}
-        >
+            }}
+          >
           <div>
             <span style={{ marginRight: 8 }}>项目总数：</span>
             <span style={{ fontWeight: 600, color: '#1d1d1f' }}>{data.length}</span>
@@ -511,8 +511,8 @@ export default function HomePage() {
               )}
             </span>
           </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
   )
 }

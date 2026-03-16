@@ -1,7 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
-export const { GET, POST } = apiHandlerWithPermissionAndLog({
+const handlers = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/construction-approvals
    * 获取施工立项列表
@@ -154,4 +154,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'construction-approvals',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
+
+export const GET = handlers.GET!
+export const POST = handlers.POST!
 
