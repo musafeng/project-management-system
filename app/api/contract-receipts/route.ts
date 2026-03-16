@@ -1,6 +1,8 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+type ContractReceiptSelect = Awaited<ReturnType<typeof db.contractReceipt.findMany>>[number]
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/contract-receipts
@@ -46,7 +48,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 转换返回格式
-    const result = receipts.map((receipt) => ({
+    const result = receipts.map((receipt: ContractReceiptSelect) => ({
       id: receipt.id,
       contractId: receipt.contractId,
       contractCode: receipt.contract.code,

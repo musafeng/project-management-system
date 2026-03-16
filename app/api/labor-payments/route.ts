@@ -1,6 +1,8 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+type LaborPaymentSelect = Awaited<ReturnType<typeof db.laborPayment.findMany>>[number]
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/labor-payments
@@ -47,7 +49,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 转换返回格式
-    const result = payments.map((payment) => ({
+    const result = payments.map((payment: LaborPaymentSelect) => ({
       id: payment.id,
       contractCode: payment.contract.code,
       projectName: payment.contract.project.name,

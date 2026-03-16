@@ -1,6 +1,8 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+type SubcontractContractSelect = Awaited<ReturnType<typeof db.subcontractContract.findMany>>[number]
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/subcontract-contracts
@@ -49,7 +51,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 转换返回格式
-    const result = contracts.map((contract) => ({
+    const result = contracts.map((contract: SubcontractContractSelect) => ({
       id: contract.id,
       code: contract.code,
       projectName: contract.project.name,

@@ -11,6 +11,8 @@ import { apiHandler, success, ApiError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 
+type ProjectWithCustomer = Prisma.ProjectGetPayload<{ include: { customer: { select: { name: true } } } }>
+
 /**
  * 项目汇总数据类型
  */
@@ -222,7 +224,7 @@ export const GET = apiHandler(async (req: Request) => {
 
   // 并行计算每个项目的统计数据
   const summaryList: ProjectSummary[] = await Promise.all(
-      projects.map(async (project) => {
+      projects.map(async (project: ProjectWithCustomer) => {
       // 并行计算收入和支出
       const [incomeStats, expenseStats] = await Promise.all([
         calculateIncomeStats(project.id),
