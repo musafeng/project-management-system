@@ -273,7 +273,7 @@ export default function AuthTestPage() {
         >
           <ol style={{ color: '#595959', lineHeight: 1.8 }}>
             <li>确保在钉钉客户端中打开此页面</li>
-            <li>点击"获取当前登录人并写入登录态"按钮</li>
+            <li>点击{'"'}获取当前登录人并写入登录态{'"'}按钮</li>
             <li>系统会自动获取免登授权码</li>
             <li>后端通过授权码换取用户身份信息</li>
             <li>成功后会自动写入系统登录态（HttpOnly Cookie）</li>

@@ -13,6 +13,7 @@ import {
   Popconfirm,
   DatePicker,
   InputNumber,
+  Input,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
