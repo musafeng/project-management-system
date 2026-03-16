@@ -1,7 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 
-export const { GET, PUT, DELETE } = apiHandlerWithMethod({
+const handler = apiHandlerWithMethod({
   /**
    * GET /api/projects/{id}
    * 获取项目详情
@@ -221,4 +221,8 @@ export const { GET, PUT, DELETE } = apiHandlerWithMethod({
     return success({ message: '项目已删除' })
   },
 })
+
+export const GET = handler
+export const PUT = handler
+export const DELETE = handler
 

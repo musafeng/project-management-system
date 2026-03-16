@@ -9,7 +9,7 @@
 import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 
-export const { GET, PUT, DELETE } = apiHandlerWithMethod({
+const handler = apiHandlerWithMethod({
   /**
    * GET /api/labor-workers/{id}
    * 获取劳务人员详情
