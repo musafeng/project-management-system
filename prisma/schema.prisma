@@ -1,0 +1,708 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 枚举定义
+// ============================================================================
+
+enum ProjectStatus {
+  PLANNING      // 规划中
+  APPROVED      // 已批准
+  IN_PROGRESS   // 进行中
+  SUSPENDED     // 暂停
+  COMPLETED     // 已完成
+  CANCELLED     // 已取消
+}
+
+enum ContractStatus {
+  DRAFT         // 草稿
+  PENDING       // 待审批
+  APPROVED      // 已批准
+  EXECUTING     // 执行中
+  COMPLETED     // 已完成
+  TERMINATED    // 已终止
+  CANCELLED     // 已取消
+}
+
+enum PaymentStatus {
+  UNPAID        // 未付
+  PARTIAL       // 部分付款
+  PAID          // 已付
+  OVERPAID      // 超付
+}
+
+enum ReceiptStatus {
+  UNRECEIVED    // 未收
+  PARTIAL       // 部分收款
+  RECEIVED      // 已收
+  OVERRECEIVED  // 超收
+}
+
+enum ChangeType {
+  INCREASE      // 增加
+  DECREASE      // 减少
+  ADJUSTMENT    // 调整
+}
+
+enum ExpenseCategory {
+  MATERIAL      // 材料费
+  LABOR         // 劳务费
+  EQUIPMENT     // 设备费
+  SUBCONTRACT   // 分包费
+  MANAGEMENT    // 管理费
+  OTHER         // 其他
+}
+
+enum PettyCashStatus {
+  ISSUED        // 已发放
+  RETURNED      // 已退回
+  PARTIAL       // 部分退回
+}
+
+enum SystemUserRole {
+  ADMIN             // 系统管理员
+  FINANCE           // 财务人员
+  PURCHASE          // 采购人员
+  PROJECT_MANAGER   // 项目经理
+  STAFF             // 普通员工
+}
+
+enum ActionType {
+  CREATE            // 创建
+  UPDATE            // 更新
+  DELETE            // 删除
+}
+
+// ============================================================================
+// 主数据表
+// ============================================================================
+
+/// 客户信息表 - 业务模块 1
+model Customer {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  contact       String?
+  phone         String?
+  email         String?
+  address       String?
+  taxId         String?   // 税号
+  bankAccount   String?   // 银行账户
+  bankName      String?   // 开户行
+  status        String    @default("active")
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  projects      Project[]
+  projectContracts ProjectContract[]
+
+  @@index([code])
+  @@index([name])
+}
+
+/// 项目表 - 业务模块 2
+model Project {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  
+  status        ProjectStatus @default(IN_PROGRESS)
+  startDate     DateTime?
+  endDate       DateTime?
+  budget        Decimal   @db.Decimal(18, 2)
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  statusChanges ProjectStatusChange[]
+  contracts     ProjectContract[]
+  constructionApprovals ConstructionApproval[]
+  procurementContracts ProcurementContract[]
+  laborContracts LaborContract[]
+  subcontractContracts SubcontractContract[]
+  
+  otherReceipts OtherReceipt[]
+  otherPayments OtherPayment[]
+  projectExpenses ProjectExpense[]
+  managementExpenses ManagementExpense[]
+  salesExpenses SalesExpense[]
+  pettyCashes   PettyCash[]
+
+  @@index([customerId])
+  @@index([code])
+  @@index([status])
+}
+
+/// 项目状态变更记录 - 业务模块 3
+model ProjectStatusChange {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  fromStatus    ProjectStatus
+  toStatus      ProjectStatus
+  changeReason  String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+/// 供应商信息表 - 业务模块 10
+model Supplier {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  contact       String?
+  phone         String?
+  email         String?
+  address       String?
+  taxId         String?
+  bankAccount   String?
+  bankName      String?
+  status        String    @default("active")
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  procurementContracts ProcurementContract[]
+
+  @@index([code])
+  @@index([name])
+}
+
+/// 劳务人员信息表 - 业务模块 11（个人/班组）
+model LaborWorker {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  idNumber      String?   // 身份证号
+  phone         String?
+  address       String?
+  bankAccount   String?
+  bankName      String?
+  status        String    @default("active")
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  laborContracts LaborContract[]
+  laborPayments LaborPayment[]
+
+  @@index([code])
+  @@index([name])
+}
+
+/// 专业分包单位表 - 业务模块 11（分包方）
+model SubcontractVendor {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String
+  contact       String?
+  phone         String?
+  email         String?
+  address       String?
+  taxId         String?
+  bankAccount   String?
+  bankName      String?
+  status        String    @default("active")
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subcontractContracts SubcontractContract[]
+  subcontractPayments SubcontractPayment[]
+
+  @@index([code])
+  @@index([name])
+}
+
+// ============================================================================
+// 合同相关表
+// ============================================================================
+
+/// 项目合同表 - 业务模块 4
+model ProjectContract {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  
+  code          String    @unique
+  name          String
+  contractAmount Decimal  @db.Decimal(18, 2)
+  changedAmount Decimal   @db.Decimal(18, 2) @default(0)  // 变更后金额
+  
+  status        ContractStatus @default(DRAFT)
+  signDate      DateTime?
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // 汇总字段（由业务逻辑维护）
+  receivableAmount Decimal @db.Decimal(18, 2) @default(0)  // 应收
+  receivedAmount Decimal   @db.Decimal(18, 2) @default(0)  // 已收
+  unreceivedAmount Decimal @db.Decimal(18, 2) @default(0)  // 未收
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  changes       ProjectContractChange[]
+  receipts      ContractReceipt[]
+  constructionApprovals ConstructionApproval[]
+
+  @@index([projectId])
+  @@index([customerId])
+  @@index([code])
+  @@index([status])
+}
+
+/// 项目合同变更记录 - 业务模块 5
+model ProjectContractChange {
+  id            String    @id @default(cuid())
+  contractId    String
+  contract      ProjectContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  
+  changeType    ChangeType
+  changeAmount  Decimal   @db.Decimal(18, 2)
+  changeReason  String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([contractId])
+  @@index([createdAt])
+}
+
+/// 合同收款记录 - 业务模块 12
+model ContractReceipt {
+  id            String    @id @default(cuid())
+  contractId    String
+  contract      ProjectContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  
+  receiptAmount Decimal   @db.Decimal(18, 2)
+  receiptDate   DateTime
+  receiptMethod String?   // 收款方式：转账、现金等
+  receiptNumber String?   // 收据号
+  
+  status        ReceiptStatus @default(UNRECEIVED)
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([contractId])
+  @@index([receiptDate])
+}
+
+/// 其他收款记录 - 业务模块 13
+model OtherReceipt {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  receiptType   String    // 收款类型：押金、预付款等
+  receiptAmount Decimal   @db.Decimal(18, 2)
+  receiptDate   DateTime
+  receiptMethod String?
+  receiptNumber String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([receiptDate])
+}
+
+/// 施工立项表 - 业务模块 9
+model ConstructionApproval {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contractId    String
+  contract      ProjectContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  
+  code          String    @unique
+  name          String
+  budget        Decimal   @db.Decimal(18, 2)
+  
+  status        String    @default("active")
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  procurementContracts ProcurementContract[]
+  laborContracts LaborContract[]
+  subcontractContracts SubcontractContract[]
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([code])
+}
+
+/// 采购合同表 - 业务模块 6
+model ProcurementContract {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  constructionId String
+  construction  ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
+  supplierId    String
+  supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  
+  code          String    @unique
+  name          String
+  contractAmount Decimal  @db.Decimal(18, 2)
+  changedAmount Decimal   @db.Decimal(18, 2) @default(0)
+  
+  status        ContractStatus @default(DRAFT)
+  signDate      DateTime?
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // 汇总字段
+  payableAmount Decimal   @db.Decimal(18, 2) @default(0)  // 应付
+  paidAmount    Decimal   @db.Decimal(18, 2) @default(0)  // 已付
+  unpaidAmount  Decimal   @db.Decimal(18, 2) @default(0)  // 未付
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments      ProcurementPayment[]
+
+  @@index([projectId])
+  @@index([constructionId])
+  @@index([supplierId])
+  @@index([code])
+  @@index([status])
+}
+
+/// 采购付款记录 - 业务模块 14
+model ProcurementPayment {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contractId    String
+  contract      ProcurementContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  
+  paymentAmount Decimal   @db.Decimal(18, 2)
+  paymentDate   DateTime
+  paymentMethod String?   // 付款方式
+  paymentNumber String?   // 付款单号
+  
+  status        PaymentStatus @default(UNPAID)
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([paymentDate])
+}
+
+/// 劳务合同表 - 业务模块 7
+model LaborContract {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  constructionId String
+  construction  ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
+  workerId      String
+  worker        LaborWorker @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  
+  code          String    @unique
+  name          String
+  contractAmount Decimal  @db.Decimal(18, 2)
+  changedAmount Decimal   @db.Decimal(18, 2) @default(0)
+  
+  status        ContractStatus @default(DRAFT)
+  signDate      DateTime?
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // 汇总字段
+  payableAmount Decimal   @db.Decimal(18, 2) @default(0)
+  paidAmount    Decimal   @db.Decimal(18, 2) @default(0)
+  unpaidAmount  Decimal   @db.Decimal(18, 2) @default(0)
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments      LaborPayment[]
+
+  @@index([projectId])
+  @@index([constructionId])
+  @@index([workerId])
+  @@index([code])
+  @@index([status])
+}
+
+/// 劳务付款记录 - 业务模块 15
+model LaborPayment {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contractId    String
+  contract      LaborContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  workerId      String
+  worker        LaborWorker @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  
+  paymentAmount Decimal   @db.Decimal(18, 2)
+  paymentDate   DateTime
+  paymentMethod String?
+  paymentNumber String?
+  
+  status        PaymentStatus @default(UNPAID)
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([workerId])
+  @@index([paymentDate])
+}
+
+/// 专业分包合同表 - 业务模块 8
+model SubcontractContract {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  constructionId String
+  construction  ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
+  vendorId      String
+  vendor        SubcontractVendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  
+  code          String    @unique
+  name          String
+  contractAmount Decimal  @db.Decimal(18, 2)
+  changedAmount Decimal   @db.Decimal(18, 2) @default(0)
+  
+  status        ContractStatus @default(DRAFT)
+  signDate      DateTime?
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // 汇总字段
+  payableAmount Decimal   @db.Decimal(18, 2) @default(0)
+  paidAmount    Decimal   @db.Decimal(18, 2) @default(0)
+  unpaidAmount  Decimal   @db.Decimal(18, 2) @default(0)
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments      SubcontractPayment[]
+
+  @@index([projectId])
+  @@index([constructionId])
+  @@index([vendorId])
+  @@index([code])
+  @@index([status])
+}
+
+/// 分包付款记录 - 业务模块 16
+model SubcontractPayment {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contractId    String
+  contract      SubcontractContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  vendorId      String
+  vendor        SubcontractVendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  
+  paymentAmount Decimal   @db.Decimal(18, 2)
+  paymentDate   DateTime
+  paymentMethod String?
+  paymentNumber String?
+  
+  status        PaymentStatus @default(UNPAID)
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([vendorId])
+  @@index([paymentDate])
+}
+
+// ============================================================================
+// 费用相关表
+// ============================================================================
+
+/// 项目费用表 - 业务模块 17
+model ProjectExpense {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  category      ExpenseCategory
+  expenseAmount Decimal   @db.Decimal(18, 2)
+  expenseDate   DateTime
+  description   String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([category])
+  @@index([expenseDate])
+}
+
+/// 其他付款记录 - 业务模块 18
+model OtherPayment {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  paymentType   String    // 付款类型：税费、保险等
+  paymentAmount Decimal   @db.Decimal(18, 2)
+  paymentDate   DateTime
+  paymentMethod String?
+  paymentNumber String?
+  
+  status        PaymentStatus @default(UNPAID)
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([paymentDate])
+}
+
+/// 管理费用表 - 业务模块 20
+model ManagementExpense {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  category      String    // 管理费用类别
+  expenseAmount Decimal   @db.Decimal(18, 2)
+  expenseDate   DateTime
+  description   String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([expenseDate])
+}
+
+/// 销售/储值费用表 - 业务模块 21
+model SalesExpense {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  category      String    // 销售费用类别
+  expenseAmount Decimal   @db.Decimal(18, 2)
+  expenseDate   DateTime
+  description   String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([expenseDate])
+}
+
+/// 备用金表 - 业务模块 19
+model PettyCash {
+  id            String    @id @default(cuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  
+  holder        String    // 领取人
+  issuedAmount  Decimal   @db.Decimal(18, 2)
+  issueDate     DateTime
+  
+  returnedAmount Decimal  @db.Decimal(18, 2) @default(0)
+  returnDate    DateTime?
+  
+  status        PettyCashStatus @default(ISSUED)
+  description   String?
+  
+  remark        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([issueDate])
+}
+
+// ============================================================================
+// 系统管理表
+// ============================================================================
+
+/// 系统用户表 - 用于权限控制
+model SystemUser {
+  id            String    @id @default(cuid())
+  dingUserId    String    @unique  // 钉钉 userid，唯一标识
+  name          String
+  mobile        String?
+  unionid       String?   // 钉钉 unionid
+  
+  role          SystemUserRole @default(STAFF)
+  isActive      Boolean   @default(true)
+  
+  lastLoginAt   DateTime?
+  remark        String?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([dingUserId])
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+/// 操作日志表 - 用于审计和追踪
+model ActionLog {
+  id            String    @id @default(cuid())
+  userId        String?   // 关联 SystemUser，可为空兼容异常情况
+  userName      String    // 冗余用户名，便于审计
+  userRole      String    // 冗余角色，便于审计
+  
+  action        ActionType  // CREATE / UPDATE / DELETE
+  resource      String    // 资源类型，例如 customers / projects
+  resourceId    String?   // 被操作的数据 ID，可为空
+  
+  method        String    // HTTP 方法：POST / PUT / DELETE
+  path          String    // 请求路径
+  
+  detail        String?   // 文本说明，可为空
+  
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+  @@index([resource])
+  @@index([createdAt])
+}

@@ -1,0 +1,222 @@
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { db } from '@/lib/db'
+
+export const { GET, PUT, DELETE } = apiHandlerWithMethod({
+  /**
+   * GET /api/project-contracts/{id}
+   * 获取合同详情
+   */
+  GET: async (req) => {
+    const id = req.url.split('/').pop()
+
+    if (!id) {
+      throw new BadRequestError('缺少合同 ID')
+    }
+
+    const contract = await db.projectContract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        projectId: true,
+        project: {
+          select: { id: true, name: true, customer: { select: { id: true, name: true } } },
+        },
+        customerId: true,
+        contractAmount: true,
+        changedAmount: true,
+        receivableAmount: true,
+        receivedAmount: true,
+        unreceivedAmount: true,
+        signDate: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        remark: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    if (!contract) {
+      throw new NotFoundError('合同不存在')
+    }
+
+    return success({
+      id: contract.id,
+      code: contract.code,
+      name: contract.name,
+      projectId: contract.projectId,
+      project: contract.project,
+      customerId: contract.customerId,
+      contractAmount: contract.contractAmount,
+      changedAmount: contract.changedAmount,
+      receivableAmount: contract.receivableAmount,
+      receivedAmount: contract.receivedAmount,
+      unreceivedAmount: contract.unreceivedAmount,
+      signDate: contract.signDate,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      status: contract.status,
+      remark: contract.remark,
+      createdAt: contract.createdAt,
+      updatedAt: contract.updatedAt,
+    })
+  },
+
+  /**
+   * PUT /api/project-contracts/{id}
+   * 更新合同信息
+   */
+  PUT: async (req) => {
+    const id = req.url.split('/').pop()
+
+    if (!id) {
+      throw new BadRequestError('缺少合同 ID')
+    }
+
+    const body = await req.json()
+
+    // 检查合同是否存在
+    const existingContract = await db.projectContract.findUnique({
+      where: { id },
+    })
+
+    if (!existingContract) {
+      throw new NotFoundError('合同不存在')
+    }
+
+    // 构建更新数据
+    const updateData: any = {}
+
+    if (body.name !== undefined) {
+      if (typeof body.name !== 'string' || body.name.trim() === '') {
+        throw new BadRequestError('合同名称不能为空')
+      }
+      updateData.name = body.name.trim()
+    }
+
+    if (body.signDate !== undefined) {
+      updateData.signDate = body.signDate ? new Date(body.signDate) : null
+    }
+
+    if (body.startDate !== undefined) {
+      updateData.startDate = body.startDate ? new Date(body.startDate) : null
+    }
+
+    if (body.endDate !== undefined) {
+      updateData.endDate = body.endDate ? new Date(body.endDate) : null
+    }
+
+    if (body.status !== undefined) {
+      updateData.status = body.status
+    }
+
+    if (body.remark !== undefined) {
+      updateData.remark = body.remark?.trim() || null
+    }
+
+    // 更新合同
+    const contract = await db.projectContract.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        projectId: true,
+        project: {
+          select: { id: true, name: true, customer: { select: { id: true, name: true } } },
+        },
+        customerId: true,
+        contractAmount: true,
+        changedAmount: true,
+        receivableAmount: true,
+        receivedAmount: true,
+        unreceivedAmount: true,
+        signDate: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        remark: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    return success({
+      id: contract.id,
+      code: contract.code,
+      name: contract.name,
+      projectId: contract.projectId,
+      project: contract.project,
+      customerId: contract.customerId,
+      contractAmount: contract.contractAmount,
+      changedAmount: contract.changedAmount,
+      receivableAmount: contract.receivableAmount,
+      receivedAmount: contract.receivedAmount,
+      unreceivedAmount: contract.unreceivedAmount,
+      signDate: contract.signDate,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      status: contract.status,
+      remark: contract.remark,
+      createdAt: contract.createdAt,
+      updatedAt: contract.updatedAt,
+    })
+  },
+
+  /**
+   * DELETE /api/project-contracts/{id}
+   * 删除合同
+   * 删除规则：如果合同已产生业务数据（收款、施工立项），禁止删除
+   */
+  DELETE: async (req) => {
+    const id = req.url.split('/').pop()
+
+    if (!id) {
+      throw new BadRequestError('缺少合同 ID')
+    }
+
+    // 检查合同是否存在
+    const contract = await db.projectContract.findUnique({
+      where: { id },
+    })
+
+    if (!contract) {
+      throw new NotFoundError('合同不存在')
+    }
+
+    // 检查是否存在收款记录
+    const receiptCount = await db.contractReceipt.count({
+      where: { contractId: id },
+    })
+
+    if (receiptCount > 0) {
+      throw new ConflictError('该合同已产生业务数据，无法删除')
+    }
+
+    // 检查是否存在施工立项
+    const constructionCount = await db.constructionApproval.count({
+      where: { contractId: id },
+    })
+
+    if (constructionCount > 0) {
+      throw new ConflictError('该合同已产生业务数据，无法删除')
+    }
+
+    // 删除合同变更记录
+    await db.projectContractChange.deleteMany({
+      where: { contractId: id },
+    })
+
+    // 删除合同
+    await db.projectContract.delete({
+      where: { id },
+    })
+
+    return success({ message: '合同已删除' })
+  },
+})
+
