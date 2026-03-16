@@ -222,7 +222,7 @@ export const GET = apiHandler(async (req: Request) => {
 
   // 并行计算每个项目的统计数据
   const summaryList: ProjectSummary[] = await Promise.all(
-    projects.map(async (project) => {
+      projects.map(async (project) => {
       // 并行计算收入和支出
       const [incomeStats, expenseStats] = await Promise.all([
         calculateIncomeStats(project.id),
@@ -232,12 +232,12 @@ export const GET = apiHandler(async (req: Request) => {
       // 计算利润
       const profitAmount = incomeStats.totalIncomeAmount - expenseStats.totalExpenseAmount
 
-      return {
-        id: project.id,
+        return {
+          id: project.id,
         code: project.code,
-        name: project.name,
+          name: project.name,
         customerName: project.customer.name,
-        status: project.status,
+          status: project.status,
         startDate: project.startDate ? project.startDate.toISOString().split('T')[0] : null,
         endDate: project.endDate ? project.endDate.toISOString().split('T')[0] : null,
 
@@ -262,7 +262,7 @@ export const GET = apiHandler(async (req: Request) => {
         profitAmount,
 
         createdAt: project.createdAt.toISOString(),
-      }
+  }
     })
   )
 

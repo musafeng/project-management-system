@@ -12,13 +12,14 @@
 
 import { apiHandlerWithPermission, success } from '@/lib/api'
 import { getActionLogs, getActionLogsCount } from '@/lib/action-log'
-import { ActionType } from '@prisma/client'
+
+type ActionTypeValue = 'CREATE' | 'UPDATE' | 'DELETE'
 
 export const GET = apiHandlerWithPermission({
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const keyword = searchParams.get('keyword') || undefined
-    const action = searchParams.get('action') as ActionType | undefined
+    const action = searchParams.get('action') as ActionTypeValue | undefined
     const resource = searchParams.get('resource') || undefined
     const page = parseInt(searchParams.get('page') || '1', 10)
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10)
