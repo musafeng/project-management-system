@@ -3,7 +3,7 @@ import './globals.css'
 import LayoutProvider from './layout-provider'
 
 export const metadata: Metadata = {
-  title: '工程项目管理系统',
+  title: '工程项目管理系统 v1-mobile-fix',
   description: '基于 Next.js + TypeScript + Ant Design + Prisma 的工程项目管理系统',
   viewport: 'width=device-width, initial-scale=1',
 }
