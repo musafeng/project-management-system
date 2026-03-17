@@ -15,14 +15,12 @@ import {
   Tag,
   DatePicker,
   InputNumber,
+  Card,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 
-/**
- * 项目数据类型
- */
 interface Project {
   id: string
   code: string
@@ -36,18 +34,12 @@ interface Project {
   createdAt: string
 }
 
-/**
- * 项目详情类型
- */
 interface ProjectDetail extends Project {
   customer?: { id: string; name: string }
   remark?: string | null
   updatedAt?: string
 }
 
-/**
- * 客户数据类型
- */
 interface Customer {
   id: string
   code: string
@@ -57,18 +49,12 @@ interface Customer {
   createdAt: string
 }
 
-/**
- * API 响应类型
- */
 interface ApiResponse<T> {
   success: boolean
   data?: T
   error?: string
 }
 
-/**
- * 项目状态映射表
- */
 const PROJECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
   PLANNING: { label: '规划中', color: 'default' },
   APPROVED: { label: '已批准', color: 'processing' },
@@ -78,36 +64,68 @@ const PROJECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
   CANCELLED: { label: '已取消', color: 'error' },
 }
 
-/**
- * 格式化日期
- */
 function formatDate(dateString: string | null): string {
   if (!dateString) return '-'
   try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN')
+    return new Date(dateString).toLocaleDateString('zh-CN')
   } catch {
     return dateString
   }
 }
 
-/**
- * 获取项目状态标签
- */
 function getStatusTag(status: string) {
   const statusInfo = PROJECT_STATUS_MAP[status]
-  if (statusInfo) {
-    return <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
-  }
+  if (statusInfo) return <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
   return <Tag>{status}</Tag>
 }
 
-/**
- * 格式化金额
- */
 function formatCurrency(value: number | undefined): string {
   if (value === undefined || value === null) return '-'
   return `¥${value.toLocaleString('zh-CN')}`
+}
+
+// 移动端单项目卡片
+function MobileProjectCard({
+  item,
+  onEdit,
+  onDelete,
+}: {
+  item: Project
+  onEdit: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <Card
+      size="small"
+      style={{ marginBottom: 12, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)' }}
+      title={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</span>
+          {getStatusTag(item.status)}
+        </div>
+      }
+      extra={
+        <Space size="small">
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(item.id)}>编辑</Button>
+          <Popconfirm
+            title="确定删除该项目吗？"
+            onConfirm={() => onDelete(item.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      }
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, color: '#595959' }}>
+        <div><span style={{ color: '#999' }}>编码：</span>{item.code}</div>
+        <div><span style={{ color: '#999' }}>客户：</span>{item.customerName}</div>
+        <div><span style={{ color: '#999' }}>预算：</span>{formatCurrency(item.budget)}</div>
+        <div><span style={{ color: '#999' }}>创建：</span>{formatDate(item.createdAt)}</div>
+      </div>
+    </Card>
+  )
 }
 
 export default function ProjectsPage() {
@@ -119,22 +137,23 @@ export default function ProjectsPage() {
   const [status, setStatus] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
   const [form] = Form.useForm()
 
-  /**
-   * 加载客户列表
-   */
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   const loadCustomers = async () => {
     try {
       setCustomersLoading(true)
       const response = await fetch('/api/customers')
       const result: ApiResponse<Customer[]> = await response.json()
-
-      if (result.success && result.data) {
-        setCustomers(result.data)
-      } else {
-        console.error('加载客户列表失败:', result.error)
-      }
+      if (result.success && result.data) setCustomers(result.data)
+      else console.error('加载客户列表失败:', result.error)
     } catch (err) {
       console.error('加载客户列表失败:', err)
     } finally {
@@ -142,23 +161,17 @@ export default function ProjectsPage() {
     }
   }
 
-  /**
-   * 加载项目列表
-   */
   const loadProjects = async (searchKeyword?: string, searchStatus?: string) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchKeyword) params.append('keyword', searchKeyword)
       if (searchStatus) params.append('status', searchStatus)
-
       const url = `/api/projects${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
       const result: ApiResponse<Project[]> = await response.json()
-
-      if (result.success && result.data) {
-        setProjects(result.data)
-      } else {
+      if (result.success && result.data) setProjects(result.data)
+      else {
         message.error(result.error || '数据加载失败')
         setProjects([])
       }
@@ -171,47 +184,28 @@ export default function ProjectsPage() {
     }
   }
 
-  /**
-   * 初次加载数据
-   */
   useEffect(() => {
     loadCustomers()
     loadProjects()
   }, [])
 
-  /**
-   * 查询处理
-   */
-  const handleSearch = () => {
-    loadProjects(keyword, status)
-  }
-
-  /**
-   * 重置处理
-   */
+  const handleSearch = () => loadProjects(keyword, status)
   const handleReset = () => {
     setKeyword('')
     setStatus(undefined)
     loadProjects('', undefined)
   }
 
-  /**
-   * 打开新增弹窗
-   */
   const handleAddClick = () => {
     setEditingId(null)
     form.resetFields()
     setIsModalVisible(true)
   }
 
-  /**
-   * 打开编辑弹窗
-   */
   const handleEditClick = async (id: string) => {
     try {
       const response = await fetch(`/api/projects/${id}`)
       const result: ApiResponse<ProjectDetail> = await response.json()
-
       if (result.success && result.data) {
         setEditingId(id)
         form.setFieldsValue({
@@ -232,16 +226,10 @@ export default function ProjectsPage() {
     }
   }
 
-  /**
-   * 删除项目
-   */
   const handleDelete = async (id: string) => {
     try {
-      const response = await fetch(`/api/projects/${id}`, {
-        method: 'DELETE',
-      })
+      const response = await fetch(`/api/projects/${id}`, { method: 'DELETE' })
       const result: ApiResponse<any> = await response.json()
-
       if (result.success) {
         message.success('项目已删除')
         loadProjects(keyword, status)
@@ -254,14 +242,10 @@ export default function ProjectsPage() {
     }
   }
 
-  /**
-   * 提交表单
-   */
   const handleSubmit = async (values: any) => {
     try {
       const url = editingId ? `/api/projects/${editingId}` : '/api/projects'
       const method = editingId ? 'PUT' : 'POST'
-
       const payload = {
         name: values.name,
         customerId: values.customerId,
@@ -270,17 +254,12 @@ export default function ProjectsPage() {
         endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
         remark: values.remark || null,
       }
-
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-
       const result: ApiResponse<any> = await response.json()
-
       if (result.success) {
         message.success(editingId ? '项目已更新' : '项目已创建')
         setIsModalVisible(false)
@@ -295,51 +274,13 @@ export default function ProjectsPage() {
     }
   }
 
-  /**
-   * 表格列定义
-   */
   const columns: ColumnsType<Project> = [
-    {
-      title: '项目编码',
-      dataIndex: 'code',
-      key: 'code',
-      width: 120,
-      render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
-    },
-    {
-      title: '项目名称',
-      dataIndex: 'name',
-      key: 'name',
-      width: 180,
-    },
-    {
-      title: '客户名称',
-      dataIndex: 'customerName',
-      key: 'customerName',
-      width: 150,
-    },
-    {
-      title: '项目状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => getStatusTag(status),
-    },
-    {
-      title: '预算',
-      dataIndex: 'budget',
-      key: 'budget',
-      width: 120,
-      align: 'right',
-      render: (value: number | undefined) => formatCurrency(value),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 120,
-      render: (text: string) => formatDate(text),
-    },
+    { title: '项目编码', dataIndex: 'code', key: 'code', width: 120, render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span> },
+    { title: '项目名称', dataIndex: 'name', key: 'name', width: 180 },
+    { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150 },
+    { title: '项目状态', dataIndex: 'status', key: 'status', width: 100, render: (s: string) => getStatusTag(s) },
+    { title: '预算', dataIndex: 'budget', key: 'budget', width: 120, align: 'right', render: (v: number | undefined) => formatCurrency(v) },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (text: string) => formatDate(text) },
     {
       title: '操作',
       key: 'action',
@@ -347,81 +288,134 @@ export default function ProjectsPage() {
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditClick(record.id)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="删除项目"
-            description="确定删除该项目吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Popconfirm title="删除项目" description="确定删除该项目吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
     },
   ]
 
-  return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 6,
-          fontSize: 14,
-        },
-      }}
+  // 新增/编辑弹窗（移动端桌面端共用）
+  const formModal = (
+    <Modal
+      title={editingId ? '编辑项目' : '新增项目'}
+      open={isModalVisible}
+      onOk={() => form.submit()}
+      onCancel={() => { setIsModalVisible(false); form.resetFields() }}
+      width={isMobile ? '95vw' : 600}
+      okText="确定"
+      cancelText="取消"
     >
-      <div
-        style={{
-          minHeight: '100vh',
-          background: '#f5f5f5',
-          padding: '16px',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '100%',
-            margin: '0 auto',
-            background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          }}
-        >
-          {/* 标题 */}
-          <div style={{ marginBottom: 24 }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 20,
-                fontWeight: 600,
-                color: '#1d1d1f',
-              }}
-            >
-              项目管理
-            </h1>
+      <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 20 }}>
+        <Form.Item label="项目名称" name="name" rules={[{ required: true, message: '请输入项目名称' }]}>
+          <Input placeholder="请输入项目名称" size={isMobile ? 'large' : 'middle'} />
+        </Form.Item>
+        <Form.Item label="客户" name="customerId" rules={[{ required: true, message: '请选择客户' }]}>
+          <Select
+            placeholder="请选择客户"
+            loading={customersLoading}
+            size={isMobile ? 'large' : 'middle'}
+            options={customers.map((c) => ({ label: c.name, value: c.id }))}
+          />
+        </Form.Item>
+        <Form.Item label="预算" name="budget">
+          <InputNumber placeholder="请输入预算" style={{ width: '100%' }} min={0} precision={2} size={isMobile ? 'large' : 'middle'} />
+        </Form.Item>
+        <Form.Item label="开始日期" name="startDate">
+          <DatePicker style={{ width: '100%' }} size={isMobile ? 'large' : 'middle'} />
+        </Form.Item>
+        <Form.Item label="结束日期" name="endDate">
+          <DatePicker style={{ width: '100%' }} size={isMobile ? 'large' : 'middle'} />
+        </Form.Item>
+        <Form.Item label="备注" name="remark">
+          <Input.TextArea placeholder="请输入备注" rows={3} />
+        </Form.Item>
+      </Form>
+    </Modal>
+  )
+
+  // ── 移动端布局 ──
+  if (isMobile) {
+    return (
+      <ConfigProvider theme={{ token: { colorPrimary: '#1677ff', borderRadius: 6, fontSize: 14 } }}>
+        <div style={{ background: '#f5f5f5', minHeight: '100vh', padding: '12px' }}>
+          <div style={{ marginBottom: 16 }}>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1d1d1f' }}>项目管理</h1>
           </div>
 
-          {/* 查询区 */}
-          <div
-            style={{
-              marginBottom: 20,
-              padding: '12px',
-              background: '#fafafa',
-              borderRadius: 6,
-              border: '1px solid #f0f0f0',
-            }}
+          {/* 筛选区 */}
+          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <Input
+              placeholder="输入项目名称搜索"
+              prefix={<SearchOutlined />}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onPressEnter={handleSearch}
+              size="large"
+              style={{ marginBottom: 10 }}
+            />
+            <Select
+              placeholder="选择项目状态"
+              value={status || undefined}
+              onChange={setStatus}
+              allowClear
+              size="large"
+              style={{ width: '100%', marginBottom: 10 }}
+              options={[
+                { label: '规划中', value: 'PLANNING' },
+                { label: '已批准', value: 'APPROVED' },
+                { label: '进行中', value: 'IN_PROGRESS' },
+                { label: '暂停', value: 'SUSPENDED' },
+                { label: '已完成', value: 'COMPLETED' },
+                { label: '已取消', value: 'CANCELLED' },
+              ]}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading} size="large" block>查询</Button>
+              <Button onClick={handleReset} loading={loading} size="large" block>重置</Button>
+            </div>
+          </div>
+
+          {/* 新增按钮 */}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleAddClick}
+            size="large"
+            block
+            style={{ marginBottom: 12 }}
           >
+            新增项目
+          </Button>
+
+          {/* 卡片列表 */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#bbb' }}>加载中...</div>
+          ) : projects.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#bbb', padding: '40px 0', fontSize: 15 }}>暂无项目数据</div>
+          ) : (
+            projects.map((item) => (
+              <MobileProjectCard key={item.id} item={item} onEdit={handleEditClick} onDelete={handleDelete} />
+            ))
+          )}
+        </div>
+        {formModal}
+      </ConfigProvider>
+    )
+  }
+
+  // ── 桌面端布局（完全不变）──
+  return (
+    <ConfigProvider theme={{ token: { colorPrimary: '#1677ff', borderRadius: 6, fontSize: 14 } }}>
+      <div style={{ minHeight: '100vh', background: '#f5f5f5', padding: '16px' }}>
+        <div style={{ maxWidth: '100%', margin: '0 auto', background: '#fff', borderRadius: 8, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ marginBottom: 24 }}>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1d1d1f' }}>项目管理</h1>
+          </div>
+
+          <div style={{ marginBottom: 20, padding: '12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
             <Space wrap style={{ width: '100%' }}>
               <Input
                 placeholder="输入项目名称搜索"
@@ -431,7 +425,6 @@ export default function ProjectsPage() {
                 style={{ width: 200 }}
                 onPressEnter={handleSearch}
               />
-
               <Select
                 placeholder="选择项目状态"
                 value={status || undefined}
@@ -447,32 +440,12 @@ export default function ProjectsPage() {
                   { label: '已取消', value: 'CANCELLED' },
                 ]}
               />
-
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-                loading={loading}
-              >
-                查询
-              </Button>
-
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
-              >
-                新增项目
-              </Button>
+              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>查询</Button>
+              <Button onClick={handleReset} loading={loading}>重置</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick} style={{ marginLeft: 'auto' }}>新增项目</Button>
             </Space>
           </div>
 
-          {/* 表格 */}
           <Table<Project>
             rowKey="id"
             columns={columns}
@@ -481,78 +454,11 @@ export default function ProjectsPage() {
             pagination={false}
             scroll={{ x: 1200 }}
             size="small"
-            locale={{
-              emptyText: '暂无项目数据',
-            }}
+            locale={{ emptyText: '暂无项目数据' }}
           />
         </div>
       </div>
-
-      {/* 新增/编辑弹窗 */}
-      <Modal
-        title={editingId ? '编辑项目' : '新增项目'}
-        open={isModalVisible}
-        onOk={() => form.submit()}
-        onCancel={() => {
-          setIsModalVisible(false)
-          form.resetFields()
-        }}
-        width={600}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
-          style={{ marginTop: 20 }}
-        >
-          <Form.Item
-            label="项目名称"
-            name="name"
-            rules={[{ required: true, message: '请输入项目名称' }]}
-          >
-            <Input placeholder="请输入项目名称" />
-          </Form.Item>
-
-          <Form.Item
-            label="客户"
-            name="customerId"
-            rules={[{ required: true, message: '请选择客户' }]}
-          >
-            <Select
-              placeholder="请选择客户"
-              loading={customersLoading}
-              options={customers.map((customer) => ({
-                label: customer.name,
-                value: customer.id,
-              }))}
-            />
-          </Form.Item>
-
-          <Form.Item label="预算" name="budget">
-            <InputNumber
-              placeholder="请输入预算"
-              style={{ width: '100%' }}
-              min={0}
-              precision={2}
-            />
-          </Form.Item>
-
-          <Form.Item label="开始日期" name="startDate">
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item label="结束日期" name="endDate">
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea placeholder="请输入备注" rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {formModal}
     </ConfigProvider>
   )
-}
-
+} 
