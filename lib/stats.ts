@@ -1,60 +1,60 @@
-import { prisma } from './prisma'
+import { db } from './db'
 
-export async function getProjectStats(projectId: number) {
+export async function getProjectStats(projectId: string) {
   try {
-    const incomeResult = await prisma.contractReceipt.aggregate({
+    const incomeResult = await db.contractReceipt.aggregate({
       where: { contract: { projectId } },
-      _sum: { amount: true }
+      _sum: { receiptAmount: true }
     })
-    const income = incomeResult._sum.amount || 0
+    const income = Number(incomeResult._sum.receiptAmount || 0)
 
     const [procurement, labor, subcontract, projectExpense, management, sales] = await Promise.all([
-      prisma.procurementPayment.aggregate({
-        where: { contract: { construction: { contract: { projectId } } } },
-        _sum: { amount: true }
-      }),
-      prisma.laborPayment.aggregate({
-        where: { contract: { construction: { contract: { projectId } } } },
-        _sum: { amount: true }
-      }),
-      prisma.subcontractPayment.aggregate({
-        where: { contract: { construction: { contract: { projectId } } } },
-        _sum: { amount: true }
-      }),
-      prisma.projectExpense.aggregate({
-        where: { construction: { contract: { projectId } } },
-        _sum: { amount: true }
-      }),
-      prisma.managementExpense.aggregate({
+      db.procurementPayment.aggregate({
         where: { projectId },
-        _sum: { amount: true }
+        _sum: { paymentAmount: true }
       }),
-      prisma.salesExpense.aggregate({
+      db.laborPayment.aggregate({
         where: { projectId },
-        _sum: { amount: true }
+        _sum: { paymentAmount: true }
+      }),
+      db.subcontractPayment.aggregate({
+        where: { projectId },
+        _sum: { paymentAmount: true }
+      }),
+      db.projectExpense.aggregate({
+        where: { projectId },
+        _sum: { expenseAmount: true }
+      }),
+      db.managementExpense.aggregate({
+        where: { projectId },
+        _sum: { expenseAmount: true }
+      }),
+      db.salesExpense.aggregate({
+        where: { projectId },
+        _sum: { expenseAmount: true }
       })
     ])
 
     const expense = [
-      procurement._sum.amount,
-      labor._sum.amount,
-      subcontract._sum.amount,
-      projectExpense._sum.amount,
-      management._sum.amount,
-      sales._sum.amount
-    ].reduce((sum, val) => sum + (val || 0), 0)
+      Number(procurement._sum.paymentAmount || 0),
+      Number(labor._sum.paymentAmount || 0),
+      Number(subcontract._sum.paymentAmount || 0),
+      Number(projectExpense._sum.expenseAmount || 0),
+      Number(management._sum.expenseAmount || 0),
+      Number(sales._sum.expenseAmount || 0)
+    ].reduce((sum, val) => sum + val, 0)
 
     return {
       income: parseFloat(income.toFixed(2)),
       expense: parseFloat(expense.toFixed(2)),
       profit: parseFloat((income - expense).toFixed(2)),
       detail: {
-        procurement: parseFloat((procurement._sum.amount || 0).toFixed(2)),
-        labor: parseFloat((labor._sum.amount || 0).toFixed(2)),
-        subcontract: parseFloat((subcontract._sum.amount || 0).toFixed(2)),
-        projectExpense: parseFloat((projectExpense._sum.amount || 0).toFixed(2)),
-        management: parseFloat((management._sum.amount || 0).toFixed(2)),
-        sales: parseFloat((sales._sum.amount || 0).toFixed(2))
+        procurement: parseFloat(Number(procurement._sum.paymentAmount || 0).toFixed(2)),
+        labor: parseFloat(Number(labor._sum.paymentAmount || 0).toFixed(2)),
+        subcontract: parseFloat(Number(subcontract._sum.paymentAmount || 0).toFixed(2)),
+        projectExpense: parseFloat(Number(projectExpense._sum.expenseAmount || 0).toFixed(2)),
+        management: parseFloat(Number(management._sum.expenseAmount || 0).toFixed(2)),
+        sales: parseFloat(Number(sales._sum.expenseAmount || 0).toFixed(2))
       }
     }
   } catch (error) {
@@ -62,5 +62,3 @@ export async function getProjectStats(projectId: number) {
     throw new Error('项目统计计算失败')
   }
 }
-
-
