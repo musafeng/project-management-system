@@ -90,6 +90,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       select: {
         id: true,
         projectId: true,
+        workerId: true,
         payableAmount: true,
         paidAmount: true,
         unpaidAmount: true,
@@ -104,7 +105,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const createData: Prisma.LaborPaymentUncheckedCreateInput = {
       projectId: contract.projectId,
       contractId: body.contractId,
-      workerId: '', // 从合同获取，但这里需要先查询
+      workerId: contract.workerId,
       paymentAmount: body.amount,
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       status: 'PAID',

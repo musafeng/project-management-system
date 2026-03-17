@@ -138,6 +138,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     // 创建分包合同
     const createData: Prisma.SubcontractContractUncheckedCreateInput = {
       code,
+      name: body.name?.trim() || code,
       projectId: body.projectId,
       constructionId: body.constructionId,
       vendorId: body.subcontractVendorId,

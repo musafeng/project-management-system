@@ -138,6 +138,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     // 创建劳务合同
     const createData: Prisma.LaborContractUncheckedCreateInput = {
         code,
+        name: body.name?.trim() || code,
         projectId: body.projectId,
         constructionId: body.constructionId,
         workerId: body.laborWorkerId,
