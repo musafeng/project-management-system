@@ -45,6 +45,10 @@ export const db = {
 
   // 其他表
   pettyCash: prisma.pettyCash,
+
+  // 系统管理表
+  systemUser: prisma.systemUser,
+  actionLog: prisma.actionLog,
 }
 
 export type DB = typeof db
