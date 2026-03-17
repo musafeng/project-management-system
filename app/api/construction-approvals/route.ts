@@ -1,8 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
-type ConstructionApprovalSelect = Awaited<ReturnType<typeof db.constructionApproval.findMany>>[number]
-
 const handlers = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/construction-approvals
@@ -46,7 +44,8 @@ const handlers = apiHandlerWithPermissionAndLog({
     })
 
     // 转换返回格式
-    const result = approvals.map((approval: ConstructionApprovalSelect) => ({
+    type ApprovalItem = (typeof approvals)[number]
+    const result = approvals.map((approval: ApprovalItem) => ({
       id: approval.id,
       code: approval.code,
       projectName: approval.project.name,
