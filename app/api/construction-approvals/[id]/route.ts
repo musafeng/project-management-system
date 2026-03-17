@@ -181,11 +181,9 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('施工立项不存在')
     }
 
-    const constructionId = Number(id)
-
     // 检查是否存在采购合同
     const procurementCount = await db.procurementContract.count({
-      where: { constructionId },
+      where: { constructionId: id },
     })
 
     if (procurementCount > 0) {
@@ -194,7 +192,7 @@ const handler = apiHandlerWithMethod({
 
     // 检查是否存在劳务合同
     const laborCount = await db.laborContract.count({
-      where: { constructionId },
+      where: { constructionId: id },
     })
 
     if (laborCount > 0) {
@@ -203,7 +201,7 @@ const handler = apiHandlerWithMethod({
 
     // 检查是否存在分包合同
     const subcontractCount = await db.subcontractContract.count({
-      where: { constructionId },
+      where: { constructionId: id },
     })
 
     if (subcontractCount > 0) {
