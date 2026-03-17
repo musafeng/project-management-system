@@ -19,7 +19,7 @@ export interface AuthUser {
 /**
  * Cookie 名称
  */
-const AUTH_COOKIE_NAME = 'auth_user'
+const AUTH_COOKIE_NAME = 'auth'
 
 /**
  * Cookie 过期时间（7 天）

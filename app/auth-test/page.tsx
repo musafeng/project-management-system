@@ -1,289 +1,201 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Button, Card, Space, Spin, Alert, Descriptions, Empty, Tag } from 'antd'
-import { isDingTalkEnvironment, getCurrentUser } from '@/lib/dingtalk-client'
+import { isDingTalkEnvironment, getAuthCode, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 
-/**
- * 用户信息类型
- */
-interface UserInfo {
-  userid: string
-  name: string
-  mobile?: string
-  unionid?: string
-  deptIds?: number[]
-  email?: string
-  avatar?: string
+interface StepResult {
+  label: string
+  status: 'pending' | 'ok' | 'error' | 'skip'
+  detail?: string
 }
 
 export default function AuthTestPage() {
-  const [inDingTalk, setInDingTalk] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [mounted, setMounted] = useState(false)
-  const [hasAuthCookie, setHasAuthCookie] = useState(false)
-  const [checkingAuth, setCheckingAuth] = useState(true)
+  const [steps, setSteps] = useState<StepResult[]>([
+    { label: '1. 检测钉钉环境', status: 'pending' },
+    { label: '2. 获取 authCode', status: 'pending' },
+    { label: '3. POST /api/auth/dingtalk', status: 'pending' },
+    { label: '4. GET /api/auth/me', status: 'pending' },
+    { label: '5. Cookie 写入验证', status: 'pending' },
+  ])
+  const [running, setRunning] = useState(false)
 
-  /**
-   * 检查是否在钉钉环境
-   */
-  useEffect(() => {
-    setMounted(true)
+  const update = (index: number, patch: Partial<StepResult>) => {
+    setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)))
+  }
+
+  const runTest = async () => {
+    setRunning(true)
+    // reset
+    setSteps([
+      { label: '1. 检测钉钉环境', status: 'pending' },
+      { label: '2. 获取 authCode', status: 'pending' },
+      { label: '3. POST /api/auth/dingtalk', status: 'pending' },
+      { label: '4. GET /api/auth/me', status: 'pending' },
+      { label: '5. Cookie 写入验证', status: 'pending' },
+    ])
+
+    // Step 1: 检测钉钉环境
     const isDT = isDingTalkEnvironment()
-    setInDingTalk(isDT)
-  }, [])
+    update(0, {
+      status: isDT ? 'ok' : 'error',
+      detail: isDT
+        ? `检测到钉钉环境（window.dd=${!!(window as any).dd}）`
+        : `非钉钉环境（window.dd=${!!(window as any).dd}，UA=${navigator.userAgent.slice(0, 80)}）`,
+    })
 
-  /**
-   * 检查是否已有登录态
-   */
-  useEffect(() => {
-    if (!mounted) return
-
-    const checkAuth = async () => {
-      try {
-        setCheckingAuth(true)
-        const user = await getCurrentAuthUser()
-        if (user) {
-          setHasAuthCookie(true)
-          setUserInfo(user)
-        } else {
-          setHasAuthCookie(false)
-        }
-      } catch (error) {
-        setHasAuthCookie(false)
-      } finally {
-        setCheckingAuth(false)
-      }
+    if (!isDT) {
+      // 非钉钉环境，跳过后续步骤，但仍测试 me 接口
+      update(1, { status: 'skip', detail: '非钉钉环境，跳过获取 authCode' })
+      update(2, { status: 'skip', detail: '非钉钉环境，跳过' })
+      // 仍然测试 me 接口
+      await testMeApi(3, 4)
+      setRunning(false)
+      return
     }
 
-    checkAuth()
-  }, [mounted])
-
-  /**
-   * 获取当前登录人并写入登录态
-   */
-  const handleGetCurrentUser = async () => {
+    // Step 2: 获取 authCode
+    let code = ''
     try {
-      setLoading(true)
-      setError(null)
-      setUserInfo(null)
-
-      const user = await getCurrentUser()
-      setUserInfo(user)
-      setHasAuthCookie(true)
+      code = await getAuthCode()
+      update(1, { status: 'ok', detail: `authCode 获取成功: ${code.slice(0, 12)}...` })
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '未知错误'
-      setError(errorMessage)
-      console.error('获取用户信息失败:', err)
-    } finally {
-      setLoading(false)
+      update(1, { status: 'error', detail: `authCode 获取失败: ${err instanceof Error ? err.message : String(err)}` })
+      update(2, { status: 'skip', detail: '因 authCode 失败，跳过' })
+      await testMeApi(3, 4)
+      setRunning(false)
+      return
+    }
+
+    // Step 3: POST /api/auth/dingtalk
+    try {
+      const res = await fetch('/api/auth/dingtalk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ code }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        update(2, {
+          status: 'ok',
+          detail: `登录成功：${json.data?.name}（${json.data?.systemRole}）`,
+        })
+      } else {
+        update(2, {
+          status: 'error',
+          detail: `接口返回失败: ${json.error || JSON.stringify(json)}`,
+        })
+      }
+    } catch (err) {
+      update(2, { status: 'error', detail: `网络请求失败: ${err instanceof Error ? err.message : String(err)}` })
+    }
+
+    // Step 4 & 5: 测试 me 接口
+    await testMeApi(3, 4)
+    setRunning(false)
+  }
+
+  const testMeApi = async (meIdx: number, cookieIdx: number) => {
+    try {
+      const res = await fetch('/api/auth/me', {
+        method: 'GET',
+        credentials: 'include',
+      })
+      const json = await res.json()
+      if (json.success && json.data) {
+        update(meIdx, {
+          status: 'ok',
+          detail: `me 返回：${JSON.stringify(json.data)}`,
+        })
+        update(cookieIdx, {
+          status: 'ok',
+          detail: `Cookie 有效，userid=${json.data.userid}，role=${json.data.systemRole}`,
+        })
+      } else {
+        update(meIdx, {
+          status: 'error',
+          detail: `me 接口失败: ${json.error || JSON.stringify(json)}（HTTP ${res.status}）`,
+        })
+        update(cookieIdx, {
+          status: 'error',
+          detail: 'Cookie 未写入或无法读取',
+        })
+      }
+    } catch (err) {
+      update(meIdx, { status: 'error', detail: `me 请求异常: ${err instanceof Error ? err.message : String(err)}` })
+      update(cookieIdx, { status: 'error', detail: 'Cookie 状态未知' })
     }
   }
 
-  if (!mounted) {
-    return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <Spin />
-      </div>
-    )
+  const colorMap: Record<StepResult['status'], string> = {
+    pending: '#8c8c8c',
+    ok: '#52c41a',
+    error: '#f5222d',
+    skip: '#faad14',
+  }
+
+  const emojiMap: Record<StepResult['status'], string> = {
+    pending: '⏳',
+    ok: '✅',
+    error: '❌',
+    skip: '⏭️',
   }
 
   return (
-    <div
-      style={{
-        background: '#f5f5f5',
-        minHeight: '100vh',
-        padding: '20px',
-      }}
-    >
-      <div
+    <div style={{ padding: 24, maxWidth: 700, margin: '0 auto', fontFamily: 'monospace' }}>
+      <h2 style={{ marginBottom: 16 }}>钉钉登录链路调试</h2>
+      <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 16 }}>
+        UA: {typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 100) : '-'}
+      </div>
+
+      <button
+        onClick={runTest}
+        disabled={running}
         style={{
-          maxWidth: 800,
-          margin: '0 auto',
+          padding: '8px 24px',
+          background: '#1677ff',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 6,
+          cursor: running ? 'not-allowed' : 'pointer',
+          marginBottom: 24,
+          fontSize: 14,
         }}
       >
-        {/* 标题 */}
-        <h1
-          style={{
-            fontSize: 24,
-            fontWeight: 600,
-            marginBottom: 24,
-            color: '#1d1d1f',
-          }}
-        >
-          钉钉免登录测试
-        </h1>
+        {running ? '测试中...' : '开始测试'}
+      </button>
 
-        {/* 登录态状态 */}
-        {checkingAuth ? (
-          <Card style={{ marginBottom: 20 }}>
-            <Space>
-              <Spin size="small" />
-              <span>正在检查登录态...</span>
-            </Space>
-          </Card>
-        ) : hasAuthCookie ? (
-          <Alert
-            message="当前已写入系统登录态"
-            description="系统已识别到您的登录信息，可以在全局 Header 中看到您的用户名。"
-            type="success"
-            showIcon
-            style={{ marginBottom: 20 }}
-            action={
-              <Tag color="green">已登录</Tag>
-            }
-          />
-        ) : (
-          <Alert
-            message="当前未登录"
-            description="点击下方按钮进行免登录认证，成功后会自动写入系统登录态。"
-            type="info"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-        )}
-
-        {/* 环境检测 */}
-        {!inDingTalk && (
-          <Alert
-            message="请在钉钉微应用中打开本页面进行测试"
-            description="当前不在钉钉环境中，无法进行免登录认证。请在钉钉客户端中打开此页面。"
-            type="warning"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-        )}
-
-        {inDingTalk && (
-          <Alert
-            message="已检测到钉钉环境"
-            description="当前在钉钉微应用环境中，可以进行免登录认证。"
-            type="success"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-        )}
-
-        {/* 操作卡片 */}
-        <Card
-          style={{
-            marginBottom: 20,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          }}
-        >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div>
-              <p style={{ color: '#595959', marginBottom: 12 }}>
-                点击下方按钮获取当前登录人的身份信息并写入系统登录态
-              </p>
-              <Button
-                type="primary"
-                size="large"
-                onClick={handleGetCurrentUser}
-                loading={loading}
-                disabled={!inDingTalk}
-                style={{ width: '100%' }}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {steps.map((step, i) => (
+          <div
+            key={i}
+            style={{
+              padding: '12px 16px',
+              background: '#fafafa',
+              border: `1px solid ${colorMap[step.status]}`,
+              borderRadius: 6,
+            }}
+          >
+            <div style={{ fontWeight: 600, color: colorMap[step.status] }}>
+              {emojiMap[step.status]} {step.label}
+            </div>
+            {step.detail && (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: '#333',
+                  wordBreak: 'break-all',
+                  whiteSpace: 'pre-wrap',
+                }}
               >
-                {loading ? '正在获取...' : '获取当前登录人并写入登录态'}
-              </Button>
-            </div>
-          </Space>
-        </Card>
-
-        {/* 错误提示 */}
-        {error && (
-          <Alert
-            message="获取失败"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-            style={{ marginBottom: 20 }}
-          />
-        )}
-
-        {/* 用户信息展示 */}
-        {userInfo && (
-          <Card
-            title="当前登录用户信息"
-            style={{
-              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-            }}
-          >
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="用户 ID">
-                <code>{userInfo.userid}</code>
-              </Descriptions.Item>
-              <Descriptions.Item label="用户名">
-                {userInfo.name}
-              </Descriptions.Item>
-              {userInfo.mobile && (
-                <Descriptions.Item label="手机号">
-                  {userInfo.mobile}
-                </Descriptions.Item>
-              )}
-              {userInfo.email && (
-                <Descriptions.Item label="邮箱">
-                  {userInfo.email}
-                </Descriptions.Item>
-              )}
-              {userInfo.unionid && (
-                <Descriptions.Item label="Union ID">
-                  <code>{userInfo.unionid}</code>
-                </Descriptions.Item>
-              )}
-              {userInfo.deptIds && userInfo.deptIds.length > 0 && (
-                <Descriptions.Item label="部门 ID">
-                  {userInfo.deptIds.join(', ')}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-
-            <div style={{ marginTop: 16 }}>
-              <Button onClick={() => setUserInfo(null)}>清除信息</Button>
-            </div>
-          </Card>
-        )}
-
-        {/* 空状态 */}
-        {!userInfo && !error && !loading && !checkingAuth && (
-          <Card
-            style={{
-              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-            }}
-          >
-            <Empty
-              description="暂无用户信息"
-              style={{ marginTop: 20, marginBottom: 20 }}
-            />
-          </Card>
-        )}
-
-        {/* 说明文档 */}
-        <Card
-          title="使用说明"
-          style={{
-            marginTop: 20,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          }}
-        >
-          <ol style={{ color: '#595959', lineHeight: 1.8 }}>
-            <li>确保在钉钉客户端中打开此页面</li>
-            <li>点击{'"'}获取当前登录人并写入登录态{'"'}按钮</li>
-            <li>系统会自动获取免登授权码</li>
-            <li>后端通过授权码换取用户身份信息</li>
-            <li>成功后会自动写入系统登录态（HttpOnly Cookie）</li>
-            <li>页面显示当前登录用户的详细信息</li>
-            <li>刷新页面后，全局 Header 会显示您的用户名</li>
-            <li>点击用户名可以退出登录</li>
-          </ol>
-        </Card>
+                {step.detail}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
 }
-
