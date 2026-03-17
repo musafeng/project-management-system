@@ -34,7 +34,6 @@ const handler = apiHandlerWithMethod({
         id: true,
         code: true,
         name: true,
-        contact: true,
         phone: true,
         idNumber: true,
         address: true,
@@ -115,10 +114,6 @@ const handler = apiHandlerWithMethod({
       }
     }
 
-    if (body.contact !== undefined) {
-      updateData.contact = body.contact?.trim() || null
-    }
-
     if (body.phone !== undefined) {
       updateData.phone = body.phone?.trim() || null
     }
@@ -156,7 +151,6 @@ const handler = apiHandlerWithMethod({
         id: true,
         code: true,
         name: true,
-        contact: true,
         phone: true,
         idNumber: true,
         address: true,

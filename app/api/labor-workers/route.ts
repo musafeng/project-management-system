@@ -49,7 +49,6 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         id: true,
         code: true,
         name: true,
-        contact: true,
         phone: true,
         createdAt: true,
       },
@@ -109,7 +108,6 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       data: {
         code: generateLaborWorkerCode(),
         name,
-        contact: body.contact?.trim() || null,
         phone: body.phone?.trim() || null,
         address: body.address?.trim() || null,
         remark: body.remark?.trim() || null,
@@ -119,7 +117,6 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         id: true,
         code: true,
         name: true,
-        contact: true,
         phone: true,
         address: true,
         remark: true,
