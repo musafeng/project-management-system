@@ -140,6 +140,9 @@ model Project {
   managementExpenses ManagementExpense[]
   salesExpenses SalesExpense[]
   pettyCashes   PettyCash[]
+  procurementPayments ProcurementPayment[]
+  laborPayments LaborPayment[]
+  subcontractPayments SubcontractPayment[]
 
   @@index([customerId])
   @@index([code])

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate"
@@ -13,7 +13,7 @@
     "@ant-design/icons": "^5",
     "@prisma/client": "5.22.0",
     "antd": "^5",
-    "date-fns": "^3",
+    "date-fns": "^3.6.0",
     "dayjs": "^1",
     "next": "14.2.29",
     "react": "^18",
