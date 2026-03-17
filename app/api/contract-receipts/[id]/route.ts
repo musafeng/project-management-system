@@ -103,8 +103,10 @@ const handler = apiHandlerWithMethod({
     })
 
     // 回退合同汇总字段
-    const newReceivedAmount = contract.receivedAmount - receipt.receiptAmount
-    const newUnreceivedAmount = contract.receivableAmount - newReceivedAmount
+    const newReceivedAmount =
+      Number(contract.receivedAmount) - Number(receipt.receiptAmount)
+    const newUnreceivedAmount =
+      Number(contract.receivableAmount) - newReceivedAmount
 
     await db.projectContract.update({
       where: { id: receipt.contractId },
