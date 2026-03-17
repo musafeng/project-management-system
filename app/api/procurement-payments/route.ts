@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -100,15 +101,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 创建付款记录
+    const createData: Prisma.ProcurementPaymentUncheckedCreateInput = {
+      projectId: contract.projectId,
+      contractId: body.contractId,
+      paymentAmount: body.amount,
+      paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
+      status: 'PAID',
+      remark: body.remark?.trim() || null,
+    }
     const payment = await db.procurementPayment.create({
-      data: {
-        projectId: contract.projectId,
-        contractId: body.contractId,
-        paymentAmount: body.amount,
-        paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
-        status: 'PAID',
-        remark: body.remark?.trim() || null,
-      },
+      data: createData,
       select: {
         id: true,
         contractId: true,

@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -98,14 +99,15 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 创建收款记录
+    const createData: Prisma.ContractReceiptUncheckedCreateInput = {
+      contractId: body.contractId,
+      receiptAmount: body.amount,
+      receiptDate: body.receiptDate ? new Date(body.receiptDate) : new Date(),
+      remark: body.remark?.trim() || null,
+      status: 'RECEIVED',
+    }
     const receipt = await db.contractReceipt.create({
-      data: {
-        contractId: body.contractId,
-        receiptAmount: body.amount,
-        receiptDate: body.receiptDate ? new Date(body.receiptDate) : new Date(),
-        remark: body.remark?.trim() || null,
-        status: 'RECEIVED',
-      },
+      data: createData,
       select: {
         id: true,
         contractId: true,

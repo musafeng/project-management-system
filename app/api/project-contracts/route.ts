@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -103,21 +104,22 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `CONTRACT${Date.now()}`
 
     // 创建合同
+    const createData: Prisma.ProjectContractUncheckedCreateInput = {
+      code,
+      name: body.name || `${code}`,
+      projectId: body.projectId,
+      customerId: project.customerId,
+      contractAmount: body.contractAmount,
+      changedAmount: 0,
+      receivableAmount: body.contractAmount,
+      receivedAmount: 0,
+      unreceivedAmount: body.contractAmount,
+      signDate: body.signDate ? new Date(body.signDate) : null,
+      status: 'DRAFT',
+      remark: body.remark?.trim() || null,
+    }
     const contract = await db.projectContract.create({
-      data: {
-        code,
-        name: body.name || `${code}`,
-        projectId: body.projectId,
-        customerId: project.customerId,
-        contractAmount: body.contractAmount,
-        changedAmount: 0,
-        receivableAmount: body.contractAmount,
-        receivedAmount: 0,
-        unreceivedAmount: body.contractAmount,
-        signDate: body.signDate ? new Date(body.signDate) : null,
-        status: 'DRAFT',
-        remark: body.remark?.trim() || null,
-      },
+      data: createData,
       select: {
         id: true,
         code: true,

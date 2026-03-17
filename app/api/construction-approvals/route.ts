@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 const handlers = apiHandlerWithPermissionAndLog({
   /**
@@ -109,17 +110,18 @@ const handlers = apiHandlerWithPermissionAndLog({
     const code = `CONST${Date.now()}`
 
     // 创建施工立项
+    const createData: Prisma.ConstructionApprovalUncheckedCreateInput = {
+      code,
+      name: body.name.trim(),
+      projectId: body.projectId,
+      contractId: body.contractId,
+      budget: body.budgetAmount || 0,
+      startDate: body.startDate ? new Date(body.startDate) : null,
+      status: 'active',
+      remark: body.remark?.trim() || null,
+    }
     const approval = await db.constructionApproval.create({
-      data: {
-        code,
-        name: body.name.trim(),
-        projectId: body.projectId,
-        contractId: body.contractId,
-        budget: body.budgetAmount || 0,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        status: 'active',
-        remark: body.remark?.trim() || null,
-      },
+      data: createData,
       select: {
         id: true,
         code: true,

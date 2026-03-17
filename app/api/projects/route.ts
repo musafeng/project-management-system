@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -89,17 +90,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `PRJ${Date.now()}`
 
     // 创建项目
+    const createData: Prisma.ProjectUncheckedCreateInput = {
+      code,
+      name: body.name.trim(),
+      customerId: body.customerId,
+      startDate: body.startDate ? new Date(body.startDate) : null,
+      endDate: body.endDate ? new Date(body.endDate) : null,
+      budget: body.budget || 0,
+      status: 'PLANNING',
+      remark: body.remark?.trim() || null,
+    }
     const project = await db.project.create({
-      data: {
-        code,
-        name: body.name.trim(),
-        customerId: body.customerId,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate: body.endDate ? new Date(body.endDate) : null,
-        budget: body.budget || 0,
-        status: 'PLANNING',
-        remark: body.remark?.trim() || null,
-      },
+      data: createData,
       select: {
         id: true,
         code: true,
@@ -118,13 +120,14 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 创建项目状态变更记录
+    const statusChangeData: Prisma.ProjectStatusChangeUncheckedCreateInput = {
+      projectId: project.id,
+      fromStatus: 'PLANNING',
+      toStatus: 'PLANNING',
+      changeReason: '项目创建',
+    }
     await db.projectStatusChange.create({
-      data: {
-        projectId: project.id,
-        fromStatus: 'PLANNING',
-        toStatus: 'PLANNING',
-        changeReason: '项目创建',
-      },
+      data: statusChangeData,
     })
 
     return success({

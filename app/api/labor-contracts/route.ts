@@ -1,5 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -135,8 +136,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `LABOR${Date.now()}`
 
     // 创建劳务合同
-    const contract = await db.laborContract.create({
-      data: {
+    const createData: Prisma.LaborContractUncheckedCreateInput = {
         code,
         projectId: body.projectId,
         constructionId: body.constructionId,
@@ -149,7 +149,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         signDate: body.signDate ? new Date(body.signDate) : null,
         status: 'DRAFT',
         remark: body.remark?.trim() || null,
-      },
+    }
+    const contract = await db.laborContract.create({
+      data: createData,
       select: {
         id: true,
         code: true,
