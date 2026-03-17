@@ -8,7 +8,7 @@
 
 import { apiHandler, success, BadRequestError } from '@/lib/api'
 import { getAuthCookie } from '@/lib/auth'
-import { getSystemUserRoleAndStatus, upsertSystemUserFromDingTalkUser } from '@/lib/system-user'
+import { getSystemUserRoleAndStatus, upsertSystemUserFromDingTalkUser, getSystemUserDeptInfo } from '@/lib/system-user'
 import { getUserDetail } from '@/lib/dingtalk'
 
 export const GET = apiHandler(async (req) => {
@@ -38,12 +38,16 @@ export const GET = apiHandler(async (req) => {
       }
     }
 
+    // 获取部门信息
+    const deptInfo = await getSystemUserDeptInfo(user.userid)
+
     return success({
       userid: user.userid,
       name: user.name,
       mobile: user.mobile,
       unionid: user.unionid,
-      deptIds: user.deptIds,
+      deptIds: deptInfo.deptIds,
+      deptNames: deptInfo.deptNames,
       systemRole: systemUserInfo?.systemRole,
       isActive: systemUserInfo?.isActive,
     })

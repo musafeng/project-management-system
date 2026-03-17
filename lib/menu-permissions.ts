@@ -143,6 +143,12 @@ export const MENU_PERMISSIONS: MenuPermissionConfig[] = [
         path: '/action-logs',
         roles: [SystemUserRole.ADMIN],
       },
+      {
+        key: '/system-users',
+        label: '用户管理',
+        path: '/system-users',
+        roles: [SystemUserRole.ADMIN],
+      },
     ],
   },
 ]

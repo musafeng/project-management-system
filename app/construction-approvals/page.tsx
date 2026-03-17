@@ -17,6 +17,8 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 
 /**
  * 施工立项数据类型
@@ -29,6 +31,7 @@ interface ConstructionApproval {
   name: string
   budgetAmount: number
   startDate: string | null
+  approvalStatus: string
   createdAt: string
 }
 
@@ -115,7 +118,12 @@ export default function ConstructionApprovalsPage() {
   const [contractId, setContractId] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+  }, [])
 
   /**
    * 加载项目列表
@@ -365,9 +373,16 @@ export default function ConstructionApprovalsPage() {
       render: (text: string) => formatDate(text),
     },
     {
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      key: 'approvalStatus',
+      width: 100,
+      render: (status: string) => <ApprovalStatusTag status={status} />,
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 200,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -375,6 +390,8 @@ export default function ConstructionApprovalsPage() {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={record.approvalStatus !== 'REJECTED'}
+            title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
             onClick={() => handleEditClick(record.id)}
           >
             编辑
@@ -385,11 +402,19 @@ export default function ConstructionApprovalsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
+            disabled={record.approvalStatus !== 'REJECTED'}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>
               删除
             </Button>
           </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="construction-approvals"
+            isAdmin={isAdmin}
+            onSuccess={() => loadApprovals(projectId, contractId)}
+          />
         </Space>
       ),
     },

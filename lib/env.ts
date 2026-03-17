@@ -12,6 +12,7 @@ export const serverEnv = {
     corpId: process.env.DINGTALK_CORP_ID || '',
     clientId: process.env.DINGTALK_CLIENT_ID || '',
     clientSecret: process.env.DINGTALK_CLIENT_SECRET || '',
+    agentId: process.env.DINGTALK_AGENT_ID || '',
   },
 }
 

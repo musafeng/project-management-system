@@ -1,5 +1,6 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertEditable } from '@/lib/approval'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -82,11 +83,19 @@ const handler = apiHandlerWithMethod({
         id: true,
         contractId: true,
         paymentAmount: true,
+        approvalStatus: true,
       },
     })
 
     if (!payment) {
       throw new NotFoundError('付款记录不存在')
+    }
+
+    // 审批状态锁定校验
+    try {
+      assertEditable(payment.approvalStatus)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 获取合同信息

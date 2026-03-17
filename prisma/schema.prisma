@@ -350,6 +350,13 @@ model ConstructionApproval {
   status        String    @default("active")
   startDate     DateTime?
   endDate       DateTime?
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
   
   remark        String?
   createdAt     DateTime  @default(now())
@@ -362,6 +369,7 @@ model ConstructionApproval {
   @@index([projectId])
   @@index([contractId])
   @@index([code])
+  @@index([approvalStatus])
 }
 
 /// 采购合同表 - 业务模块 6
@@ -383,6 +391,13 @@ model ProcurementContract {
   signDate      DateTime?
   startDate     DateTime?
   endDate       DateTime?
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
   
   // 汇总字段
   payableAmount Decimal   @db.Decimal(18, 2) @default(0)  // 应付
@@ -416,6 +431,14 @@ model ProcurementPayment {
   paymentNumber String?   // 付款单号
   
   status        PaymentStatus @default(UNPAID)
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+
   remark        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -423,6 +446,7 @@ model ProcurementPayment {
   @@index([projectId])
   @@index([contractId])
   @@index([paymentDate])
+  @@index([approvalStatus])
 }
 
 /// 劳务合同表 - 业务模块 7
@@ -444,7 +468,14 @@ model LaborContract {
   signDate      DateTime?
   startDate     DateTime?
   endDate       DateTime?
-  
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+
   // 汇总字段
   payableAmount Decimal   @db.Decimal(18, 2) @default(0)
   paidAmount    Decimal   @db.Decimal(18, 2) @default(0)
@@ -461,6 +492,7 @@ model LaborContract {
   @@index([workerId])
   @@index([code])
   @@index([status])
+  @@index([approvalStatus])
 }
 
 /// 劳务付款记录 - 业务模块 15
@@ -479,6 +511,14 @@ model LaborPayment {
   paymentNumber String?
   
   status        PaymentStatus @default(UNPAID)
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+
   remark        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -487,6 +527,7 @@ model LaborPayment {
   @@index([contractId])
   @@index([workerId])
   @@index([paymentDate])
+  @@index([approvalStatus])
 }
 
 /// 专业分包合同表 - 业务模块 8
@@ -508,7 +549,14 @@ model SubcontractContract {
   signDate      DateTime?
   startDate     DateTime?
   endDate       DateTime?
-  
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+
   // 汇总字段
   payableAmount Decimal   @db.Decimal(18, 2) @default(0)
   paidAmount    Decimal   @db.Decimal(18, 2) @default(0)
@@ -525,6 +573,7 @@ model SubcontractContract {
   @@index([vendorId])
   @@index([code])
   @@index([status])
+  @@index([approvalStatus])
 }
 
 /// 分包付款记录 - 业务模块 16
@@ -543,6 +592,14 @@ model SubcontractPayment {
   paymentNumber String?
   
   status        PaymentStatus @default(UNPAID)
+
+  // 审批状态
+  approvalStatus  String    @default("APPROVED")  // PENDING / APPROVED / REJECTED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+
   remark        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -551,6 +608,7 @@ model SubcontractPayment {
   @@index([contractId])
   @@index([vendorId])
   @@index([paymentDate])
+  @@index([approvalStatus])
 }
 
 // ============================================================================
@@ -671,13 +729,16 @@ model SystemUser {
   name          String
   mobile        String?
   unionid       String?   // 钉钉 unionid
-  
+
   role          SystemUserRole @default(STAFF)
   isActive      Boolean   @default(true)
-  
+
+  deptIdsJson   String?   // 部门ID数组的JSON字符串，如 "[1,2,3]"
+  deptNamesJson String?   // 部门名称数组的JSON字符串，如 "[\"研发部\",\"产品部\"]"
+
   lastLoginAt   DateTime?
   remark        String?
-  
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

@@ -39,6 +39,7 @@ const handlers = apiHandlerWithPermissionAndLog({
         },
         budget: true,
         startDate: true,
+        approvalStatus: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -54,6 +55,7 @@ const handlers = apiHandlerWithPermissionAndLog({
       name: approval.name,
       budgetAmount: approval.budget,
       startDate: approval.startDate,
+      approvalStatus: approval.approvalStatus,
       createdAt: approval.createdAt,
     }))
 

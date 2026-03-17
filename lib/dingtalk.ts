@@ -142,3 +142,48 @@ export async function getUserByCode(code: string): Promise<DingTalkUser> {
   return userDetail
 }
 
+/**
+ * 获取单个部门详情
+ * 文档：https://open.dingtalk.com/document/orgapp/query-department-details
+ */
+export async function getDepartmentDetail(deptId: number): Promise<{ deptId: number; name: string } | null> {
+  try {
+    const accessToken = await getAccessToken()
+    const response = await fetch(
+      `${DINGTALK_API_BASE}/topapi/v2/department/get?access_token=${accessToken}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dept_id: deptId }),
+      }
+    )
+    const result = await response.json()
+    if (result.errcode !== 0) {
+      console.warn(`获取部门 ${deptId} 详情失败: ${result.errmsg}`)
+      return null
+    }
+    return {
+      deptId: result.result.dept_id,
+      name: result.result.name,
+    }
+  } catch (error) {
+    console.warn(`获取部门 ${deptId} 详情异常:`, error)
+    return null
+  }
+}
+
+/**
+ * 批量获取部门名称
+ * 输入部门ID数组，输出对应部门名称数组（顺序一致，失败的返回空字符串）
+ */
+export async function getDepartmentNames(deptIds: number[]): Promise<string[]> {
+  if (!deptIds || deptIds.length === 0) return []
+  try {
+    const results = await Promise.all(deptIds.map((id) => getDepartmentDetail(id)))
+    return results.map((r) => r?.name ?? '')
+  } catch (error) {
+    console.warn('批量获取部门名称失败:', error)
+    return deptIds.map(() => '')
+  }
+}
+

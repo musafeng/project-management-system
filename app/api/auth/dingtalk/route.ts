@@ -9,7 +9,7 @@
 import { apiHandler, success, BadRequestError } from '@/lib/api'
 import { getUserByCode } from '@/lib/dingtalk'
 import { setAuthCookie } from '@/lib/auth'
-import { upsertSystemUserFromDingTalkUser, getSystemUserRoleAndStatus } from '@/lib/system-user'
+import { upsertSystemUserFromDingTalkUser, getSystemUserRoleAndStatus, getSystemUserDeptInfo } from '@/lib/system-user'
 
 export const POST = apiHandler(async (req) => {
   try {
@@ -29,6 +29,9 @@ export const POST = apiHandler(async (req) => {
     // 获取用户的系统角色和活跃状态
     const systemUserInfo = await getSystemUserRoleAndStatus(userInfo.userid)
 
+    // 获取同步后的部门信息
+    const deptInfo = await getSystemUserDeptInfo(userInfo.userid)
+
     // 写入登录态 cookie
     await setAuthCookie({
       userid: userInfo.userid,
@@ -38,13 +41,14 @@ export const POST = apiHandler(async (req) => {
       deptIds: userInfo.deptIds,
     })
 
-    // 返回用户信息（包含系统角色和活跃状态）
+    // 返回用户信息（包含系统角色、活跃状态和部门信息）
     return success({
       userid: userInfo.userid,
       name: userInfo.name,
       mobile: userInfo.mobile,
       unionid: userInfo.unionid,
-      deptIds: userInfo.deptIds,
+      deptIds: deptInfo.deptIds,
+      deptNames: deptInfo.deptNames,
       email: userInfo.email,
       avatar: userInfo.avatar,
       systemRole: systemUserInfo?.systemRole,

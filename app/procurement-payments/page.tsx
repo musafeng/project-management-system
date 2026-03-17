@@ -18,6 +18,8 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 
 /**
  * 采购付款数据类型
@@ -29,6 +31,7 @@ interface ProcurementPayment {
   supplierName: string
   amount: number
   paymentDate: string
+  approvalStatus: string
   remark: string | null
   createdAt: string
 }
@@ -91,7 +94,12 @@ export default function ProcurementPaymentsPage() {
   const [contractsLoading, setContractsLoading] = useState(true)
   const [contractId, setContractId] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+  }, [])
 
   /**
    * 加载采购合同列表
@@ -284,22 +292,37 @@ export default function ProcurementPaymentsPage() {
       render: (text: string) => formatDate(text),
     },
     {
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      key: 'approvalStatus',
+      width: 100,
+      render: (status: string) => <ApprovalStatusTag status={status} />,
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 180,
       fixed: 'right',
       render: (_, record) => (
-        <Popconfirm
-          title="删除付款记录"
-          description="确定删除该付款记录吗？"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-            删除
-          </Button>
-        </Popconfirm>
+        <Space size="small">
+          <Popconfirm
+            title="删除付款记录"
+            description="确定删除该付款记录吗？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            disabled={record.approvalStatus !== 'REJECTED'}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}>删除</Button>
+          </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="procurement-payments"
+            isAdmin={isAdmin}
+            onSuccess={() => loadPayments(contractId)}
+          />
+        </Space>
       ),
     },
   ]

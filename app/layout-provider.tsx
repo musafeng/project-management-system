@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
+import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
 import { MENU_PERMISSIONS } from '@/lib/menu-permissions'
 import type { MenuPermissionConfig } from '@/lib/menu-permissions'
 
@@ -78,6 +79,7 @@ const MENU_ITEMS: MenuItem[] = [
     icon: <SettingOutlined />,
     children: [
       { key: '/action-logs', label: '操作日志' },
+      { key: '/system-users', label: '用户管理' },
     ],
   },
 ]
@@ -184,7 +186,24 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     const loadCurrentUser = async () => {
       try {
         setUserLoading(true)
-        const user = await getCurrentAuthUser()
+
+        // 1. 先尝试从 cookie 读取已有登录态
+        let user = await getCurrentAuthUser()
+
+        // 2. 如果未登录，且在钉钉环境中，自动触发免登录
+        if (!user && isDingTalkEnvironment()) {
+          try {
+            console.log('[Auth] 未登录，尝试钉钉自动免登录...')
+            await getDingTalkUser() // 内部：获取 authCode -> POST /api/auth/dingtalk -> 写入 cookie
+            // 3. 免登录成功后再次获取用户信息
+            user = await getCurrentAuthUser()
+            console.log('[Auth] 钉钉自动免登录成功:', user?.name)
+          } catch (dtError) {
+            // 免登录失败不影响页面正常展示，保持浏览器模式
+            console.warn('[Auth] 钉钉自动免登录失败:', dtError)
+          }
+        }
+
         setCurrentUser(user)
       } catch (error) {
         console.error('加载当前用户失败:', error)

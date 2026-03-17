@@ -41,6 +41,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         },
         paymentAmount: true,
         paymentDate: true,
+        approvalStatus: true,
         remark: true,
         createdAt: true,
       },
@@ -56,6 +57,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       supplierName: payment.contract.supplier.name,
       amount: payment.paymentAmount,
       paymentDate: payment.paymentDate,
+      approvalStatus: payment.approvalStatus,
       remark: payment.remark,
       createdAt: payment.createdAt,
     }))
@@ -127,6 +129,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         },
         paymentAmount: true,
         paymentDate: true,
+        approvalStatus: true,
         remark: true,
         createdAt: true,
       },
@@ -153,6 +156,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       supplierName: payment.contract.supplier.name,
       amount: payment.paymentAmount,
       paymentDate: payment.paymentDate,
+      approvalStatus: payment.approvalStatus,
       remark: payment.remark,
       createdAt: payment.createdAt,
     })

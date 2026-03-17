@@ -1,5 +1,6 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertEditable } from '@/lib/approval'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -93,6 +94,13 @@ const handler = apiHandlerWithMethod({
 
     if (!existingContract) {
       throw new NotFoundError('采购合同不存在')
+    }
+
+    // 审批状态锁定校验
+    try {
+      assertEditable(existingContract.approvalStatus)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 构建更新数据
@@ -204,6 +212,13 @@ const handler = apiHandlerWithMethod({
 
     if (!contract) {
       throw new NotFoundError('采购合同不存在')
+    }
+
+    // 审批状态锁定校验
+    try {
+      assertEditable(contract.approvalStatus)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 检查是否存在采购付款记录

@@ -44,6 +44,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paidAmount: true,
         unpaidAmount: true,
         signDate: true,
+        approvalStatus: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -62,6 +63,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       paidAmount: contract.paidAmount,
       unpaidAmount: contract.unpaidAmount,
       signDate: contract.signDate,
+      approvalStatus: contract.approvalStatus,
       createdAt: contract.createdAt,
     }))
 
@@ -173,6 +175,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         unpaidAmount: true,
         signDate: true,
         remark: true,
+        approvalStatus: true,
         createdAt: true,
       },
     })
@@ -189,6 +192,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       unpaidAmount: contract.unpaidAmount,
       signDate: contract.signDate,
       remark: contract.remark,
+      approvalStatus: contract.approvalStatus,
       createdAt: contract.createdAt,
     })
   },

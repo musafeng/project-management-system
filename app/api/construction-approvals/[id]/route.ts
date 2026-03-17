@@ -1,5 +1,6 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertEditable } from '@/lib/approval'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -80,6 +81,13 @@ const handler = apiHandlerWithMethod({
 
     if (!existingApproval) {
       throw new NotFoundError('施工立项不存在')
+    }
+
+    // 审批状态锁定校验
+    try {
+      assertEditable(existingApproval.approvalStatus)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 构建更新数据
@@ -179,6 +187,13 @@ const handler = apiHandlerWithMethod({
 
     if (!approval) {
       throw new NotFoundError('施工立项不存在')
+    }
+
+    // 审批状态锁定校验
+    try {
+      assertEditable(approval.approvalStatus)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 检查是否存在采购合同

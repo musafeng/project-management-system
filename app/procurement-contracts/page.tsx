@@ -18,6 +18,8 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 
 /**
  * 采购合同数据类型
@@ -33,6 +35,7 @@ interface ProcurementContract {
   paidAmount: number
   unpaidAmount: number
   signDate: string | null
+  approvalStatus: string
   createdAt: string
 }
 
@@ -135,7 +138,12 @@ export default function ProcurementContractsPage() {
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+  }, [])
 
   /**
    * 加载项目列表
@@ -439,31 +447,30 @@ export default function ProcurementContractsPage() {
       render: (text: string) => formatDate(text),
     },
     {
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      key: 'approvalStatus',
+      width: 100,
+      render: (status: string) => <ApprovalStatusTag status={status} />,
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 200,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditClick(record.id)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="删除采购合同"
-            description="确定删除该采购合同吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Popconfirm title="删除采购合同" description="确定删除该采购合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={record.approvalStatus !== 'REJECTED'}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>删除</Button>
           </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="procurement-contracts"
+            isAdmin={isAdmin}
+            onSuccess={() => loadContracts(keyword, projectId)}
+          />
         </Space>
       ),
     },
