@@ -125,8 +125,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 更新合同汇总字段
-    const newReceivedAmount = contract.receivedAmount + body.amount
-    const newUnreceivedAmount = contract.receivableAmount - newReceivedAmount
+    const newReceivedAmount =
+      Number(contract.receivedAmount) + Number(body.amount)
+    const newUnreceivedAmount =
+      Number(contract.receivableAmount) - newReceivedAmount
 
     await db.projectContract.update({
       where: { id: body.contractId },

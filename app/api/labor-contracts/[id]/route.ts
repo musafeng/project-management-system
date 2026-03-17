@@ -104,7 +104,7 @@ const handler = apiHandlerWithMethod({
       }
       updateData.changedAmount = body.changedAmount
       // 更新应付金额
-      updateData.payableAmount = existingContract.contractAmount + body.changedAmount
+      updateData.payableAmount = Number(existingContract.contractAmount) + Number(body.changedAmount)
     }
 
     if (body.signDate !== undefined) {

@@ -109,8 +109,10 @@ const handler = apiHandlerWithMethod({
     })
 
     // 回退合同汇总字段
-    const newPaidAmount = contract.paidAmount - payment.paymentAmount
-    const newUnpaidAmount = contract.payableAmount - newPaidAmount
+    const newPaidAmount =
+      Number(contract.paidAmount) - Number(payment.paymentAmount)
+    const newUnpaidAmount =
+      Number(contract.payableAmount) - newPaidAmount
 
     await db.procurementContract.update({
       where: { id: payment.contractId },

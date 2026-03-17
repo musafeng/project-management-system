@@ -55,9 +55,12 @@ export const POST = apiHandler(async (req) => {
   })
 
   // 计算新的变更后金额
-  const newChangedAmount = contract.changedAmount + body.changeAmount
-  const newReceivableAmount = contract.contractAmount + newChangedAmount
-  const newUnreceivedAmount = newReceivableAmount - contract.receivedAmount
+  const newChangedAmount =
+    Number(contract.changedAmount) + Number(body.changeAmount)
+  const newReceivableAmount =
+    Number(contract.contractAmount) + newChangedAmount
+  const newUnreceivedAmount =
+    newReceivableAmount - Number(contract.receivedAmount)
 
   // 更新合同的汇总字段
   const updatedContract = await db.projectContract.update({

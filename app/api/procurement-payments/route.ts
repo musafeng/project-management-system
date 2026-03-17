@@ -1,8 +1,6 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
-type ProcurementPaymentSelect = Awaited<ReturnType<typeof db.procurementPayment.findMany>>[number]
-
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/procurement-payments
@@ -49,7 +47,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 转换返回格式
-    const result = payments.map((payment: ProcurementPaymentSelect) => ({
+    type PaymentItem = (typeof payments)[number]
+    const result = payments.map((payment: PaymentItem) => ({
       id: payment.id,
       contractCode: payment.contract.code,
       projectName: payment.contract.project.name,
@@ -132,8 +131,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
 
     // 更新合同汇总字段
-    const newPaidAmount = contract.paidAmount + body.amount
-    const newUnpaidAmount = contract.payableAmount - newPaidAmount
+    const newPaidAmount =
+      Number(contract.paidAmount) + Number(body.amount)
+    const newUnpaidAmount =
+      Number(contract.payableAmount) - newPaidAmount
 
     await db.procurementContract.update({
       where: { id: body.contractId },
