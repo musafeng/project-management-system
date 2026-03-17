@@ -114,7 +114,7 @@ export async function getActiveAdminDingUserIds(): Promise<string[]> {
  */
 function mergeUserIds(...lists: (string | undefined | null)[][]): string[] {
   const all = lists.flat().filter((id): id is string => Boolean(id))
-  return [...new Set(all)]
+  return Array.from(new Set(all))
 }
 
 // ============================================================================
