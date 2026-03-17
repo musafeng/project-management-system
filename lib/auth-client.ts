@@ -12,6 +12,8 @@ export interface AuthUser {
   mobile?: string
   unionid?: string
   deptIds?: number[]
+  systemRole?: string
+  isActive?: boolean
 }
 
 /**
