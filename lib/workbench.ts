@@ -1,15 +1,21 @@
 /**
  * 工作台数据聚合
- * 为首页工作台提供待办、统计、快捷入口等聚合数据
+ * 为首页工作台提供待办、统计、快捷入口、业务提醒等聚合数据
  */
 
 import { db } from './db'
+
+// ============================================================
+// 类型定义
+// ============================================================
 
 export interface WorkbenchData {
   /** 待审批数量（我需要处理的） */
   pendingApprovalCount: number
   /** 我发起的审批中数量 */
   myPendingCount: number
+  /** 被驳回数量 */
+  rejectedCount: number
   /** 本月新增项目数 */
   monthlyNewProjects: number
   /** 进行中项目数 */
@@ -22,6 +28,10 @@ export interface WorkbenchData {
   pendingTasks: PendingTask[]
   /** 我发起的最近单据 */
   myRecentSubmissions: RecentSubmission[]
+  /** 我发起的被驳回单据 */
+  rejectedSubmissions: RecentSubmission[]
+  /** 业务提醒 */
+  alerts: BusinessAlert[]
 }
 
 export interface PendingTask {
@@ -30,8 +40,6 @@ export interface PendingTask {
   resourceType: string
   resourceLabel: string
   resourceId: string
-  resourceCode: string
-  resourceName: string
   submitterName: string
   createdAt: string
 }
@@ -41,11 +49,23 @@ export interface RecentSubmission {
   resourceType: string
   resourceLabel: string
   resourceId: string
-  resourceCode: string
-  resourceName: string
   status: string
   createdAt: string
 }
+
+export type AlertLevel = 'warning' | 'error' | 'info'
+
+export interface BusinessAlert {
+  id: string
+  level: AlertLevel
+  title: string
+  desc: string
+  href: string
+}
+
+// ============================================================
+// 常量
+// ============================================================
 
 const RESOURCE_LABELS: Record<string, string> = {
   'construction-approvals': '施工立项',
@@ -57,12 +77,10 @@ const RESOURCE_LABELS: Record<string, string> = {
   'subcontract-payments': '分包付款',
 }
 
-/**
- * 获取指定用户的工作台数据
- * @param dingUserId 当前用户 dingUserId
- * @param systemUserId 当前用户 SystemUser.id
- * @param systemRole 当前用户角色
- */
+// ============================================================
+// 主函数
+// ============================================================
+
 export async function getWorkbenchData(
   dingUserId: string,
   systemUserId: string,
@@ -72,59 +90,51 @@ export async function getWorkbenchData(
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
   const [
-    // 我需要审批的任务（按角色 or 按用户）
     pendingTasksByRole,
     pendingTasksByUser,
-    // 我发起的审批中实例
     myPendingInstances,
-    // 项目统计
+    myRejectedInstances,
     activeProjectCount,
     monthlyNewProjects,
-    // 本月收付款
     monthlyReceiptAgg,
     monthlyPaymentProcAgg,
     monthlyPaymentLaborAgg,
     monthlyPaymentSubAgg,
+    // 业务提醒原始数据
+    pendingContractCount,
+    pendingPaymentCount,
+    unreceivedReceiptCount,
   ] = await Promise.all([
-    // 按角色匹配的待审批
+    // 按角色待审批
     db.processTask.findMany({
-      where: {
-        status: 'PENDING',
-        approverType: 'ROLE',
-        approverRole: systemRole,
-      },
+      where: { status: 'PENDING', approverType: 'ROLE', approverRole: systemRole },
       include: { instance: true },
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
-    // 按用户匹配的待审批
+    // 按用户待审批
     db.processTask.findMany({
-      where: {
-        status: 'PENDING',
-        approverType: 'USER',
-        approverUserId: systemUserId,
-      },
+      where: { status: 'PENDING', approverType: 'USER', approverUserId: systemUserId },
       include: { instance: true },
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
-    // 我发起的审批中实例
+    // 我发起的审批中
     db.processInstance.findMany({
-      where: {
-        submitterUserId: dingUserId,
-        status: 'PENDING',
-      },
+      where: { submitterUserId: dingUserId, status: 'PENDING' },
+      orderBy: { startedAt: 'desc' },
+      take: 10,
+    }),
+    // 我发起的被驳回
+    db.processInstance.findMany({
+      where: { submitterUserId: dingUserId, status: 'REJECTED' },
       orderBy: { startedAt: 'desc' },
       take: 10,
     }),
     // 进行中项目数
-    db.project.count({
-      where: { status: 'IN_PROGRESS' },
-    }),
+    db.project.count({ where: { status: 'IN_PROGRESS' } }),
     // 本月新增项目
-    db.project.count({
-      where: { createdAt: { gte: monthStart } },
-    }),
+    db.project.count({ where: { createdAt: { gte: monthStart } } }),
     // 本月收款
     db.contractReceipt.aggregate({
       where: { receiptDate: { gte: monthStart } },
@@ -145,9 +155,15 @@ export async function getWorkbenchData(
       where: { paymentDate: { gte: monthStart } },
       _sum: { paymentAmount: true },
     }),
+    // 待审批采购合同数
+    db.procurementContract.count({ where: { approvalStatus: 'PENDING' } }),
+    // 待审批付款数（采购+劳务+分包）
+    db.procurementPayment.count({ where: { approvalStatus: 'PENDING' } }),
+    // 未收款合同数
+    db.contractReceipt.count({ where: { status: 'UNRECEIVED' } }),
   ])
 
-  // 合并待审批任务（去重）
+  // 合并去重待审批任务
   const allPendingTasks = [...pendingTasksByRole, ...pendingTasksByUser]
   const uniqueTasks = Array.from(
     new Map(allPendingTasks.map((t) => [t.id, t])).values()
@@ -159,23 +175,66 @@ export async function getWorkbenchData(
     resourceType: task.instance.resourceType,
     resourceLabel: RESOURCE_LABELS[task.instance.resourceType] || task.instance.resourceType,
     resourceId: task.instance.resourceId,
-    resourceCode: task.instance.resourceId.slice(0, 8),
-    resourceName: task.instance.resourceType,
     submitterName: task.instance.submitterName,
     createdAt: task.createdAt.toISOString(),
   }))
 
-  // 我发起的最近单据
   const myRecentSubmissions: RecentSubmission[] = myPendingInstances.map((inst) => ({
     id: inst.id,
     resourceType: inst.resourceType,
     resourceLabel: RESOURCE_LABELS[inst.resourceType] || inst.resourceType,
     resourceId: inst.resourceId,
-    resourceCode: inst.resourceId.slice(0, 8),
-    resourceName: inst.resourceType,
     status: inst.status,
     createdAt: inst.startedAt.toISOString(),
   }))
+
+  const rejectedSubmissions: RecentSubmission[] = myRejectedInstances.map((inst) => ({
+    id: inst.id,
+    resourceType: inst.resourceType,
+    resourceLabel: RESOURCE_LABELS[inst.resourceType] || inst.resourceType,
+    resourceId: inst.resourceId,
+    status: inst.status,
+    createdAt: inst.startedAt.toISOString(),
+  }))
+
+  // 业务提醒
+  const alerts: BusinessAlert[] = []
+  if (pendingContractCount > 0) {
+    alerts.push({
+      id: 'pending-contract',
+      level: 'warning',
+      title: `${pendingContractCount} 份采购合同待审批`,
+      desc: '合同未审批将影响后续付款操作',
+      href: '/procurement-contracts',
+    })
+  }
+  if (pendingPaymentCount > 0) {
+    alerts.push({
+      id: 'pending-payment',
+      level: 'warning',
+      title: `${pendingPaymentCount} 笔付款申请待审批`,
+      desc: '请及时处理，避免影响施工进度',
+      href: '/procurement-payments',
+    })
+  }
+  if (unreceivedReceiptCount > 0) {
+    alerts.push({
+      id: 'unreceived',
+      level: 'info',
+      title: `${unreceivedReceiptCount} 条收款记录未到账`,
+      desc: '请确认款项是否已到账并更新状态',
+      href: '/contract-receipts',
+    })
+  }
+  if (myRejectedInstances.length > 0) {
+    alerts.push({
+      id: 'rejected',
+      level: 'error',
+      title: `${myRejectedInstances.length} 份单据被驳回`,
+      desc: '请查看驳回原因并修改后重新提交',
+      href: '/',
+    })
+  }
 
   const monthlyPayment =
     Number(monthlyPaymentProcAgg._sum.paymentAmount || 0) +
@@ -185,12 +244,14 @@ export async function getWorkbenchData(
   return {
     pendingApprovalCount: uniqueTasks.length,
     myPendingCount: myPendingInstances.length,
+    rejectedCount: myRejectedInstances.length,
     monthlyNewProjects,
     activeProjectCount,
     monthlyReceipt: Number(monthlyReceiptAgg._sum.receiptAmount || 0),
     monthlyPayment,
     pendingTasks,
     myRecentSubmissions,
+    rejectedSubmissions,
+    alerts,
   }
 }
-
