@@ -170,13 +170,13 @@ export function generateWebLoginUrl(redirectUri: string, state = 'admin'): strin
 
 /**
  * 通过网页登录回调 code 换取用户信息
- * 使用钉钉新版 OAuth2.0 接口（/v1.0/oauth2/userAccessToken + /v1.0/contact/users/me）
+ * 流程：code → userAccessToken（含 unionId）→ userid → 用户详情
  */
 export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
   const { clientId, clientSecret } = serverEnv.dingtalk
   if (!clientId || !clientSecret) throw new Error('钉钉配置缺失')
 
-  // Step 1: code 换 userAccessToken
+  // Step 1: code 换 userAccessToken，响应里直接含 unionId
   const tokenRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userAccessToken', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -191,27 +191,12 @@ export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
   if (!tokenData.accessToken) {
     throw new Error(`获取 userAccessToken 失败: ${JSON.stringify(tokenData)}`)
   }
-  const userAccessToken: string = tokenData.accessToken
-
-  // Step 2: 用 userAccessToken 获取用户 unionId
-  // GET /v1.0/oauth2/userInfo?me=true
-  const meRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userInfo?me=true', {
-    method: 'GET',
-    headers: {
-      'x-acs-dingtalk-access-token': userAccessToken,
-    },
-  })
-  const meData = await meRes.json()
-  // 兼容两种字段名：unionId / unionid
-  const unionId: string = meData.unionId || meData.unionid || ''
+  const unionId: string = tokenData.unionId || tokenData.unionid || ''
   if (!unionId) {
-    throw new Error(`获取用户信息失败: ${JSON.stringify(meData)}`)
+    throw new Error(`token 响应中缺少 unionId，完整响应: ${JSON.stringify(tokenData)}`)
   }
-  // 复用 meData 的 nick 作为临时 name（后续 getUserDetail 会覆盖）
-  const _meData = { ...meData, unionId }
 
-  // Step 3: 用 unionid 换取企业内 userid（需要企业 access_token）
-  void _meData // 仅用于调试，实际用 unionId 变量
+  // Step 2: 用 unionId 换取企业内 userid
   const accessToken = await getAccessToken()
   const userIdRes = await fetch(
     `${DINGTALK_API_BASE}/topapi/user/getbyunionid?access_token=${accessToken}`,
