@@ -2,11 +2,12 @@
  * GET  /api/org-units  - 获取组织单元列表
  * POST /api/org-units  - 创建组织单元
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, ConflictError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, ConflictError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   GET: async (_req) => {
+    await requireSystemManager()
     const units = await db.organizationUnit.findMany({
       include: {
         members: {

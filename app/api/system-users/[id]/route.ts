@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/api'
+import { requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 import { SystemUserRole } from '@prisma/client'
 
@@ -15,8 +15,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    // 仅 ADMIN 可操作
-    await requireAdmin()
+    // 仅系统管理员可操作
+    await requireSystemManager()
 
     const { id } = params
     const body = await req.json()

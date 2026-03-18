@@ -142,6 +142,86 @@ export async function getUserByCode(code: string): Promise<DingTalkUser> {
   return userDetail
 }
 
+// ============================================================================
+// 网页登录（浏览器管理后台专用）
+// 使用钉钉 OAuth2.0 扫码/手机登录，不依赖 dd.js
+// 文档：https://open.dingtalk.com/document/orgapp/tutorial-obtaining-user-personal-information
+// ============================================================================
+
+/**
+ * 生成钉钉网页登录授权 URL
+ * 用于管理后台浏览器环境，引导用户扫码或使用手机钉钉登录
+ */
+export function generateWebLoginUrl(redirectUri: string, state = 'admin'): string {
+  const { clientId } = serverEnv.dingtalk
+  if (!clientId) throw new Error('DINGTALK_CLIENT_ID 未配置')
+
+  const params = new URLSearchParams({
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    client_id: clientId,
+    scope: 'openid',
+    state,
+    prompt: 'consent',
+  })
+
+  return `https://login.dingtalk.com/oauth2/auth?${params.toString()}`
+}
+
+/**
+ * 通过网页登录回调 code 换取用户信息
+ * 使用钉钉新版 OAuth2.0 接口（/v1.0/oauth2/userAccessToken + /v1.0/contact/users/me）
+ */
+export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
+  const { clientId, clientSecret } = serverEnv.dingtalk
+  if (!clientId || !clientSecret) throw new Error('钉钉配置缺失')
+
+  // Step 1: code 换 userAccessToken
+  const tokenRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userAccessToken', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clientId,
+      clientSecret,
+      code,
+      grantType: 'authorization_code',
+    }),
+  })
+  const tokenData = await tokenRes.json()
+  if (!tokenData.accessToken) {
+    throw new Error(`获取 userAccessToken 失败: ${JSON.stringify(tokenData)}`)
+  }
+  const userAccessToken: string = tokenData.accessToken
+
+  // Step 2: 用 userAccessToken 获取用户个人信息（unionid、openid）
+  const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
+    headers: { 'x-acs-dingtalk-access-token': userAccessToken },
+  })
+  const meData = await meRes.json()
+  if (!meData.unionId) {
+    throw new Error(`获取用户信息失败: ${JSON.stringify(meData)}`)
+  }
+
+  // Step 3: 用 unionid 换取企业内 userid（需要企业 access_token）
+  const accessToken = await getAccessToken()
+  const userIdRes = await fetch(
+    `${DINGTALK_API_BASE}/topapi/user/getbyunionid?access_token=${accessToken}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unionid: meData.unionId }),
+    }
+  )
+  const userIdData = await userIdRes.json()
+  if (userIdData.errcode !== 0) {
+    throw new Error(`unionid 换 userid 失败: ${userIdData.errmsg}`)
+  }
+  const userid: string = userIdData.result.userid
+
+  // Step 4: 获取完整用户详情
+  return getUserDetail(userid)
+}
+
 /**
  * 获取单个部门详情
  * 文档：https://open.dingtalk.com/document/orgapp/query-department-details

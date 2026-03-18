@@ -6,6 +6,7 @@
 import { cookies } from 'next/headers'
 import { SystemUserRole } from '@prisma/client'
 import { getSystemUserRoleAndStatus } from '@/lib/system-user'
+import { serverEnv } from '@/lib/env'
 
 /**
  * 当前认证用户信息
@@ -106,5 +107,25 @@ export async function requireRole(
  */
 export async function requireAdmin(): Promise<AuthenticatedUser> {
   return await requireRole([SystemUserRole.ADMIN])
+}
+
+/**
+ * 判断用户是否为系统管理员（ADMIN 角色 或 在白名单中）
+ */
+export function isSystemManager(user: AuthenticatedUser): boolean {
+  if (user.systemRole === SystemUserRole.ADMIN) return true
+  return serverEnv.systemManagerIds.includes(user.userid)
+}
+
+/**
+ * 要求用户必须是系统管理员（ADMIN 角色 或 dingUserId 在白名单中）
+ * @throws Error 如果未登录或无系统管理权限
+ */
+export async function requireSystemManager(): Promise<AuthenticatedUser> {
+  const user = await getCurrentUser()
+  if (!isSystemManager(user)) {
+    throw new Error('无权限执行此操作，仅系统管理员可访问')
+  }
+  return user
 }
 

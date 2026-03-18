@@ -2,11 +2,12 @@
  * GET  /api/process-definitions      - 获取流程定义列表（含节点）
  * POST /api/process-definitions      - 创建流程定义
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, ConflictError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, ConflictError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   GET: async (_req) => {
+    await requireSystemManager()
     const defs = await db.processDefinition.findMany({
       include: {
         nodes: { orderBy: { order: 'asc' } },

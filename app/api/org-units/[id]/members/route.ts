@@ -2,11 +2,12 @@
  * POST   /api/org-units/[id]/members  - 添加成员
  * DELETE /api/org-units/[id]/members  - 移除成员（body: { systemUserId }）
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { POST, DELETE } = apiHandlerWithPermissionAndLog({
   POST: async (req) => {
+    await requireSystemManager()
     const id = req.url.split('/org-units/')[1]?.split('/members')[0]
     if (!id) throw new BadRequestError('缺少组织单元 ID')
     const body = await req.json()
@@ -30,6 +31,7 @@ export const { POST, DELETE } = apiHandlerWithPermissionAndLog({
   },
 
   DELETE: async (req) => {
+    await requireSystemManager()
     const id = req.url.split('/org-units/')[1]?.split('/members')[0]
     if (!id) throw new BadRequestError('缺少组织单元 ID')
     const body = await req.json()

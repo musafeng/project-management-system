@@ -1,11 +1,12 @@
 /**
  * PUT /api/regions/[id] - 编辑区域（名称、代码、启用/停用）
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { PUT } = apiHandlerWithPermissionAndLog({
   PUT: async (req) => {
+    await requireSystemManager()
     const id = req.url.split('/regions/')[1]?.split('?')[0]
     if (!id) throw new NotFoundError('缺少区域 ID')
     const body = await req.json()

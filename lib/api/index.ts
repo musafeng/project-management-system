@@ -19,7 +19,7 @@ export {
   ValidationError,
 } from './errors'
 export type { ApiResponse } from './response'
-export { getCurrentUser, checkAuth, requireAuth, requireRole, requireAdmin } from './auth'
+export { getCurrentUser, checkAuth, requireAuth, requireRole, requireAdmin, requireSystemManager, isSystemManager } from './auth'
 export type { AuthenticatedUser } from './auth'
 export { canAccessApi, getRolePermissionDescription } from './permissions'
 export type { ApiPermissionRule } from './permissions'

@@ -1,11 +1,12 @@
 /**
  * PUT /api/org-units/[id] - 编辑组织单元
  */
-import { apiHandlerWithPermissionAndLog, success, NotFoundError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { PUT } = apiHandlerWithPermissionAndLog({
   PUT: async (req) => {
+    await requireSystemManager()
     const id = req.url.split('/org-units/')[1]?.split('?')[0]
     if (!id) throw new NotFoundError('缺少组织单元 ID')
     const body = await req.json()

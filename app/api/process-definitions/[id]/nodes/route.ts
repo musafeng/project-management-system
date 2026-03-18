@@ -1,11 +1,12 @@
 /**
  * POST /api/process-definitions/[id]/nodes - 新增节点
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { POST } = apiHandlerWithPermissionAndLog({
   POST: async (req) => {
+    await requireSystemManager()
     const id = req.url.split('/process-definitions/')[1]?.split('/nodes')[0]?.split('?')[0]
     if (!id) throw new NotFoundError('缺少流程定义 ID')
     const body = await req.json()

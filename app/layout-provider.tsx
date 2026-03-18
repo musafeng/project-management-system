@@ -18,8 +18,7 @@ import {
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
 import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
-import { MENU_PERMISSIONS } from '@/lib/menu-permissions'
-import type { MenuPermissionConfig } from '@/lib/menu-permissions'
+import { clientEnv } from '@/lib/env'
 
 const { Sider, Header, Content } = Layout
 
@@ -85,40 +84,38 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/org-units', label: '组织管理' },
       { key: '/process-definitions', label: '审批流程配置' },
       { key: '/form-definitions', label: '表单配置管理' },
+      { key: '/data-exports', label: '数据下载中心' },
     ],
   },
 ]
 
-function filterMenuItemsByRole(items: MenuItem[], userRole: string | undefined): MenuItem[] {
-  if (!userRole) return []
+/** 判断用户是否为系统管理员（ADMIN 角色 或 dingUserId 在白名单中） */
+function checkIsSystemManager(user: AuthUser | null): boolean {
+  if (!user) return false
+  if (user.systemRole === 'ADMIN') return true
+  if (user.userid && clientEnv.systemManagerIds.length > 0) {
+    return clientEnv.systemManagerIds.includes(user.userid)
+  }
+  return false
+}
+
+/** 系统管理分组 key，其下子菜单仅系统管理员可见 */
+const ADMIN_ONLY_GROUP = 'system-mgmt'
+
+function filterMenuItemsByRole(items: MenuItem[], isSystemMgr: boolean): MenuItem[] {
   return items
     .filter((item) => {
-      const permConfig = findPermissionConfig(item.key, MENU_PERMISSIONS)
-      if (!permConfig) return false
-      return permConfig.roles.includes(userRole as any)
+      if (item.key === ADMIN_ONLY_GROUP) return isSystemMgr
+      return true
     })
     .map((item) => ({
       ...item,
-      children: item.children ? filterMenuItemsByRole(item.children, userRole) : undefined,
+      children: item.children ? filterMenuItemsByRole(item.children, isSystemMgr) : undefined,
     }))
     .filter((item) => {
       if (item.children) return item.children.length > 0
       return true
     })
-}
-
-function findPermissionConfig(
-  key: string,
-  configs: MenuPermissionConfig[]
-): MenuPermissionConfig | null {
-  for (const config of configs) {
-    if (config.key === key) return config
-    if (config.children) {
-      const found = findPermissionConfig(key, config.children)
-      if (found) return found
-    }
-  }
-  return null
 }
 
 function transformMenuItems(items: MenuItem[]): MenuProps['items'] {
@@ -244,9 +241,7 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     loadCurrentUser()
   }, [mounted])
 
-  const filteredMenuItems = currentUser?.systemRole
-    ? filterMenuItemsByRole(MENU_ITEMS, currentUser.systemRole)
-    : MENU_ITEMS
+  const filteredMenuItems = filterMenuItemsByRole(MENU_ITEMS, checkIsSystemManager(currentUser))
 
   const selectedKey = getSelectedKey(pathname)
   const openKeys = getOpenKeys(pathname)

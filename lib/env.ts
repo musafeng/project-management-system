@@ -13,7 +13,14 @@ export const serverEnv = {
     clientId: process.env.DINGTALK_CLIENT_ID || '',
     clientSecret: process.env.DINGTALK_CLIENT_SECRET || '',
     agentId: process.env.DINGTALK_AGENT_ID || '',
+    // 浏览器网页登录回调地址（部署后的完整 URL）
+    webLoginRedirectUri: process.env.DINGTALK_WEB_LOGIN_REDIRECT_URI || 'https://hhyb.cc/api/auth/dingtalk-web/callback',
   },
+  // 系统管理白名单（逗号分隔的 dingUserId 列表）
+  systemManagerIds: (process.env.SYSTEM_MANAGER_DING_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 }
 
 /**
@@ -25,6 +32,11 @@ export const clientEnv = {
     corpId: process.env.NEXT_PUBLIC_DINGTALK_CORP_ID || '',
     clientId: process.env.NEXT_PUBLIC_DINGTALK_CLIENT_ID || '',
   },
+  // 系统管理白名单（逗号分隔的 dingUserId，前端用于菜单过滤）
+  systemManagerIds: (process.env.NEXT_PUBLIC_SYSTEM_MANAGER_DING_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 }
 
 /**

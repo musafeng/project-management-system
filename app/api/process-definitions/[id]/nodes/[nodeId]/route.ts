@@ -2,11 +2,12 @@
  * PUT    /api/process-definitions/[id]/nodes/[nodeId] - 更新节点
  * DELETE /api/process-definitions/[id]/nodes/[nodeId] - 删除节点
  */
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
 export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   PUT: async (req) => {
+    await requireSystemManager()
     const parts = req.url.split('/process-definitions/')
     const sub = parts[1] ?? ''
     const nodeId = sub.split('/nodes/')[1]?.split('?')[0]
@@ -41,6 +42,7 @@ export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   },
 
   DELETE: async (req) => {
+    await requireSystemManager()
     const parts = req.url.split('/process-definitions/')
     const sub = parts[1] ?? ''
     const nodeId = sub.split('/nodes/')[1]?.split('?')[0]

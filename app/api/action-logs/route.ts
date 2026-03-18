@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/api/auth'
+import { requireSystemManager } from '@/lib/api/auth'
 import { success, error as errorResponse } from '@/lib/api'
 import { getActionLogs, getActionLogsCount } from '@/lib/action-log'
 
@@ -19,8 +19,8 @@ type ActionTypeValue = 'CREATE' | 'UPDATE' | 'DELETE'
 
 export async function GET(request: Request) {
   try {
-    // 权限校验：要求登录
-    const user = await getCurrentUser()
+    // 权限校验：仅系统管理员
+    await requireSystemManager()
 
     const { searchParams } = new URL(request.url)
     const keyword = searchParams.get('keyword') || undefined
