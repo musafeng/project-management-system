@@ -7,9 +7,35 @@ import {
 } from '@/lib/system-user'
 import { isSystemManager } from '@/lib/api/auth'
 import type { AuthenticatedUser } from '@/lib/api/auth'
+import { serverEnv } from '@/lib/env'
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic'
+
+/**
+ * 推算真实的站点 origin
+ * 优先从 DINGTALK_WEB_LOGIN_REDIRECT_URI 中提取（最可靠）
+ * 次选 x-forwarded-proto + x-forwarded-host header
+ * 最后才 fallback 到 req.nextUrl.origin
+ */
+function resolveOrigin(req: NextRequest): string {
+  // 1. 从回调地址环境变量推算（最可靠）
+  const redirectUri = serverEnv.dingtalk.webLoginRedirectUri
+  if (redirectUri) {
+    try {
+      const u = new URL(redirectUri)
+      return u.origin
+    } catch {}
+  }
+
+  // 2. 反向代理 header
+  const proto = req.headers.get('x-forwarded-proto') || 'https'
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  if (host) return `${proto}://${host}`
+
+  // 3. 原始 origin（可能是 0.0.0.0，仅本地开发时用）
+  return req.nextUrl.origin
+}
 
 /**
  * GET /api/auth/dingtalk-web/callback
@@ -17,9 +43,10 @@ export const dynamic = 'force-dynamic'
  * 换取用户身份 → 同步 SystemUser → 写入登录 cookie → 跳转 /admin
  */
 export async function GET(req: NextRequest) {
-  const { searchParams, origin } = req.nextUrl
+  const { searchParams } = req.nextUrl
   const code = searchParams.get('code')
   const errorParam = searchParams.get('error')
+  const origin = resolveOrigin(req)
 
   // 钉钉回调携带了 error 参数（用户拒绝等）
   if (errorParam) {

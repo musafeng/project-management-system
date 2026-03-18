@@ -194,14 +194,12 @@ export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
   const userAccessToken: string = tokenData.accessToken
 
   // Step 2: 用 userAccessToken 获取用户 unionId
-  // 使用 /v1.0/oauth2/userInfo 接口，只需 openid scope，无需额外权限申请
-  const meRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userInfo', {
-    method: 'POST',
+  // GET /v1.0/oauth2/userInfo?me=true
+  const meRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userInfo?me=true', {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       'x-acs-dingtalk-access-token': userAccessToken,
     },
-    body: JSON.stringify({ me: true }),
   })
   const meData = await meRes.json()
   // 兼容两种字段名：unionId / unionid
