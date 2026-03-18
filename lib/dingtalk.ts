@@ -193,23 +193,34 @@ export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
   }
   const userAccessToken: string = tokenData.accessToken
 
-  // Step 2: 用 userAccessToken 获取用户个人信息（unionid、openid）
-  const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
-    headers: { 'x-acs-dingtalk-access-token': userAccessToken },
+  // Step 2: 用 userAccessToken 获取用户 unionId
+  // 使用 /v1.0/oauth2/userInfo 接口，只需 openid scope，无需额外权限申请
+  const meRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userInfo', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-acs-dingtalk-access-token': userAccessToken,
+    },
+    body: JSON.stringify({ me: true }),
   })
   const meData = await meRes.json()
-  if (!meData.unionId) {
+  // 兼容两种字段名：unionId / unionid
+  const unionId: string = meData.unionId || meData.unionid || ''
+  if (!unionId) {
     throw new Error(`获取用户信息失败: ${JSON.stringify(meData)}`)
   }
+  // 复用 meData 的 nick 作为临时 name（后续 getUserDetail 会覆盖）
+  const _meData = { ...meData, unionId }
 
   // Step 3: 用 unionid 换取企业内 userid（需要企业 access_token）
+  void _meData // 仅用于调试，实际用 unionId 变量
   const accessToken = await getAccessToken()
   const userIdRes = await fetch(
     `${DINGTALK_API_BASE}/topapi/user/getbyunionid?access_token=${accessToken}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unionid: meData.unionId }),
+      body: JSON.stringify({ unionid: unionId }),
     }
   )
   const userIdData = await userIdRes.json()
