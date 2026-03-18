@@ -1,343 +1,230 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Table, Tag, message, Input, Select, Button, Space, Spin, Card } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useRouter } from 'next/navigation'
+import { Badge, Card, Col, Row, Spin, Tag, Empty, Avatar } from 'antd'
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  FolderOpenOutlined,
+  PlusCircleOutlined,
+  FileAddOutlined,
+  DollarOutlined,
+  AuditOutlined,
+  TeamOutlined,
+  ArrowUpOutlined,
+  CaretRightOutlined,
+} from '@ant-design/icons'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import type { AuthUser } from '@/lib/auth-client'
+import type { WorkbenchData } from '@/lib/workbench'
 
-interface ProjectSummary {
-  id: string
-  code: string
-  name: string
-  customerName: string
-  status: string
-  startDate: string | null
-  endDate: string | null
-  contractReceivableAmount: number
-  contractReceivedAmount: number
-  contractUnreceivedAmount: number
-  otherReceiptAmount: number
-  totalIncomeAmount: number
-  procurementPaidAmount: number
-  laborPaidAmount: number
-  subcontractPaidAmount: number
-  projectExpenseAmount: number
-  otherPaymentAmount: number
-  managementExpenseAmount: number
-  salesExpenseAmount: number
-  totalExpenseAmount: number
-  profitAmount: number
-  createdAt: string
+const QUICK_ACTIONS = [
+  { label: '新建项目', icon: <FolderOpenOutlined style={{ fontSize: 22, color: '#1677ff' }} />, href: '/projects', color: '#e8f4ff', desc: '立项 · 预算 · 客户' },
+  { label: '发起施工立项', icon: <FileAddOutlined style={{ fontSize: 22, color: '#52c41a' }} />, href: '/construction-approvals', color: '#f0fff0', desc: '关联项目和合同' },
+  { label: '录入采购合同', icon: <AuditOutlined style={{ fontSize: 22, color: '#faad14' }} />, href: '/procurement-contracts', color: '#fffbe6', desc: '采购 · 供应商 · 审批' },
+  { label: '录入收款记录', icon: <DollarOutlined style={{ fontSize: 22, color: '#eb2f96' }} />, href: '/contract-receipts', color: '#fff0f6', desc: '合同收款 · 到账确认' },
+  { label: '录入劳务付款', icon: <TeamOutlined style={{ fontSize: 22, color: '#722ed1' }} />, href: '/labor-payments', color: '#f9f0ff', desc: '劳务费 · 工人结算' },
+  { label: '项目收支总览', icon: <ArrowUpOutlined style={{ fontSize: 22, color: '#13c2c2' }} />, href: '/', color: '#e6fffb', desc: '收入 · 支出 · 利润' },
+]
+
+const RESOURCE_ROUTE_MAP: Record<string, string> = {
+  'construction-approvals': '/construction-approvals',
+  'procurement-contracts': '/procurement-contracts',
+  'procurement-payments': '/procurement-payments',
+  'labor-contracts': '/labor-contracts',
+  'labor-payments': '/labor-payments',
+  'subcontract-contracts': '/subcontract-contracts',
+  'subcontract-payments': '/subcontract-payments',
 }
 
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
+function formatCurrency(val: number) {
+  return `¥${val.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-const PROJECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PLANNING: { label: '规划中', color: 'default' },
-  APPROVED: { label: '已批准', color: 'processing' },
-  IN_PROGRESS: { label: '进行中', color: 'processing' },
-  SUSPENDED: { label: '暂停', color: 'warning' },
-  COMPLETED: { label: '已完成', color: 'success' },
-  CANCELLED: { label: '已取消', color: 'error' },
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 6) return '夜深了'
+  if (h < 12) return '早上好'
+  if (h < 14) return '中午好'
+  if (h < 18) return '下午好'
+  return '晚上好'
 }
 
-function formatCurrency(value: number): string {
-  return `¥${value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
+type StatItem = {
+  title: string
+  value: string | number
+  suffix: string
+  icon: React.ReactNode
+  color: string
+  bg: string
+  href: string
 }
 
-function getStatusTag(status: string) {
-  const statusInfo = PROJECT_STATUS_MAP[status]
-  if (statusInfo) return <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
-  return <Tag>{status}</Tag>
-}
-
-function renderProfit(value: number) {
-  const color = value >= 0 ? '#52c41a' : '#f5222d'
-  return <span style={{ color, fontWeight: 600 }}>{formatCurrency(value)}</span>
-}
-
-function renderAmount(value: number) {
-  return <span>{formatCurrency(value)}</span>
-}
-
-function getProfitColor(value: number) {
-  return value >= 0 ? '#52c41a' : '#f5222d'
-}
-
-function MobileProjectCard({ item }: { item: ProjectSummary }) {
-  return (
-    <Card
-      size="small"
-      style={{ marginBottom: 12, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)' }}
-      title={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</span>
-          {getStatusTag(item.status)}
-        </div>
-      }
-    >
-      <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>客户：{item.customerName}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
-        <div>
-          <div style={{ fontSize: 11, color: '#999' }}>总收入</div>
-          <div style={{ fontWeight: 600, color: '#1677ff', fontSize: 15 }}>{formatCurrency(item.totalIncomeAmount)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: '#999' }}>总支出</div>
-          <div style={{ fontWeight: 600, color: '#ff7a45', fontSize: 15 }}>{formatCurrency(item.totalExpenseAmount)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: '#999' }}>合同已收</div>
-          <div style={{ fontSize: 14 }}>{formatCurrency(item.contractReceivedAmount)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: '#999' }}>合同未收</div>
-          <div style={{ fontSize: 14 }}>{formatCurrency(item.contractUnreceivedAmount)}</div>
-        </div>
-        <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #f0f0f0', paddingTop: 8, marginTop: 4 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: '#595959' }}>利润</span>
-            <span style={{ fontWeight: 700, color: getProfitColor(item.profitAmount), fontSize: 16 }}>
-              {formatCurrency(item.profitAmount)}
-            </span>
-          </div>
-        </div>
-      </div>
-    </Card>
-  )
-}
-
-export default function HomePage() {
-  const [data, setData] = useState<ProjectSummary[]>([])
+export default function WorkbenchPage() {
+  const router = useRouter()
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [data, setData] = useState<WorkbenchData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [keyword, setKeyword] = useState('')
-  const [status, setStatus] = useState<string | undefined>(undefined)
-  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
+    Promise.all([
+      getCurrentAuthUser(),
+      fetch('/api/workbench', { credentials: 'include' }).then((r) => r.json()),
+    ]).then(([u, wb]) => {
+      setUser(u)
+      if (wb.success) setData(wb.data)
+    }).finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const isDingTalk = window.location.href.includes('dingtalk') || (window as any).dd
-    if (isDingTalk) {
-      try {
-      const script = document.createElement('script')
-      script.src = 'https://g.alicdn.com/dingding/dingtalk-pc-api/2.10.0/index.js'
-      script.onload = () => {
-        if ((window as any).dd?.ready) {
-          ;(window as any).dd.ready(() => {
-              try {
-                ;(window as any).dd.biz.navigation.setTitle({ title: '项目收支总览' })
-              } catch (err) {
-                console.warn('钉钉导航设置失败:', err)
-        }
-            })
-          }
-        }
-        script.onerror = () => console.warn('钉钉 SDK 加载失败')
-      document.head.appendChild(script)
-        return () => {
-          try { document.head.removeChild(script) } catch {}
-        }
-      } catch (err) {
-        console.warn('钉钉初始化失败:', err)
-      }
-    }
-  }, [])
-
-  const loadData = async (searchKeyword?: string, searchStatus?: string) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      if (searchKeyword) params.append('keyword', searchKeyword)
-      if (searchStatus) params.append('status', searchStatus)
-      const url = `/api/projects/summary${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
-      const result: ApiResponse<ProjectSummary[]> = await response.json()
-      if (result.success && result.data) {
-        setData(result.data)
-      } else {
-        message.error(result.error || '数据加载失败')
-        setData([])
-      }
-    } catch (err) {
-      console.error('加载数据失败:', err)
-      message.error('数据加载失败，请检查网络连接')
-      setData([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { loadData() }, [])
-
-  const handleSearch = () => loadData(keyword, status)
-  const handleReset = () => {
-    setKeyword('')
-    setStatus(undefined)
-    loadData('', undefined)
-  }
-
-  const columns: ColumnsType<ProjectSummary> = [
-    { title: '项目名称', dataIndex: 'name', key: 'name', width: 180, fixed: 'left', render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span> },
-    { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150 },
-    { title: '项目状态', dataIndex: 'status', key: 'status', width: 100, render: (s: string) => getStatusTag(s) },
-    { title: '开始日期', dataIndex: 'startDate', key: 'startDate', width: 110, render: (d: string | null) => d || '-' },
-    { title: '结束日期', dataIndex: 'endDate', key: 'endDate', width: 110, render: (d: string | null) => d || '-' },
-    { title: '合同应收', dataIndex: 'contractReceivableAmount', key: 'contractReceivableAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '合同已收', dataIndex: 'contractReceivedAmount', key: 'contractReceivedAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '合同未收', dataIndex: 'contractUnreceivedAmount', key: 'contractUnreceivedAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '其他收款', dataIndex: 'otherReceiptAmount', key: 'otherReceiptAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '总收入', dataIndex: 'totalIncomeAmount', key: 'totalIncomeAmount', width: 130, align: 'right', render: (v: number) => <span style={{ color: '#1677ff', fontWeight: 600 }}>{formatCurrency(v)}</span> },
-    { title: '采购付款', dataIndex: 'procurementPaidAmount', key: 'procurementPaidAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '劳务付款', dataIndex: 'laborPaidAmount', key: 'laborPaidAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '分包付款', dataIndex: 'subcontractPaidAmount', key: 'subcontractPaidAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '项目费用', dataIndex: 'projectExpenseAmount', key: 'projectExpenseAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '其他付款', dataIndex: 'otherPaymentAmount', key: 'otherPaymentAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '管理费用', dataIndex: 'managementExpenseAmount', key: 'managementExpenseAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '销售费用', dataIndex: 'salesExpenseAmount', key: 'salesExpenseAmount', width: 130, align: 'right', render: renderAmount },
-    { title: '总支出', dataIndex: 'totalExpenseAmount', key: 'totalExpenseAmount', width: 130, align: 'right', render: (v: number) => <span style={{ color: '#ff7a45', fontWeight: 600 }}>{formatCurrency(v)}</span> },
-    { title: '利润', dataIndex: 'profitAmount', key: 'profitAmount', width: 130, fixed: 'right', align: 'right', render: renderProfit },
+  const stats: StatItem[] = [
+    { title: '进行中项目', value: data?.activeProjectCount ?? 0, suffix: '个', icon: <FolderOpenOutlined />, color: '#1677ff', bg: '#e8f4ff', href: '/projects' },
+    { title: '本月新增项目', value: data?.monthlyNewProjects ?? 0, suffix: '个', icon: <PlusCircleOutlined />, color: '#52c41a', bg: '#f0fff0', href: '/projects' },
+    { title: '本月收款', value: formatCurrency(data?.monthlyReceipt ?? 0), suffix: '', icon: <ArrowUpOutlined />, color: '#eb2f96', bg: '#fff0f6', href: '/contract-receipts' },
+    { title: '本月付款', value: formatCurrency(data?.monthlyPayment ?? 0), suffix: '', icon: <DollarOutlined />, color: '#faad14', bg: '#fffbe6', href: '/procurement-payments' },
   ]
 
-  // ── 移动端布局 ──
-  if (isMobile) {
-    const totalProfit = data.reduce((s, i) => s + i.profitAmount, 0)
+  if (loading) {
     return (
-      <div style={{ background: '#f5f5f5', minHeight: '100vh', padding: '12px' }}>
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1d1d1f' }}>项目收支总览</h1>
-        </div>
-
-        <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <Input
-            placeholder="输入项目名称搜索"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={handleSearch}
-            size="large"
-            style={{ marginBottom: 10 }}
-          />
-          <Select
-            placeholder="选择项目状态"
-            value={status || undefined}
-            onChange={setStatus}
-            allowClear
-            size="large"
-            style={{ width: '100%', marginBottom: 10 }}
-            options={[
-              { label: '规划中', value: 'PLANNING' },
-              { label: '已批准', value: 'APPROVED' },
-              { label: '进行中', value: 'IN_PROGRESS' },
-              { label: '暂停', value: 'SUSPENDED' },
-              { label: '已完成', value: 'COMPLETED' },
-              { label: '已取消', value: 'CANCELLED' },
-            ]}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading} size="large" block>
-              查询
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={handleReset} loading={loading} size="large" block>
-              重置
-            </Button>
-          </div>
-        </div>
-
-        {data.length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-            <span style={{ color: '#595959' }}>共 <b>{data.length}</b> 个</span>
-            <span style={{ color: '#1677ff', fontWeight: 600 }}>收入 {formatCurrency(data.reduce((s, i) => s + i.totalIncomeAmount, 0))}</span>
-            <span style={{ color: getProfitColor(totalProfit), fontWeight: 600 }}>利润 {formatCurrency(totalProfit)}</span>
-          </div>
-        )}
-
-        <Spin spinning={loading}>
-          {data.length === 0 && !loading && (
-            <div style={{ textAlign: 'center', color: '#bbb', padding: '40px 0', fontSize: 15 }}>暂无项目数据</div>
-          )}
-          {data.map((item) => <MobileProjectCard key={item.id} item={item} />)}
-        </Spin>
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" tip="加载工作台…" />
       </div>
     )
   }
 
-  // ── 桌面端布局（完全不变）──
   return (
-    <div style={{ background: '#fff', borderRadius: 8, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1d1d1f' }}>项目收支总览</h1>
-      </div>
-
-      <div style={{ marginBottom: 20, padding: '12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
-        <Space wrap style={{ width: '100%' }}>
-          <Input
-            placeholder="输入项目名称搜索"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: 200 }}
-            onPressEnter={handleSearch}
-          />
-          <Select
-            placeholder="选择项目状态"
-            value={status || undefined}
-            onChange={setStatus}
-            allowClear
-            style={{ width: 150 }}
-            options={[
-              { label: '规划中', value: 'PLANNING' },
-              { label: '已批准', value: 'APPROVED' },
-              { label: '进行中', value: 'IN_PROGRESS' },
-              { label: '暂停', value: 'SUSPENDED' },
-              { label: '已完成', value: 'COMPLETED' },
-              { label: '已取消', value: 'CANCELLED' },
-            ]}
-          />
-          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>查询</Button>
-          <Button icon={<ReloadOutlined />} onClick={handleReset} loading={loading}>重置</Button>
-        </Space>
-      </div>
-
-      <Spin spinning={loading}>
-        <Table<ProjectSummary>
-          rowKey="id"
-          columns={columns}
-          dataSource={data}
-          loading={false}
-          pagination={false}
-          scroll={{ x: 2800 }}
-          size="small"
-          locale={{ emptyText: '暂无项目数据' }}
-        />
-      </Spin>
-
-      {data.length > 0 && (
-        <div style={{ marginTop: 20, padding: '12px 16px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0', display: 'flex', gap: '40px', fontSize: 13, color: '#595959' }}>
-          <div><span style={{ marginRight: 8 }}>项目总数：</span><span style={{ fontWeight: 600, color: '#1d1d1f' }}>{data.length}</span></div>
-          <div><span style={{ marginRight: 8 }}>总收入：</span><span style={{ fontWeight: 600, color: '#1677ff' }}>{formatCurrency(data.reduce((sum, item) => sum + item.totalIncomeAmount, 0))}</span></div>
-          <div><span style={{ marginRight: 8 }}>总支出：</span><span style={{ fontWeight: 600, color: '#ff7a45' }}>{formatCurrency(data.reduce((sum, item) => sum + item.totalExpenseAmount, 0))}</span></div>
-          <div>
-            <span style={{ marginRight: 8 }}>总利润：</span>
-            <span style={{ fontWeight: 600, color: getProfitColor(data.reduce((sum, item) => sum + item.profitAmount, 0)) }}>
-              {formatCurrency(data.reduce((sum, item) => sum + item.profitAmount, 0))}
-            </span>
-          </div>
-            </div>
-          )}
+    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      {/* 欢迎栏 */}
+      <div style={{ background: 'linear-gradient(135deg,#1677ff 0%,#0958d9 100%)', borderRadius: 14, padding: '24px 28px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+        <div>
+          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>{getGreeting()}，{user?.name || '访客'}</div>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>工程项目管理系统</div>
+          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</div>
         </div>
+        {data && data.pendingApprovalCount > 0 && (
+          <div onClick={() => router.push('/construction-approvals')} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '12px 20px', textAlign: 'center', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.25)' }}>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>{data.pendingApprovalCount}</div>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>待我审批</div>
+          </div>
+        )}
+      </div>
+
+      {/* 数据统计卡片 */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        {stats.map((stat) => (
+          <Col key={stat.title} xs={12} sm={12} md={6}>
+            <Card hoverable onClick={() => router.push(stat.href)} size="small" style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', cursor: 'pointer' }} bodyStyle={{ padding: '16px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: stat.color, fontSize: 18, flexShrink: 0 }}>
+                  {stat.icon}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>{stat.title}</div>
+                  <div style={{ fontSize: typeof stat.value === 'string' ? 14 : 22, fontWeight: 700, color: '#1d1d1f', lineHeight: 1.2 }}>
+                    {stat.value}{stat.suffix}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      <Row gutter={[16, 16]}>
+        {/* 左列：待办 + 我发起的 */}
+        <Col xs={24} md={14}>
+          {/* 待我审批 */}
+          <Card
+            title={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ClockCircleOutlined style={{ color: '#fa8c16' }} /><span>待我审批</span>{data && data.pendingApprovalCount > 0 && <Badge count={data.pendingApprovalCount} style={{ backgroundColor: '#fa8c16' }} />}</div>}
+            size="small"
+            style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', marginBottom: 16 }}
+            bodyStyle={{ padding: '8px 0' }}
+          >
+            {!data || data.pendingTasks.length === 0 ? (
+              <Empty description="暂无待审批事项" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '16px 0' }} />
+            ) : (
+              <div>
+                {data.pendingTasks.map((task) => (
+                  <div
+                    key={task.taskId}
+                    onClick={() => router.push(RESOURCE_ROUTE_MAP[task.resourceType] || '/')}
+                    style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f5f5f5', gap: 12 }}
+                  >
+                    <Avatar size={32} style={{ background: '#fa8c16', flexShrink: 0, fontSize: 12 }}>{task.resourceLabel.slice(0, 2)}</Avatar>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: '#1d1d1f' }}>
+                        <Tag color="orange" style={{ fontSize: 11, padding: '0 6px', marginRight: 6 }}>{task.resourceLabel}</Tag>
+                        {task.submitterName} 发起的审批
+                      </div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>{new Date(task.createdAt).toLocaleDateString('zh-CN')}</div>
+                    </div>
+                    <CaretRightOutlined style={{ color: '#d9d9d9' }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* 我发起的审批中 */}
+          <Card
+            title={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckCircleOutlined style={{ color: '#1677ff' }} /><span>我发起的（审批中）</span>{data && data.myPendingCount > 0 && <Badge count={data.myPendingCount} />}</div>}
+            size="small"
+            style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}
+            bodyStyle={{ padding: '8px 0' }}
+          >
+            {!data || data.myRecentSubmissions.length === 0 ? (
+              <Empty description="暂无审批中的单据" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '16px 0' }} />
+            ) : (
+              <div>
+                {data.myRecentSubmissions.map((sub) => (
+                  <div
+                    key={sub.id}
+                    onClick={() => router.push(RESOURCE_ROUTE_MAP[sub.resourceType] || '/')}
+                    style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f5f5f5', gap: 12 }}
+                  >
+                    <Avatar size={32} style={{ background: '#1677ff', flexShrink: 0, fontSize: 12 }}>{sub.resourceLabel.slice(0, 2)}</Avatar>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: '#1d1d1f' }}>
+                        <Tag color="blue" style={{ fontSize: 11, padding: '0 6px', marginRight: 6 }}>{sub.resourceLabel}</Tag>
+                        审批中
+                      </div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>{new Date(sub.createdAt).toLocaleDateString('zh-CN')}</div>
+                    </div>
+                    <CaretRightOutlined style={{ color: '#d9d9d9' }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Col>
+
+        {/* 右列：快捷操作 */}
+        <Col xs={24} md={10}>
+          <Card
+            title={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><PlusCircleOutlined style={{ color: '#1677ff' }} /><span>快捷操作</span></div>}
+            size="small"
+            style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}
+            bodyStyle={{ padding: '8px 0' }}
+          >
+            {QUICK_ACTIONS.map((action) => (
+              <div
+                key={action.label}
+                onClick={() => router.push(action.href)}
+                style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f5f5f5', gap: 12 }}
+              >
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: action.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {action.icon}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13, color: '#1d1d1f' }}>{action.label}</div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>{action.desc}</div>
+                </div>
+                <CaretRightOutlined style={{ color: '#d9d9d9' }} />
+              </div>
+            ))}
+          </Card>
+        </Col>
+      </Row>
+    </div>
   )
 }

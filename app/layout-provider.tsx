@@ -36,41 +36,41 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   {
     key: '/',
-    label: '项目收支总览',
+    label: '工作台',
     icon: <DashboardOutlined />,
   },
   {
-    key: 'base-data',
-    label: '基础资料',
-    icon: <FileTextOutlined />,
-    children: [
-      { key: '/customers', label: '客户管理' },
-      { key: '/suppliers', label: '供应商管理' },
-      { key: '/labor-workers', label: '劳务人员管理' },
-    ],
-  },
-  {
-    key: 'project-mgmt',
-    label: '项目管理',
-    icon: <ProjectOutlined />,
-    children: [
-      { key: '/projects', label: '项目管理' },
-      { key: '/construction-approvals', label: '施工立项管理' },
-      { key: '/project-contracts', label: '项目合同管理' },
-      { key: '/contract-receipts', label: '合同收款管理' },
-    ],
-  },
-  {
-    key: 'cost-mgmt',
-    label: '成本管理',
+    key: 'income',
+    label: '收入管理',
     icon: <DollarOutlined />,
     children: [
-      { key: '/procurement-contracts', label: '采购合同管理' },
-      { key: '/procurement-payments', label: '采购付款管理' },
-      { key: '/labor-contracts', label: '劳务合同管理' },
-      { key: '/labor-payments', label: '劳务付款管理' },
-      { key: '/subcontract-contracts', label: '分包合同管理' },
-      { key: '/subcontract-payments', label: '分包付款管理' },
+      { key: '/projects', label: '项目台账' },
+      { key: '/project-contracts', label: '销售合同' },
+      { key: '/contract-receipts', label: '收款记录' },
+    ],
+  },
+  {
+    key: 'cost',
+    label: '成本管理',
+    icon: <FileTextOutlined />,
+    children: [
+      { key: '/construction-approvals', label: '施工立项' },
+      { key: '/procurement-contracts', label: '采购合同' },
+      { key: '/procurement-payments', label: '采购付款' },
+      { key: '/labor-contracts', label: '劳务合同' },
+      { key: '/labor-payments', label: '劳务付款' },
+      { key: '/subcontract-contracts', label: '分包合同' },
+      { key: '/subcontract-payments', label: '分包付款' },
+    ],
+  },
+  {
+    key: 'master',
+    label: '基础档案',
+    icon: <ProjectOutlined />,
+    children: [
+      { key: '/customers', label: '客户档案' },
+      { key: '/suppliers', label: '供应商档案' },
+      { key: '/labor-workers', label: '劳务人员' },
     ],
   },
   {
@@ -140,14 +140,17 @@ function getSelectedKey(pathname: string): string[] {
 }
 
 function getOpenKeys(pathname: string): string[] {
+  const keys: string[] = []
   for (const item of MENU_ITEMS) {
     if (item.children) {
       for (const child of item.children) {
-        if (child.key === pathname) return [item.key]
+        if (child.key === pathname) keys.push(item.key)
       }
     }
   }
-  return []
+  // 默认展开收入管理和成本管理
+  if (keys.length === 0) return ['income', 'cost']
+  return keys
 }
 
 function getPageTitle(pathname: string): string {
