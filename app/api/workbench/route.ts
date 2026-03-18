@@ -17,12 +17,15 @@ export const GET = apiHandler(async () => {
     return success({
       pendingApprovalCount: 0,
       myPendingCount: 0,
+      rejectedCount: 0,
       monthlyNewProjects: 0,
       activeProjectCount: 0,
       monthlyReceipt: 0,
       monthlyPayment: 0,
       pendingTasks: [],
       myRecentSubmissions: [],
+      rejectedSubmissions: [],
+      alerts: [],
     })
   }
 
