@@ -1,47 +1,71 @@
 /**
  * 钉钉前端客户端工具
- * 用于在浏览器中安全调用钉钉 JSAPI
+ * 使用钉钉移动端 H5 JSAPI SDK
  */
+
+import { clientEnv } from '@/lib/env'
 
 /**
  * 判断当前是否在钉钉环境中
+ * 同时检查 UA 和 window.dd
  */
 export function isDingTalkEnvironment(): boolean {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  // 检查钉钉特有的全局对象
-  return !!(window as any).dd || window.location.href.includes('dingtalk')
+  if (typeof window === 'undefined') return false
+  const hasDDUA = /dingtalk/i.test(navigator.userAgent)
+  const hasDDObj = !!(window as any).dd
+  return hasDDUA || hasDDObj
 }
 
 /**
- * 动态加载钉钉 JSAPI SDK
+ * 动态加载钉钉移动端 H5 JSAPI SDK
+ * 成功后返回 window.dd 对象
  */
-function loadDingTalkSDK(): Promise<void> {
+export function loadDingTalkSDK(): Promise<any> {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined') {
-      reject(new Error('不在浏览器环境中'))
+      reject(new Error('非浏览器环境'))
       return
     }
 
-    // 如果已经加载过，直接返回
+    // 已加载且可用
     if ((window as any).dd) {
-      resolve()
+      resolve((window as any).dd)
+      return
+    }
+
+    // 检查是否已插入过 script（避免重复插入）
+    const existing = document.querySelector('script[data-dingtalk-sdk]')
+    if (existing) {
+      // 等待已有 script 加载完成
+      existing.addEventListener('load', () => {
+        if ((window as any).dd) {
+          resolve((window as any).dd)
+        } else {
+          reject(new Error('SDK 脚本加载完成但 window.dd 仍不存在'))
+        }
+      })
+      existing.addEventListener('error', () => reject(new Error('SDK 脚本加载失败')))
       return
     }
 
     const script = document.createElement('script')
-    script.src = 'https://g.alicdn.com/dingding/dingtalk-pc-api/2.10.0/index.js'
+    // 钉钉移动端 H5 JSAPI，兼容工作台内嵌 webview
+    script.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/2.10.3/dingtalk.open.js'
+    script.setAttribute('data-dingtalk-sdk', '1')
     script.async = true
 
     script.onload = () => {
-      resolve()
+      // SDK 加载后 window.dd 可能需要一个微任务才挂载
+      setTimeout(() => {
+        if ((window as any).dd) {
+          resolve((window as any).dd)
+        } else {
+          reject(new Error('SDK 脚本加载完成但 window.dd 仍为 undefined，可能不在钉钉内置浏览器中'))
+        }
+      }, 100)
     }
 
-    script.onerror = () => {
-      reject(new Error('钉钉 SDK 加载失败'))
-    }
+    script.onerror = () => reject(new Error('钉钉 SDK 脚本加载失败，请检查网络或 CSP 配置'))
 
     document.head.appendChild(script)
   })
@@ -49,75 +73,56 @@ function loadDingTalkSDK(): Promise<void> {
 
 /**
  * 获取钉钉免登授权码
- * 仅在钉钉环境中有效
  */
 export async function getAuthCode(): Promise<string> {
-  if (!isDingTalkEnvironment()) {
-    throw new Error('当前不在钉钉环境中，无法获取免登授权码')
-  }
+  const dd = await loadDingTalkSDK()
+  const corpId = clientEnv.dingtalk.corpId
 
-  try {
-    // 加载钉钉 SDK
-    await loadDingTalkSDK()
-
-    const dd = (window as any).dd
-
-    if (!dd) {
-      throw new Error('钉钉 SDK 加载失败')
-    }
-
-    // 调用钉钉 JSAPI 获取免登授权码
-    return new Promise((resolve, reject) => {
-      dd.ready(() => {
-        dd.biz.user.get({
-          onSuccess: (result: any) => {
-            // 获取免登授权码
-            if (result.code) {
-              resolve(result.code)
-            } else {
-              reject(new Error('未能获取授权码'))
-            }
-          },
-          onFail: (error: any) => {
-            reject(new Error(`获取授权码失败: ${error.message || '未知错误'}`))
-          },
-        })
+  return new Promise((resolve, reject) => {
+    dd.ready(() => {
+      dd.runtime.permission.requestAuthCode({
+        corpId,
+        onSuccess: (info: any) => {
+          if (info?.code) {
+            resolve(info.code)
+          } else {
+            reject(new Error('requestAuthCode 成功但未返回 code，响应：' + JSON.stringify(info)))
+          }
+        },
+        onFail: (err: any) => {
+          reject(new Error('requestAuthCode 失败：' + (err?.message || JSON.stringify(err))))
+        },
       })
     })
-  } catch (error) {
-    console.error('获取钉钉免登授权码失败:', error)
-    throw error
-  }
+
+    // 监听 dd.error，防止 ready 永不触发
+    if (typeof dd.error === 'function') {
+      dd.error((err: any) => {
+        reject(new Error('dd.error 触发：' + (err?.message || JSON.stringify(err))))
+      })
+    }
+  })
 }
 
 /**
  * 获取当前登录用户信息
- * 通过前端获取 authCode，然后调用后端 API 换取用户信息
+ * 内部：获取 authCode → POST /api/auth/dingtalk → 写入 cookie
  */
 export async function getCurrentUser(): Promise<any> {
-  try {
-    // 1. 获取免登授权码
-    const code = await getAuthCode()
+  const code = await getAuthCode()
 
-    // 2. 调用后端 API 换取用户信息
-    const response = await fetch('/api/auth/dingtalk', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code }),
-    })
+  const res = await fetch('/api/auth/dingtalk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ code }),
+  })
 
-    const result = await response.json()
+  const data = await res.json()
 
-    if (!result.success) {
-      throw new Error(result.error || '获取用户信息失败')
-    }
-
-    return result.data
-  } catch (error) {
-    console.error('获取当前用户信息失败:', error)
-    throw error
+  if (!data.success) {
+    throw new Error(data.error || '钉钉登录接口失败')
   }
-}
 
+  return data.data
+}
