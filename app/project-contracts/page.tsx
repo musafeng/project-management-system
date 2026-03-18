@@ -63,8 +63,6 @@ interface ApiResponse<T> {
   error?: string
 }
 
-import { fmtMoney, fmtDate } from '@/lib/utils/format'
-
 // ============================================================
 // 主页面
 // ============================================================
