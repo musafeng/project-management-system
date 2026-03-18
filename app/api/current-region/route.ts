@@ -1,10 +1,24 @@
 /**
- * POST /api/current-region - 设置当前区域
+ * GET  /api/current-region          - 获取当前区域信息
+ * POST /api/current-region           - 设置当前区域
  * body: { regionId: string }
  */
 import { apiHandler, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
-import { setCurrentRegionId } from '@/lib/region'
+import { getCurrentRegionId, setCurrentRegionId } from '@/lib/region'
+
+export const GET = apiHandler(async (_req) => {
+  const regionId = await getCurrentRegionId()
+  if (!regionId) return success({ regionId: null, regionName: null })
+
+  const region = await db.region.findUnique({
+    where: { id: regionId },
+    select: { id: true, name: true, isActive: true },
+  })
+  if (!region) return success({ regionId: null, regionName: null })
+
+  return success({ regionId: region.id, regionName: region.name })
+})
 
 export const POST = apiHandler(async (req) => {
   const body = await req.json()

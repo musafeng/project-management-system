@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
   SettingOutlined,
   MenuOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
@@ -82,6 +83,8 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/system-users', label: '用户管理' },
       { key: '/regions', label: '区域管理' },
       { key: '/org-units', label: '组织管理' },
+      { key: '/process-definitions', label: '审批流程配置' },
+      { key: '/form-definitions', label: '表单配置管理' },
     ],
   },
 ]
@@ -183,15 +186,19 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     // 加载区域列表 + 当前区域 cookie
     const loadRegions = async () => {
       try {
-        const res = await fetch('/api/regions', { credentials: 'include' })
-        const json = await res.json()
-        if (json.success) {
-          setRegions(json.data.filter((r: any) => r.isActive))
+        const [regionsRes, currentRes] = await Promise.all([
+          fetch('/api/regions', { credentials: 'include' }),
+          fetch('/api/current-region', { credentials: 'include' }),
+        ])
+        const regionsJson = await regionsRes.json()
+        const currentJson = await currentRes.json()
+        if (regionsJson.success) {
+          setRegions(regionsJson.data.filter((r: any) => r.isActive))
+        }
+        if (currentJson.success && currentJson.data?.regionId) {
+          setCurrentRegionId(currentJson.data.regionId)
         }
       } catch { /* 静默失败 */ }
-      // 读取 cookie 中的当前区域
-      const match = document.cookie.match(/(?:^|;\s*)current_region_id=([^;]*)/)
-      if (match) setCurrentRegionId(decodeURIComponent(match[1]))
     }
     loadRegions()
   }, [mounted])
@@ -434,19 +441,35 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
                   menu={{
                     items: regions.map((r) => ({
                       key: r.id,
-                      label: r.name,
+                      label: (
+                        <span>
+                          {r.id === currentRegionId ? (
+                            <span style={{ color: '#1677ff', fontWeight: 600 }}>✓ {r.name}</span>
+                          ) : r.name}
+                        </span>
+                      ),
                       onClick: () => handleSwitchRegion(r.id),
                     })),
-                    selectedKeys: currentRegionId ? [currentRegionId] : [],
                   }}
                   trigger={['click']}
                 >
                   <Button
                     type="text"
                     size="small"
-                    style={{ fontSize: 12, color: '#595959', border: '1px solid #d9d9d9', borderRadius: 4, padding: '0 8px' }}
+                    icon={<GlobalOutlined style={{ color: '#1677ff' }} />}
+                    style={{
+                      fontSize: 13,
+                      color: '#1d1d1f',
+                      border: '1px solid #d9d9d9',
+                      borderRadius: 6,
+                      padding: '0 10px',
+                      height: 30,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
                   >
-                    {regions.find((r) => r.id === currentRegionId)?.name || '选择区域'} ▾
+                    {regions.find((r) => r.id === currentRegionId)?.name || '选择区域'}
                   </Button>
                 </Dropdown>
               )}

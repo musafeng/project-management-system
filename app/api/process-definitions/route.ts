@@ -39,3 +39,4 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
 
+

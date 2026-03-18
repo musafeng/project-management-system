@@ -19,6 +19,8 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import DynamicForm from '@/components/DynamicForm'
+import type { FormFieldConfig } from '@/components/DynamicForm'
 
 /**
  * 施工立项数据类型
@@ -119,11 +121,27 @@ export default function ConstructionApprovalsPage() {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [dynamicFields, setDynamicFields] = useState<FormFieldConfig[]>([])
   const [form] = Form.useForm()
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
   }, [])
+
+  /**
+   * 加载动态表单配置
+   */
+  const loadFormDefinition = async () => {
+    try {
+      const res = await fetch('/api/form-definitions?code=construction-approvals')
+      const result = await res.json()
+      if (result.success && result.data?.fields) {
+        setDynamicFields(result.data.fields)
+      }
+    } catch (err) {
+      console.error('加载表单配置失败:', err)
+    }
+  }
 
   /**
    * 加载项目列表
@@ -203,6 +221,7 @@ export default function ConstructionApprovalsPage() {
     loadProjects()
     loadContracts()
     loadApprovals()
+    loadFormDefinition()
   }, [])
 
   /**
@@ -288,13 +307,15 @@ export default function ConstructionApprovalsPage() {
       const url = editingId ? `/api/construction-approvals/${editingId}` : '/api/construction-approvals'
       const method = editingId ? 'PUT' : 'POST'
 
+      const { formData, ...restValues } = values
       const payload = {
-        projectId: values.projectId,
-        contractId: values.contractId,
-        name: values.name,
-        budgetAmount: values.budgetAmount || 0,
-        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
-        remark: values.remark || null,
+        projectId: restValues.projectId,
+        contractId: restValues.contractId,
+        name: restValues.name,
+        budgetAmount: restValues.budgetAmount || 0,
+        startDate: restValues.startDate ? restValues.startDate.format('YYYY-MM-DD') : null,
+        remark: restValues.remark || null,
+        formDataJson: formData ? JSON.stringify(formData) : null,
       }
 
       const response = await fetch(url, {
@@ -591,6 +612,15 @@ export default function ConstructionApprovalsPage() {
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
+
+          {dynamicFields.length > 0 && (
+            <>
+              <div style={{ borderTop: '1px solid #f0f0f0', margin: '8px 0 16px', paddingTop: 16, color: '#666', fontSize: 13 }}>
+                扩展信息
+              </div>
+              <DynamicForm fields={dynamicFields} form={form} />
+            </>
+          )}
         </Form>
       </Modal>
     </div>

@@ -341,6 +341,44 @@ model OtherReceipt {
   @@index([receiptDate])
 }
 
+// ============================================================================
+// 表单配置化引擎
+// ============================================================================
+
+/// 表单定义 - 每个业务资源类型对应一个表单定义
+model FormDefinition {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique // 如 construction-approvals
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields FormField[]
+
+  @@index([code])
+}
+
+/// 表单字段 - 属于某个表单定义
+model FormField {
+  id     String         @id @default(cuid())
+  formId String
+  form   FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  label         String
+  fieldKey      String // 如 projectName
+  componentType String // input/number/date/select/textarea
+  required      Boolean @default(false)
+
+  optionsJson String? // select 选项，JSON 格式
+  sortOrder   Int
+
+  createdAt DateTime @default(now())
+
+  @@index([formId])
+  @@index([formId, sortOrder])
+}
+
 /// 施工立项表 - 业务模块 9
 model ConstructionApproval {
   id         String          @id @default(cuid())
@@ -365,6 +403,9 @@ model ConstructionApproval {
   approvedAt     DateTime?
   rejectedAt     DateTime?
   rejectedReason String?
+
+  // 动态表单数据（JSON 存储，兼容旧字段）
+  formDataJson String?
 
   remark    String?
   createdAt DateTime @default(now())

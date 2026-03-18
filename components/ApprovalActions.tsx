@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button, Tag, Modal, Input, Space, message } from 'antd'
 import { CheckOutlined, CloseOutlined, SendOutlined } from '@ant-design/icons'
 
@@ -19,25 +19,54 @@ export function ApprovalStatusTag({ status }: { status: string }) {
 
 /**
  * 审批操作按钮组
- * - APPROVED / REJECTED 状态：显示「提交审批」
- * - PENDING 状态（且 isAdmin）：显示「通过」「驳回」
+ *
+ * 显示逻辑：
+ * - approvalStatus = APPROVED 或 REJECTED → 显示「提交审批」
+ * - approvalStatus = PENDING → 查询后端，判断当前用户是否是审批人
+ *   - 是审批人 → 显示「通过」「驳回」
+ *   - 不是    → 不显示
+ *
+ * 不再依赖 isAdmin，完全基于 ProcessTask 配置
  */
 export function ApprovalActions({
   id,
   approvalStatus,
   resource,
-  isAdmin,
   onSuccess,
+  // 保留 isAdmin 为可选，避免改动7个页面的 props 传递（忽略即可）
+  isAdmin: _isAdmin,
 }: {
   id: string
   approvalStatus: string
-  resource: string   // e.g. 'construction-approvals'
-  isAdmin: boolean
+  resource: string
   onSuccess: () => void
+  isAdmin?: boolean
 }) {
   const [loading, setLoading] = useState<string | null>(null)
   const [rejectVisible, setRejectVisible] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [canApprove, setCanApprove] = useState(false)
+  const [taskChecked, setTaskChecked] = useState(false)
+
+  // 当状态为 PENDING 时，查询当前用户是否为审批人
+  useEffect(() => {
+    if (approvalStatus !== 'PENDING') {
+      setCanApprove(false)
+      setTaskChecked(true)
+      return
+    }
+
+    setTaskChecked(false)
+    fetch(`/api/process-tasks/pending?resource=${encodeURIComponent(resource)}&resourceId=${encodeURIComponent(id)}`, {
+      credentials: 'include',
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        setCanApprove(json.data?.canApprove ?? false)
+      })
+      .catch(() => setCanApprove(false))
+      .finally(() => setTaskChecked(true))
+  }, [approvalStatus, resource, id])
 
   const call = async (action: string, body?: object) => {
     setLoading(action)
@@ -73,6 +102,7 @@ export function ApprovalActions({
     setRejectReason('')
   }
 
+  // 非 PENDING 状态：显示「提交审批」
   if (approvalStatus === 'APPROVED' || approvalStatus === 'REJECTED') {
     return (
       <Button
@@ -87,7 +117,13 @@ export function ApprovalActions({
     )
   }
 
-  if (approvalStatus === 'PENDING' && isAdmin) {
+  // PENDING 状态：等待查询结果
+  if (!taskChecked) {
+    return null
+  }
+
+  // PENDING 状态，当前用户是审批人
+  if (canApprove) {
     return (
       <>
         <Space size="small">
@@ -133,8 +169,6 @@ export function ApprovalActions({
     )
   }
 
-  // PENDING 非 ADMIN：只展示状态，无操作
+  // PENDING 状态，非审批人：不显示任何操作
   return null
 }
-
-

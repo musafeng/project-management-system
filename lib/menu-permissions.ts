@@ -161,6 +161,18 @@ export const MENU_PERMISSIONS: MenuPermissionConfig[] = [
         path: '/org-units',
         roles: [SystemUserRole.ADMIN],
       },
+      {
+        key: '/process-definitions',
+        label: '审批流程配置',
+        path: '/process-definitions',
+        roles: [SystemUserRole.ADMIN],
+      },
+      {
+        key: '/form-definitions',
+        label: '表单配置管理',
+        path: '/form-definitions',
+        roles: [SystemUserRole.ADMIN],
+      },
     ],
   },
 ]
