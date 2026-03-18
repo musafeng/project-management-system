@@ -8,7 +8,6 @@
  *   keyword: string       （标题/单号搜索，可选）
  *   projectId: string     （按项目过滤，可选）
  */
-import { NextRequest } from 'next/server'
 import { apiHandler, success, checkAuth } from '@/lib/api'
 import { db } from '@/lib/db'
 import { findSystemUserByDingUserId } from '@/lib/system-user'
@@ -51,11 +50,11 @@ async function getResourceIdsByProject(projectId: string): Promise<Set<string>> 
   return ids
 }
 
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (req: Request) => {
   const authUser = await checkAuth()
   if (!authUser) return success({ items: [], total: 0 })
 
-  const { searchParams } = req.nextUrl
+  const { searchParams } = new URL(req.url)
   const tab = searchParams.get('tab') || 'pending'
   const resourceType = searchParams.get('resourceType') || ''
   const keyword = searchParams.get('keyword') || ''
@@ -195,124 +194,3 @@ export const GET = apiHandler(async (req: NextRequest) => {
 
   return success({ items: instances, total: instances.length })
 })
-
-  if (tab === 'pending') {
-    // 待我审批：找到我是审批人的 PENDING task，关联 instance
-    const tasks = await db.processTask.findMany({
-      where: {
-        status: ProcessTaskStatus.PENDING,
-        OR: [
-          { approverType: ProcessNodeApproverType.ROLE, approverRole: authUser.systemRole },
-          { approverType: ProcessNodeApproverType.USER, approverUserId: systemUserId },
-        ],
-        instance: {
-          status: ProcessInstanceStatus.PENDING,
-          ...(resourceType ? { resourceType } : {}),
-        },
-      },
-      include: {
-        instance: {
-          include: { definition: true },
-        },
-        node: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    })
-    instances = tasks.map((t) => ({
-      id: t.instance.id,
-      taskId: t.id,
-      resourceType: t.instance.resourceType,
-      resourceLabel: RESOURCE_LABELS[t.instance.resourceType] || t.instance.resourceType,
-      resourceId: t.instance.resourceId,
-      submitterName: t.instance.submitterName,
-      submitterUserId: t.instance.submitterUserId,
-      status: t.instance.status,
-      taskStatus: t.status,
-      nodeName: t.node.name,
-      nodeOrder: t.nodeOrder,
-      startedAt: t.instance.startedAt.toISOString(),
-      taskCreatedAt: t.createdAt.toISOString(),
-      canApprove: true,
-    }))
-  } else if (tab === 'done') {
-    // 我已处理：找到我已 APPROVED 或 REJECTED 的 task
-    const tasks = await db.processTask.findMany({
-      where: {
-        status: { in: [ProcessTaskStatus.APPROVED, ProcessTaskStatus.REJECTED] },
-        handledBy: authUser.userid,
-        instance: resourceType ? { resourceType } : undefined,
-      },
-      include: {
-        instance: { include: { definition: true } },
-        node: true,
-      },
-      orderBy: { handledAt: 'desc' },
-      take: 100,
-    })
-    instances = tasks.map((t) => ({
-      id: t.instance.id,
-      taskId: t.id,
-      resourceType: t.instance.resourceType,
-      resourceLabel: RESOURCE_LABELS[t.instance.resourceType] || t.instance.resourceType,
-      resourceId: t.instance.resourceId,
-      submitterName: t.instance.submitterName,
-      submitterUserId: t.instance.submitterUserId,
-      status: t.instance.status,
-      taskStatus: t.status,
-      nodeName: t.node.name,
-      nodeOrder: t.nodeOrder,
-      startedAt: t.instance.startedAt.toISOString(),
-      taskCreatedAt: t.handledAt?.toISOString() || t.createdAt.toISOString(),
-      canApprove: false,
-    }))
-  } else if (tab === 'mine') {
-    // 我发起的
-    const insts = await db.processInstance.findMany({
-      where: {
-        submitterUserId: authUser.userid,
-        ...(resourceType ? { resourceType } : {}),
-      },
-      include: {
-        definition: true,
-        tasks: { where: { status: ProcessTaskStatus.PENDING }, orderBy: { nodeOrder: 'asc' }, take: 1 },
-      },
-      orderBy: { startedAt: 'desc' },
-      take: 100,
-    })
-    instances = insts.map((inst) => ({
-      id: inst.id,
-      taskId: '',
-      resourceType: inst.resourceType,
-      resourceLabel: RESOURCE_LABELS[inst.resourceType] || inst.resourceType,
-      resourceId: inst.resourceId,
-      submitterName: inst.submitterName,
-      submitterUserId: inst.submitterUserId,
-      status: inst.status,
-      taskStatus: inst.tasks[0]?.status || 'NONE',
-      nodeName: inst.tasks[0] ? `节点${inst.tasks[0].nodeOrder}` : '已结束',
-      nodeOrder: inst.tasks[0]?.nodeOrder || 0,
-      startedAt: inst.startedAt.toISOString(),
-      taskCreatedAt: inst.startedAt.toISOString(),
-      canApprove: false,
-      canRevoke: inst.status === ProcessInstanceStatus.PENDING,
-    }))
-  } else {
-    // cc: 暂时返回空（抄送功能后续扩展）
-    instances = []
-  }
-
-  // 关键词过滤（在内存做，因为 resourceId 是外键）
-  if (keyword) {
-    const kw = keyword.toLowerCase()
-    instances = instances.filter(
-      (i) =>
-        i.submitterName?.toLowerCase().includes(kw) ||
-        i.resourceLabel?.toLowerCase().includes(kw) ||
-        i.resourceId?.toLowerCase().includes(kw)
-    )
-  }
-
-  return success({ items: instances, total: instances.length })
-})
-
