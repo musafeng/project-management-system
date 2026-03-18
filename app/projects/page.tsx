@@ -106,6 +106,7 @@ function MobileProjectCard({
       }
       extra={
         <Space size="small">
+          <Button type="link" size="small" onClick={() => window.location.href = `/projects/${item.id}`}>详情</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(item.id)}>编辑</Button>
           <Popconfirm
             title="确定删除该项目吗？"
@@ -284,10 +285,11 @@ export default function ProjectsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 160,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
+          <Button type="link" size="small" onClick={() => window.location.href = `/projects/${record.id}`}>详情</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
           <Popconfirm title="删除项目" description="确定删除该项目吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>

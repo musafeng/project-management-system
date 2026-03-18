@@ -14,6 +14,7 @@ import {
   SettingOutlined,
   MenuOutlined,
   GlobalOutlined,
+  AuditOutlined,
 } from '@ant-design/icons'
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
@@ -40,6 +41,11 @@ const MENU_ITEMS: MenuItem[] = [
     icon: <DashboardOutlined />,
   },
   {
+    key: '/approval',
+    label: '审批中心',
+    icon: <AuditOutlined />,
+  },
+  {
     key: 'income',
     label: '收入管理',
     icon: <DollarOutlined />,
@@ -55,6 +61,7 @@ const MENU_ITEMS: MenuItem[] = [
     icon: <FileTextOutlined />,
     children: [
       { key: '/construction-approvals', label: '施工立项' },
+      { key: '/payment-apply', label: '付款申请' },
       { key: '/procurement-contracts', label: '采购合同' },
       { key: '/procurement-payments', label: '采购付款' },
       { key: '/labor-contracts', label: '劳务合同' },

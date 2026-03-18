@@ -23,6 +23,9 @@ const handler = apiHandlerWithMethod({
         customer: {
           select: { id: true, name: true },
         },
+        region: {
+          select: { name: true },
+        },
         status: true,
         startDate: true,
         endDate: true,
@@ -43,6 +46,7 @@ const handler = apiHandlerWithMethod({
       name: project.name,
       customerId: project.customerId,
       customer: project.customer,
+      regionName: project.region?.name ?? null,
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
