@@ -191,12 +191,20 @@ export async function getUserByWebCode(code: string): Promise<DingTalkUser> {
   if (!tokenData.accessToken) {
     throw new Error(`获取 userAccessToken 失败: ${JSON.stringify(tokenData)}`)
   }
-  const unionId: string = tokenData.unionId || tokenData.unionid || ''
-  if (!unionId) {
-    throw new Error(`token 响应中缺少 unionId，完整响应: ${JSON.stringify(tokenData)}`)
-  }
+  const userAccessToken: string = tokenData.accessToken
 
-  // Step 2: 用 unionId 换取企业内 userid
+  // Step 2: 用 userAccessToken 获取用户 unionId
+  // 需要在钉钉开放平台申请 Contact.User.Read 权限
+  const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
+    method: 'GET',
+    headers: { 'x-acs-dingtalk-access-token': userAccessToken },
+  })
+  const meData = await meRes.json()
+  const unionId: string = meData.unionId || meData.unionid || ''
+  if (!unionId) {
+    throw new Error(`获取用户 unionId 失败: ${JSON.stringify(meData)}`)
+  }
+  // Step 3: 用 unionId 换取企业内 userid
   const accessToken = await getAccessToken()
   const userIdRes = await fetch(
     `${DINGTALK_API_BASE}/topapi/user/getbyunionid?access_token=${accessToken}`,
