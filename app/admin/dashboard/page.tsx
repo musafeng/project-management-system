@@ -89,15 +89,12 @@ export default function AdminDashboardPage() {
     getCurrentAuthUser().then((u) => {
       setUser(u)
       setChecking(false)
-      if (!u || !checkIsSystemManagerClient(u)) {
-        router.replace('/admin')
-      }
     })
   }, [])
 
   const handleLogout = async () => {
     await logout()
-    router.replace('/admin')
+    router.replace('/api/auth/dingtalk-web/start')
   }
 
   if (checking) {
@@ -111,7 +108,16 @@ export default function AdminDashboardPage() {
   if (!user || !checkIsSystemManagerClient(user)) {
     return (
       <div style={containerStyle}>
-        <Result status="403" title="无权限" subTitle="正在跳转…" />
+        <Result
+          status="403"
+          title="无访问权限"
+          subTitle="请使用管理员账号通过钉钉扫码登录"
+          extra={
+            <Button type="primary" onClick={() => router.replace('/api/auth/dingtalk-web/start')}>
+              钉钉扫码登录
+            </Button>
+          }
+        />
       </div>
     )
   }
