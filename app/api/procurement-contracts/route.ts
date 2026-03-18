@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getCurrentRegionId } from '@/lib/region'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -13,7 +14,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const projectId = searchParams.get('projectId')
     const constructionId = searchParams.get('constructionId')
 
+    const regionId = await getCurrentRegionId()
     const where: any = {}
+
+    if (regionId) where.regionId = regionId
 
     if (projectId) {
       where.projectId = projectId
@@ -138,6 +142,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `PROC${Date.now()}`
 
     // 创建采购合同
+    const regionId = await getCurrentRegionId()
     const createData: Prisma.ProcurementContractUncheckedCreateInput = {
       code,
       name: body.name?.trim() || code,
@@ -152,6 +157,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       signDate: body.signDate ? new Date(body.signDate) : null,
       status: 'DRAFT',
       remark: body.remark?.trim() || null,
+      regionId: regionId ?? undefined,
     }
     const contract = await db.procurementContract.create({
       data: createData,

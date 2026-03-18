@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getCurrentRegionId } from '@/lib/region'
 
 const handlers = apiHandlerWithPermissionAndLog({
   /**
@@ -13,7 +14,10 @@ const handlers = apiHandlerWithPermissionAndLog({
     const projectId = searchParams.get('projectId')
     const contractId = searchParams.get('contractId')
 
+    const regionId = await getCurrentRegionId()
     const where: any = {}
+
+    if (regionId) where.regionId = regionId
 
     if (projectId) {
       where.projectId = projectId
@@ -112,6 +116,7 @@ const handlers = apiHandlerWithPermissionAndLog({
     const code = `CONST${Date.now()}`
 
     // 创建施工立项
+    const regionId = await getCurrentRegionId()
     const createData: Prisma.ConstructionApprovalUncheckedCreateInput = {
       code,
       name: body.name.trim(),
@@ -121,6 +126,7 @@ const handlers = apiHandlerWithPermissionAndLog({
       startDate: body.startDate ? new Date(body.startDate) : null,
       status: 'active',
       remark: body.remark?.trim() || null,
+      regionId: regionId ?? undefined,
     }
     const approval = await db.constructionApproval.create({
       data: createData,

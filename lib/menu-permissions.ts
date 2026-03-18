@@ -149,6 +149,18 @@ export const MENU_PERMISSIONS: MenuPermissionConfig[] = [
         path: '/system-users',
         roles: [SystemUserRole.ADMIN],
       },
+      {
+        key: '/regions',
+        label: '区域管理',
+        path: '/regions',
+        roles: [SystemUserRole.ADMIN],
+      },
+      {
+        key: '/org-units',
+        label: '组织管理',
+        path: '/org-units',
+        roles: [SystemUserRole.ADMIN],
+      },
     ],
   },
 ]

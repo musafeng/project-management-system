@@ -80,6 +80,8 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { key: '/action-logs', label: '操作日志' },
       { key: '/system-users', label: '用户管理' },
+      { key: '/regions', label: '区域管理' },
+      { key: '/org-units', label: '组织管理' },
     ],
   },
 ]
@@ -171,8 +173,28 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
   const [userLoading, setUserLoading] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [regions, setRegions] = useState<{ id: string; name: string; isActive: boolean }[]>([])
+  const [currentRegionId, setCurrentRegionId] = useState<string | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    // 加载区域列表 + 当前区域 cookie
+    const loadRegions = async () => {
+      try {
+        const res = await fetch('/api/regions', { credentials: 'include' })
+        const json = await res.json()
+        if (json.success) {
+          setRegions(json.data.filter((r: any) => r.isActive))
+        }
+      } catch { /* 静默失败 */ }
+      // 读取 cookie 中的当前区域
+      const match = document.cookie.match(/(?:^|;\s*)current_region_id=([^;]*)/)
+      if (match) setCurrentRegionId(decodeURIComponent(match[1]))
+    }
+    loadRegions()
+  }, [mounted])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -228,6 +250,27 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     if (MENU_ITEMS.some((item) => item.key === key)) return
     if (isMobile) setDrawerOpen(false)
     router.push(key)
+  }
+
+  const handleSwitchRegion = async (regionId: string) => {
+    try {
+      const res = await fetch('/api/current-region', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ regionId }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setCurrentRegionId(regionId)
+        message.success(`已切换到：${json.data.regionName}`)
+        router.refresh()
+      } else {
+        message.error(json.error || '切换失败')
+      }
+    } catch {
+      message.error('切换区域失败')
+    }
   }
 
   const handleLogout = async () => {
@@ -385,6 +428,28 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
 
             {/* 右侧用户信息 */}
             <Space>
+            {/* 区域切换 */}
+              {regions.length > 0 && (
+                <Dropdown
+                  menu={{
+                    items: regions.map((r) => ({
+                      key: r.id,
+                      label: r.name,
+                      onClick: () => handleSwitchRegion(r.id),
+                    })),
+                    selectedKeys: currentRegionId ? [currentRegionId] : [],
+                  }}
+                  trigger={['click']}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    style={{ fontSize: 12, color: '#595959', border: '1px solid #d9d9d9', borderRadius: 4, padding: '0 8px' }}
+                  >
+                    {regions.find((r) => r.id === currentRegionId)?.name || '选择区域'} ▾
+                  </Button>
+                </Dropdown>
+              )}
               {!isMobile && (
                 <span style={{ fontSize: 13, color: '#8c8c8c' }}>工程项目管理系统</span>
               )}
@@ -393,7 +458,7 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
               ) : currentUser ? (
                 <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
                   <Button type="text" icon={<UserOutlined />} style={{ color: '#1677ff', fontSize: 12 }}>
-                    {isMobile ? '' : currentUser.name}
+                    {isMobile ? '' : `${currentUser.name}（${currentUser.systemRole || '无角色'}）`}
                   </Button>
                 </Dropdown>
               ) : (

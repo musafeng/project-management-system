@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getCurrentRegionId } from '@/lib/region'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -13,7 +14,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const keyword = searchParams.get('keyword')
     const status = searchParams.get('status')
 
+    const regionId = await getCurrentRegionId()
     const where: any = {}
+
+    if (regionId) where.regionId = regionId
 
     if (keyword) {
       where.OR = [
@@ -90,6 +94,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `PRJ${Date.now()}`
 
     // 创建项目
+    const regionId = await getCurrentRegionId()
     const createData: Prisma.ProjectUncheckedCreateInput = {
       code,
       name: body.name.trim(),
@@ -99,6 +104,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       budget: body.budget || 0,
       status: 'PLANNING',
       remark: body.remark?.trim() || null,
+      regionId: regionId ?? undefined,
     }
     const project = await db.project.create({
       data: createData,

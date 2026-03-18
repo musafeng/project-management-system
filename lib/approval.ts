@@ -1,22 +1,19 @@
 /**
- * 通用审批动作工具
- * 供各业务模块的 submit / approve / reject 路由复用
+ * 通用审批动作工具 v2
+ * 审批权限改为配置驱动，通过 ProcessDefinition / ProcessTask 判断
  */
 
 import { db } from './db'
 import { createActionLog } from './action-log'
 import { ActionType } from '@prisma/client'
 import type { SystemUserRole } from '@prisma/client'
-import { requireRole, requireAdmin } from './api'
+import { requireRole, getCurrentUser } from './api'
 import {
   sendApprovalSubmittedNotification,
   sendApprovalApprovedNotification,
   sendApprovalRejectedNotification,
 } from './dingtalk-notify'
 
-/**
- * 审批状态常量
- */
 export const ApprovalStatus = {
   APPROVED: 'APPROVED',
   PENDING: 'PENDING',
@@ -25,9 +22,6 @@ export const ApprovalStatus = {
 
 export type ApprovalStatusType = keyof typeof ApprovalStatus
 
-/**
- * 支持的业务模型名称
- */
 export type ApprovalModel =
   | 'constructionApproval'
   | 'procurementContract'
@@ -37,9 +31,7 @@ export type ApprovalModel =
   | 'subcontractContract'
   | 'subcontractPayment'
 
-/**
- * 各模块 submit 允许的角色
- */
+/** 各模块 submit 允许的角色（保留，用于提交权限） */
 export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
   constructionApproval: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
   procurementContract: ['PURCHASE', 'ADMIN'] as SystemUserRole[],
@@ -50,9 +42,17 @@ export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
   subcontractPayment: ['FINANCE', 'PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
 }
 
-/**
- * 各模块的中文名称（用于日志）
- */
+/** 各模块资源类型（对应 ProcessDefinition.resourceType） */
+export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
+  constructionApproval: 'construction-approvals',
+  procurementContract: 'procurement-contracts',
+  procurementPayment: 'procurement-payments',
+  laborContract: 'labor-contracts',
+  laborPayment: 'labor-payments',
+  subcontractContract: 'subcontract-contracts',
+  subcontractPayment: 'subcontract-payments',
+}
+
 const MODEL_LABEL: Record<ApprovalModel, string> = {
   constructionApproval: '施工立项',
   procurementContract: '采购合同',
@@ -63,9 +63,10 @@ const MODEL_LABEL: Record<ApprovalModel, string> = {
   subcontractPayment: '分包付款',
 }
 
-/**
- * 获取当前记录的 approvalStatus
- */
+// ============================================================================
+// 内部工具函数
+// ============================================================================
+
 async function getApprovalStatus(model: ApprovalModel, id: string): Promise<string | null> {
   const record = await (db[model] as any).findUnique({
     where: { id },
@@ -74,56 +75,94 @@ async function getApprovalStatus(model: ApprovalModel, id: string): Promise<stri
   return record?.approvalStatus ?? null
 }
 
-/**
- * 更新 approvalStatus 及相关时间字段
- */
 async function updateApprovalStatus(
   model: ApprovalModel,
   id: string,
   data: Record<string, any>
 ): Promise<void> {
-  await (db[model] as any).update({
-    where: { id },
-    data,
-  })
+  await (db[model] as any).update({ where: { id }, data })
 }
 
-/**
- * 从 ActionLog 中查询最近一次提交该单据的用户 dingUserId
- * 用于 approve / reject 时定向通知提交人
- */
 async function getSubmitterDingUserId(
   model: ApprovalModel,
   id: string
 ): Promise<string | null> {
   try {
+    // 优先从 ProcessInstance 取
+    const instance = await db.processInstance.findFirst({
+      where: { resourceType: MODEL_RESOURCE_TYPE[model], resourceId: id },
+      select: { submitterUserId: true },
+      orderBy: { startedAt: 'desc' },
+    })
+    if (instance?.submitterUserId) return instance.submitterUserId
+
+    // 回退到 ActionLog
     const log = await db.actionLog.findFirst({
-      where: {
-        resource: MODEL_LABEL[model],
-        resourceId: id,
-        detail: { contains: '提交审批' },
-      },
+      where: { resource: MODEL_LABEL[model], resourceId: id, detail: { contains: '提交审批' } },
       select: { userId: true },
       orderBy: { createdAt: 'desc' },
     })
-    if (!log?.userId) return null
-
-    // userId 存储的是钉钉 dingUserId
-    return log.userId
-  } catch (error) {
-    console.error('[钉钉通知] 查询提交人 dingUserId 失败:', error)
+    return log?.userId ?? null
+  } catch {
     return null
   }
 }
 
 /**
- * 断言记录可编辑（PUT / DELETE 前调用）
- *
- * 规则：
- * - PENDING  → 403 当前单据审批中，无法修改
- * - APPROVED → 403 当前单据已审批通过，无法修改
- * - REJECTED → 允许
+ * 获取当前待处理的 ProcessTask（最新流程实例中最小 order 的 PENDING task）
  */
+async function getPendingTask(model: ApprovalModel, resourceId: string) {
+  const instance = await db.processInstance.findFirst({
+    where: {
+      resourceType: MODEL_RESOURCE_TYPE[model],
+      resourceId,
+      status: 'PENDING',
+    },
+    include: {
+      tasks: {
+        where: { status: 'PENDING' },
+        orderBy: { nodeOrder: 'asc' },
+        take: 1,
+      },
+    },
+    orderBy: { startedAt: 'desc' },
+  })
+  return { instance, task: instance?.tasks[0] ?? null }
+}
+
+/**
+ * 校验当前用户是否有权审批当前任务
+ * approverType=ROLE  → 用户 role 必须匹配
+ * approverType=USER  → 用户 dingUserId 必须匹配
+ */
+async function assertApprover(task: {
+  approverType: string
+  approverRole: string | null
+  approverUserId: string | null
+}): Promise<void> {
+  const user = await getCurrentUser()
+  if (task.approverType === 'ROLE') {
+    if (!task.approverRole) throw new Error('流程节点配置错误：approverRole 为空')
+    if (user.systemRole !== task.approverRole) {
+      throw new Error(`无审批权限：该节点需要 ${task.approverRole} 角色`)
+    }
+  } else if (task.approverType === 'USER') {
+    if (!task.approverUserId) throw new Error('流程节点配置错误：approverUserId 为空')
+    // approverUserId 存的是 SystemUser.id，需对比
+    const sysUser = await db.systemUser.findUnique({
+      where: { id: task.approverUserId },
+      select: { dingUserId: true },
+    })
+    if (sysUser?.dingUserId !== user.userid) {
+      throw new Error('无审批权限：该节点指定了特定审批人')
+    }
+  }
+}
+
+// ============================================================================
+// 公共 API
+// ============================================================================
+
 export function assertEditable(approvalStatus: string): void {
   if (approvalStatus === ApprovalStatus.PENDING) {
     throw new Error('当前单据审批中，无法修改')
@@ -134,28 +173,57 @@ export function assertEditable(approvalStatus: string): void {
 }
 
 /**
- * 提交审批
- * - 允许 APPROVED 或 REJECTED 状态的记录提交
- * - 权限：各模块有自己的允许角色
+ * 提交审批 v2
+ * - 查找流程定义，创建 ProcessInstance + 第一个 ProcessTask
+ * - approvalStatus = PENDING
  */
 export async function handleSubmit(
   model: ApprovalModel,
   id: string,
   resourcePath: string
 ): Promise<void> {
-  // 权限校验
   const submitter = await requireRole(SUBMIT_ROLES[model])
 
-  // 检查记录是否存在
   const currentStatus = await getApprovalStatus(model, id)
-  if (currentStatus === null) {
-    throw new Error('记录不存在')
+  if (currentStatus === null) throw new Error('记录不存在')
+  if (currentStatus === ApprovalStatus.PENDING) throw new Error('该记录已在审批中，请勿重复提交')
+
+  // 查流程定义
+  const resourceType = MODEL_RESOURCE_TYPE[model]
+  const definition = await db.processDefinition.findUnique({
+    where: { resourceType },
+    include: { nodes: { orderBy: { order: 'asc' } } },
+  })
+
+  if (!definition || !definition.isActive || definition.nodes.length === 0) {
+    throw new Error(`流程定义未配置或未激活（resourceType=${resourceType}），请联系管理员`)
   }
 
-  // 仅 APPROVED 或 REJECTED 可提交
-  if (currentStatus === ApprovalStatus.PENDING) {
-    throw new Error('该记录已在审批中，请勿重复提交')
-  }
+  const firstNode = definition.nodes[0]
+
+  // 创建流程实例 + 第一个任务
+  await db.processInstance.create({
+    data: {
+      definitionId: definition.id,
+      resourceType,
+      resourceId: id,
+      submitterUserId: submitter.userid,
+      submitterName: submitter.name,
+      status: 'PENDING',
+      tasks: {
+        create: [
+          {
+            nodeId: firstNode.id,
+            nodeOrder: firstNode.order,
+            approverType: firstNode.approverType,
+            approverRole: firstNode.approverRole,
+            approverUserId: firstNode.approverUserId,
+            status: 'PENDING',
+          },
+        ],
+      },
+    },
+  })
 
   await updateApprovalStatus(model, id, {
     approvalStatus: ApprovalStatus.PENDING,
@@ -163,7 +231,6 @@ export async function handleSubmit(
     rejectedReason: null,
   })
 
-  // 写操作日志
   await createActionLog({
     action: ActionType.UPDATE,
     resource: MODEL_LABEL[model],
@@ -173,43 +240,77 @@ export async function handleSubmit(
     detail: `提交审批：${MODEL_LABEL[model]}（ID: ${id}）`,
   })
 
-  // 发送钉钉通知（失败不影响主流程）
   sendApprovalSubmittedNotification({
     submitterDingUserId: submitter.userid,
     submitterName: submitter.name,
     modelLabel: MODEL_LABEL[model],
     resourceId: id,
+    approverRole: firstNode.approverRole ?? undefined,
+    ccMode: firstNode.ccMode,
+    ccRole: firstNode.ccRole ?? undefined,
+    ccUserId: firstNode.ccUserId ?? undefined,
   }).catch((err) => console.error('[钉钉通知] submit 通知异常:', err))
 }
 
 /**
- * 审批通过
- * - 仅 PENDING 状态可通过
- * - 权限：仅 ADMIN
+ * 审批通过 v2
+ * - 校验当前用户是否为当前任务的审批人
+ * - 完成当前 task，推进到下一节点
+ * - 若无下一节点，approvalStatus = APPROVED
  */
 export async function handleApprove(
   model: ApprovalModel,
   id: string,
   resourcePath: string
 ): Promise<void> {
-  await requireAdmin()
-
   const currentStatus = await getApprovalStatus(model, id)
-  if (currentStatus === null) {
-    throw new Error('记录不存在')
-  }
+  if (currentStatus === null) throw new Error('记录不存在')
+  if (currentStatus !== ApprovalStatus.PENDING) throw new Error('只有待审批状态的记录才能审批通过')
 
-  if (currentStatus !== ApprovalStatus.PENDING) {
-    throw new Error('只有待审批状态的记录才能审批通过')
-  }
+  const { instance, task } = await getPendingTask(model, id)
+  if (!instance || !task) throw new Error('未找到待处理的审批任务')
 
-  // 查询提交人 dingUserId（submittedAt 不为空的最近一次提交人暂无记录，用 actionLog 中查）
-  const submitterDingUserId = await getSubmitterDingUserId(model, id)
+  // 校验审批权限
+  await assertApprover(task)
 
-  await updateApprovalStatus(model, id, {
-    approvalStatus: ApprovalStatus.APPROVED,
-    approvedAt: new Date(),
+  const approver = await getCurrentUser()
+
+  // 完成当前 task
+  await db.processTask.update({
+    where: { id: task.id },
+    data: { status: 'APPROVED', handledAt: new Date(), handledBy: approver.userid },
   })
+
+  // 查找下一节点
+  const nextNode = await db.processNode.findFirst({
+    where: { definitionId: instance.definitionId, order: { gt: task.nodeOrder } },
+    orderBy: { order: 'asc' },
+  })
+
+  if (nextNode) {
+    // 创建下一个 task
+    await db.processTask.create({
+      data: {
+        instanceId: instance.id,
+        nodeId: nextNode.id,
+        nodeOrder: nextNode.order,
+        approverType: nextNode.approverType,
+        approverRole: nextNode.approverRole,
+        approverUserId: nextNode.approverUserId,
+        status: 'PENDING',
+      },
+    })
+  } else {
+    // 所有节点完成
+    await db.processInstance.update({
+      where: { id: instance.id },
+      data: { status: 'APPROVED', finishedAt: new Date() },
+    })
+    await updateApprovalStatus(model, id, {
+      approvalStatus: ApprovalStatus.APPROVED,
+      approvedAt: new Date(),
+    })
+  }
 
   await createActionLog({
     action: ActionType.UPDATE,
@@ -220,7 +321,7 @@ export async function handleApprove(
     detail: `审批通过：${MODEL_LABEL[model]}（ID: ${id}）`,
   })
 
-  // 发送钉钉通知（失败不影响主流程）
+  const submitterDingUserId = await getSubmitterDingUserId(model, id)
   if (submitterDingUserId) {
     sendApprovalApprovedNotification({
       submitterDingUserId,
@@ -231,9 +332,7 @@ export async function handleApprove(
 }
 
 /**
- * 审批驳回
- * - 仅 PENDING 状态可驳回
- * - 权限：仅 ADMIN
+ * 审批驳回 v2
  */
 export async function handleReject(
   model: ApprovalModel,
@@ -241,24 +340,31 @@ export async function handleReject(
   reason: string | undefined,
   resourcePath: string
 ): Promise<void> {
-  await requireAdmin()
-
   const currentStatus = await getApprovalStatus(model, id)
-  if (currentStatus === null) {
-    throw new Error('记录不存在')
-  }
+  if (currentStatus === null) throw new Error('记录不存在')
+  if (currentStatus !== ApprovalStatus.PENDING) throw new Error('只有待审批状态的记录才能驳回')
 
-  if (currentStatus !== ApprovalStatus.PENDING) {
-    throw new Error('只有待审批状态的记录才能驳回')
-  }
+  const { instance, task } = await getPendingTask(model, id)
+  if (!instance || !task) throw new Error('未找到待处理的审批任务')
 
-  // 查询提交人 dingUserId
-  const submitterDingUserId = await getSubmitterDingUserId(model, id)
+  await assertApprover(task)
+
+  const approver = await getCurrentUser()
+
+  await db.processTask.update({
+    where: { id: task.id },
+    data: { status: 'REJECTED', handledAt: new Date(), handledBy: approver.userid, comment: reason ?? null },
+  })
+
+  await db.processInstance.update({
+    where: { id: instance.id },
+    data: { status: 'REJECTED', finishedAt: new Date() },
+  })
 
   await updateApprovalStatus(model, id, {
     approvalStatus: ApprovalStatus.REJECTED,
     rejectedAt: new Date(),
-    rejectedReason: reason || null,
+    rejectedReason: reason ?? null,
   })
 
   await createActionLog({
@@ -270,7 +376,7 @@ export async function handleReject(
     detail: `审批驳回：${MODEL_LABEL[model]}（ID: ${id}）${reason ? `，原因：${reason}` : ''}`,
   })
 
-  // 发送钉钉通知（失败不影响主流程）
+  const submitterDingUserId = await getSubmitterDingUserId(model, id)
   if (submitterDingUserId) {
     sendApprovalRejectedNotification({
       submitterDingUserId,
@@ -280,4 +386,3 @@ export async function handleReject(
     }).catch((err) => console.error('[钉钉通知] reject 通知异常:', err))
   }
 }
-

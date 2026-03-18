@@ -122,28 +122,76 @@ function mergeUserIds(...lists: (string | undefined | null)[][]): string[] {
 // ============================================================================
 
 /**
- * 发送「提交审批」通知
+ * 根据角色名获取活跃用户 dingUserId 列表
+ */
+async function getDingUserIdsByRole(role: string): Promise<string[]> {
+  try {
+    const users = await db.systemUser.findMany({
+      where: { role: role as any, isActive: true },
+      select: { dingUserId: true },
+    })
+    return users.map((u) => u.dingUserId).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 根据 SystemUser.id 获取钉钉 userid
+ */
+async function getDingUserIdBySystemUserId(systemUserId: string): Promise<string | null> {
+  try {
+    const u = await db.systemUser.findUnique({ where: { id: systemUserId }, select: { dingUserId: true } })
+    return u?.dingUserId ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 根据 ccMode 配置获取抄送人列表
+ */
+async function getCcUserIds(params: {
+  ccMode?: string
+  ccRole?: string
+  ccUserId?: string
+  submitterDingUserId?: string
+}): Promise<string[]> {
+  const { ccMode, ccRole, ccUserId, submitterDingUserId } = params
+  if (!ccMode || ccMode === 'NONE') return []
+  if (ccMode === 'SUBMITTER') return submitterDingUserId ? [submitterDingUserId] : []
+  if (ccMode === 'ROLE' && ccRole) return getDingUserIdsByRole(ccRole)
+  if (ccMode === 'USER' && ccUserId) {
+    const id = await getDingUserIdBySystemUserId(ccUserId)
+    return id ? [id] : []
+  }
+  return []
+}
+
+/**
+ * 发送「提交审批」通知（配置驱动版）
  *
- * - 通知对象：所有活跃 ADMIN
- * - 抄送：提交人本人
- *
- * @param submitterDingUserId 提交人的钉钉 userid
- * @param submitterName 提交人姓名
- * @param modelLabel 模块中文名，例如「采购合同」
- * @param resourceId 单据 ID
+ * - 通知对象：approverRole 对应角色的活跃用户
+ * - 抄送：由 ccMode 配置决定
  */
 export async function sendApprovalSubmittedNotification(params: {
   submitterDingUserId: string
   submitterName: string
   modelLabel: string
   resourceId: string
+  approverRole?: string     // 审批节点角色（可选，默认 ADMIN）
+  ccMode?: string           // 抄送模式
+  ccRole?: string
+  ccUserId?: string
 }): Promise<void> {
-  const { submitterDingUserId, submitterName, modelLabel, resourceId } = params
+  const { submitterDingUserId, submitterName, modelLabel, resourceId, approverRole, ccMode, ccRole, ccUserId } = params
 
   try {
-    const adminIds = await getActiveAdminDingUserIds()
-    // 接收人 = ADMIN + 提交人本人（抄送）
-    const receivers = mergeUserIds(adminIds, [submitterDingUserId])
+    // 通知审批人（按角色）
+    const approverIds = await getDingUserIdsByRole(approverRole ?? 'ADMIN')
+    // 抄送人
+    const ccIds = await getCcUserIds({ ccMode, ccRole, ccUserId, submitterDingUserId })
+    const receivers = mergeUserIds(approverIds, ccIds)
 
     if (receivers.length === 0) {
       console.warn('[钉钉通知] 提交审批：无接收人，跳过')

@@ -17,6 +17,8 @@ const INIT_STEPS: StepResult[] = [
   { label: '5. GET /api/auth/me（Cookie 验证）', status: 'pending' },
 ]
 
+const CORP_ID = process.env.NEXT_PUBLIC_DINGTALK_CORP_ID || '（未配置 NEXT_PUBLIC_DINGTALK_CORP_ID）'
+
 export default function AuthTestPage() {
   const [ua, setUa] = useState('')
   const [steps, setSteps] = useState<StepResult[]>(INIT_STEPS)
@@ -188,9 +190,23 @@ export default function AuthTestPage() {
           letterSpacing: 1,
         }}
       >
-        当前调试版本：v2-sdk-debug
+        当前调试版本：v3-corpid-debug
       </div>
-      <h2 style={{ marginBottom: 8, fontSize: 18 }}>钉钉登录链路调试 v2</h2>
+      <h2 style={{ marginBottom: 8, fontSize: 18 }}>钉钉登录链路调试 v3</h2>
+
+      {/* corpId 调试 */}
+      <div
+        style={{
+          background: CORP_ID.startsWith('（') ? '#fff1f0' : '#f6ffed',
+          border: `1px solid ${CORP_ID.startsWith('（') ? '#ffa39e' : '#b7eb8f'}`,
+          borderRadius: 4,
+          padding: '6px 14px',
+          marginBottom: 10,
+          fontSize: 12,
+        }}
+      >
+        <strong>corpId：</strong>{CORP_ID}
+      </div>
 
       <div
         style={{

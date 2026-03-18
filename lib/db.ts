@@ -49,6 +49,19 @@ export const db = {
   // 系统管理表
   systemUser: prisma.systemUser,
   actionLog: prisma.actionLog,
+
+  // 区域工作空间
+  region: prisma.region,
+
+  // 流程引擎
+  processDefinition: prisma.processDefinition,
+  processNode: prisma.processNode,
+  processInstance: prisma.processInstance,
+  processTask: prisma.processTask,
+
+  // 组织单元
+  organizationUnit: prisma.organizationUnit,
+  systemUserOrgUnit: prisma.systemUserOrgUnit,
 }
 
 export type DB = typeof db

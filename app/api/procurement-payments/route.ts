@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getCurrentRegionId } from '@/lib/region'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -13,7 +14,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const contractId = searchParams.get('contractId')
     const projectId = searchParams.get('projectId')
 
+    const regionId = await getCurrentRegionId()
     const where: any = {}
+
+    if (regionId) where.regionId = regionId
 
     if (contractId) {
       where.contractId = contractId
@@ -103,6 +107,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 创建付款记录
+    const regionId = await getCurrentRegionId()
     const createData: Prisma.ProcurementPaymentUncheckedCreateInput = {
       projectId: contract.projectId,
       contractId: body.contractId,
@@ -110,6 +115,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       status: 'PAID',
       remark: body.remark?.trim() || null,
+      regionId: regionId ?? undefined,
     }
     const payment = await db.procurementPayment.create({
       data: createData,
