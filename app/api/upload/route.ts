@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import OSS from 'ali-oss'
 import { serverEnv } from '@/lib/env'
 
-// 关闭默认 bodyParser，允许接收大文件（App Router Route Handler 配置）
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}
-
-// 允许最大 100MB 请求体
-export const maxDuration = 60 // 秒，防止大文件上传超时
+// 允许最大 100MB 请求体，防止大文件上传超时
+export const maxDuration = 60
 
 // 文件大小限制：100MB
 const MAX_FILE_SIZE = 100 * 1024 * 1024
