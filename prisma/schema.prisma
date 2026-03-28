@@ -125,6 +125,12 @@ model Project {
   endDate   DateTime?
   budget    Decimal       @db.Decimal(18, 2)
 
+  // 新增字段
+  location    String? // 项目地点
+  projectType String? // 项目类型：装修、广告、采购、设计、其他
+  bidMethod   String? // 招标方式：公开招标、阳光平台、不招标
+  area        Decimal? @db.Decimal(18, 2) // 项目面积
+
   remark    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -182,6 +188,8 @@ model Supplier {
   bankAccount String?
   bankName    String?
   status      String   @default("active")
+  // 新增字段
+  attachmentUrl String? // 附件
   remark      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -203,6 +211,8 @@ model LaborWorker {
   bankAccount String?
   bankName    String?
   status      String   @default("active")
+  // 新增字段
+  attachmentUrl String? // 附件
   remark      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -262,6 +272,14 @@ model ProjectContract {
   startDate DateTime?
   endDate   DateTime?
 
+  // 新增字段
+  contractType    String? // 合同类型：固定总价、固定单价、可变总价、可变单价
+  paymentMethod   String? // 付款方式：按进度、按合同、其他
+  hasRetention    Boolean @default(false) // 有无质保金
+  retentionRate   Decimal? @db.Decimal(5, 2)  // 质保金比例（%）
+  retentionAmount Decimal? @db.Decimal(18, 2) // 质保金金额
+  attachmentUrl   String? // 合同附件
+
   // 汇总字段（由业务逻辑维护）
   receivableAmount Decimal @default(0) @db.Decimal(18, 2) // 应收
   receivedAmount   Decimal @default(0) @db.Decimal(18, 2) // 已收
@@ -287,9 +305,23 @@ model ProjectContractChange {
   contractId String
   contract   ProjectContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
-  changeType   ChangeType
-  changeAmount Decimal    @db.Decimal(18, 2)
-  changeReason String?
+  changeType      ChangeType
+  changeAmount    Decimal    @db.Decimal(18, 2)
+  changeReason    String?
+
+  // 新增字段
+  changeDate      DateTime?  // 变更日期
+  increaseAmount  Decimal?   @db.Decimal(18, 2) // 增项金额
+  originalAmount  Decimal?   @db.Decimal(18, 2) // 合同原金额
+  totalAmount     Decimal?   @db.Decimal(18, 2) // 合同总金额（变更后）
+  attachmentUrl   String?    // 附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
 
   remark    String?
   createdAt DateTime @default(now())
@@ -312,6 +344,17 @@ model ContractReceipt {
   receiptMethod String? // 收款方式：转账、现金等
   receiptNumber String? // 收据号
 
+  // 新增字段
+  deductionItems String? // 费用明细扣款 JSON，如 [{type:"税金",amount:100}]
+  attachmentUrl  String? // 附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
+
   status    ReceiptStatus @default(UNRECEIVED)
   remark    String?
   createdAt DateTime      @default(now())
@@ -327,11 +370,21 @@ model OtherReceipt {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
-  receiptType   String // 收款类型：押金、预付款等
+  receiptType   String // 收款类型/收款事由
   receiptAmount Decimal  @db.Decimal(18, 2)
   receiptDate   DateTime
   receiptMethod String?
   receiptNumber String?
+
+  // 新增字段
+  attachmentUrl  String? // 附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
 
   remark    String?
   createdAt DateTime @default(now())
@@ -367,11 +420,23 @@ model FormField {
 
   label         String
   fieldKey      String // 如 projectName
-  componentType String // input/number/date/select/textarea
+  componentType String // input/number/date/select/textarea/table/file/cascadeSelect
   required      Boolean @default(false)
 
-  optionsJson String? // select 选项，JSON 格式
-  sortOrder   Int
+  optionsJson       String? // select 选项，JSON 格式
+  sortOrder         Int
+
+  // 扩展字段：联动与计算
+  dependsOn         String? // 依赖字段 key（用于显隐联动）
+  dependsValue      String? // 当依赖字段等于该值时显示
+  computeFormula    String? // 计算公式，如 "retentionRate * contractAmount / 100"
+  linkedTable       String? // 关联表名（如 suppliers、labor-workers）
+  linkedLabelField  String? // 关联表显示字段（如 name）
+  linkedValueField  String? // 关联表值字段（如 id）
+  linkedCopyFields  String? // 选择后自动带出的字段映射 JSON，如 [{"from":"bankAccount","to":"bankCard"}]
+  placeholder       String? // 字段提示文字
+  isReadonly        Boolean @default(false) // 是否只读
+  tableColumnsJson  String? // 当 componentType=table 时，子列配置 JSON
 
   createdAt DateTime @default(now())
 
@@ -433,10 +498,14 @@ model ProcurementContract {
   regionId       String?
   region         Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
-  code           String  @unique
-  name           String
-  contractAmount Decimal @db.Decimal(18, 2)
-  changedAmount  Decimal @default(0) @db.Decimal(18, 2)
+  code             String  @unique
+  name             String
+  contractAmount   Decimal @db.Decimal(18, 2)
+  changedAmount    Decimal @default(0) @db.Decimal(18, 2)
+
+  // 新增字段
+  materialCategory String? // 材料类别：油工材料、木工材料、瓦工材料、水电材料、其他杂项
+  attachmentUrl    String? // 附件
 
   status    ContractStatus @default(DRAFT)
   signDate  DateTime?
@@ -519,6 +588,10 @@ model LaborContract {
   contractAmount Decimal @db.Decimal(18, 2)
   changedAmount  Decimal @default(0) @db.Decimal(18, 2)
 
+  // 新增字段
+  laborType     String? // 劳务类型：腻子工、瓦工、木工、油工、零工、其它
+  attachmentUrl String? // 附件
+
   status    ContractStatus @default(DRAFT)
   signDate  DateTime?
   startDate DateTime?
@@ -599,10 +672,14 @@ model SubcontractContract {
   regionId       String?
   region         Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
-  code           String  @unique
-  name           String
-  contractAmount Decimal @db.Decimal(18, 2)
-  changedAmount  Decimal @default(0) @db.Decimal(18, 2)
+  code              String  @unique
+  name              String
+  contractAmount    Decimal @db.Decimal(18, 2)
+  changedAmount     Decimal @default(0) @db.Decimal(18, 2)
+
+  // 新增字段
+  subcontractType String? // 分包类型：装修、广告、设计、其它
+  attachmentUrl   String? // 附件
 
   status    ContractStatus @default(DRAFT)
   signDate  DateTime?
@@ -676,7 +753,7 @@ model SubcontractPayment {
 // 费用相关表
 // ============================================================================
 
-/// 项目费用表 - 业务模块 17
+/// 项目费用报销表 - 业务模块 17
 model ProjectExpense {
   id        String  @id @default(cuid())
   projectId String
@@ -686,6 +763,19 @@ model ProjectExpense {
   expenseAmount Decimal         @db.Decimal(18, 2)
   expenseDate   DateTime
   description   String?
+
+  // 新增字段
+  submitter     String?  // 报销人
+  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额（自动汇总）
+  expenseItems  String?  // 费用明细 JSON，如 [{type:"材料",amount:100,attachmentUrl:""}]
+  attachmentUrl String?  // 总附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING")
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
 
   remark    String?
   createdAt DateTime @default(now())
@@ -702,11 +792,21 @@ model OtherPayment {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
-  paymentType   String // 付款类型：税费、保险等
+  paymentType   String // 付款类型/付款事由
   paymentAmount Decimal  @db.Decimal(18, 2)
   paymentDate   DateTime
   paymentMethod String?
   paymentNumber String?
+
+  // 新增字段
+  attachmentUrl  String? // 附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING")
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
 
   status    PaymentStatus @default(UNPAID)
   remark    String?
@@ -717,7 +817,7 @@ model OtherPayment {
   @@index([paymentDate])
 }
 
-/// 管理费用表 - 业务模块 20
+/// 管理费用报销表 - 业务模块 20
 model ManagementExpense {
   id        String  @id @default(cuid())
   projectId String
@@ -728,6 +828,19 @@ model ManagementExpense {
   expenseDate   DateTime
   description   String?
 
+  // 新增字段
+  submitter     String?  // 报销人
+  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额
+  expenseItems  String?  // 费用明细 JSON，如 [{type:"职工薪酬",amount:100,attachmentUrl:""}]
+  attachmentUrl String?  // 总附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING")
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
+
   remark    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -736,7 +849,7 @@ model ManagementExpense {
   @@index([expenseDate])
 }
 
-/// 销售/储值费用表 - 业务模块 21
+/// 销售费用报销表 - 业务模块 21
 model SalesExpense {
   id        String  @id @default(cuid())
   projectId String
@@ -747,6 +860,19 @@ model SalesExpense {
   expenseDate   DateTime
   description   String?
 
+  // 新增字段
+  submitter     String?  // 报销人
+  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额
+  expenseItems  String?  // 费用明细 JSON，如 [{type:"烟酒费",amount:100,attachmentUrl:""}]
+  attachmentUrl String?  // 总附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING")
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
+
   remark    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -755,18 +881,29 @@ model SalesExpense {
   @@index([expenseDate])
 }
 
-/// 备用金表 - 业务模块 19
+/// 备用金申请表 - 业务模块 19
 model PettyCash {
   id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
-  holder       String // 领取人
+  holder       String // 申请人/领取人
   issuedAmount Decimal  @db.Decimal(18, 2)
   issueDate    DateTime
 
   returnedAmount Decimal   @default(0) @db.Decimal(18, 2)
   returnDate     DateTime?
+
+  // 新增字段
+  applyReason   String?  // 申请事由
+  attachmentUrl String?  // 附件
+
+  // 审批状态
+  approvalStatus String    @default("PENDING")
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectedReason String?
 
   status      PettyCashStatus @default(ISSUED)
   description String?

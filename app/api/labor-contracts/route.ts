@@ -156,6 +156,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         unpaidAmount: body.contractAmount,
         signDate: body.signDate ? new Date(body.signDate) : null,
         status: 'DRAFT',
+        laborType: body.laborType?.trim() || null,
+        attachmentUrl: body.attachmentUrl?.trim() || null,
         remark: body.remark?.trim() || null,
         regionId: regionId ?? undefined,
     }

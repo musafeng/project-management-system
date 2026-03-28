@@ -12,6 +12,9 @@
   "dependencies": {
     "@ant-design/icons": "^5",
     "@prisma/client": "5.22.0",
+    "@supabase/supabase-js": "^2.100.1",
+    "@types/ali-oss": "^6.23.3",
+    "ali-oss": "^6.23.0",
     "antd": "^5",
     "date-fns": "^3.6.0",
     "dayjs": "^1",

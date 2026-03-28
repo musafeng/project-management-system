@@ -217,7 +217,7 @@ function QuickActions({ onNav }: { onNav: (h: string) => void }) {
                 <div style={{ fontSize: 13, fontWeight: 500, color: '#1d1d1f' }}>{a.label}</div>
                 <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 1 }}>{a.desc}</div>
               </div>
-            </div>
+      </div>
           </Col>
         ))}
       </Row>
@@ -308,6 +308,6 @@ export default function WorkbenchPage() {
           <QuickActions onNav={nav} />
         </Col>
       </Row>
-    </div>
+        </div>
   )
 }
