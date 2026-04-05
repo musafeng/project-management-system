@@ -87,7 +87,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const record = await db.otherReceipt.create({
       data: {
         id: crypto.randomUUID(),
-        projectId,
+        projectId: projectId ?? undefined,
         receiptType,
         receiptAmount: Number(receiptAmount),
         receiptDate: parseDateOnlyForStorage(receiptDate as string),

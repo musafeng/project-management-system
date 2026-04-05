@@ -87,7 +87,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const record = await db.otherPayment.create({
       data: {
         id: crypto.randomUUID(),
-        projectId,
+        projectId: projectId ?? undefined,
         paymentType,
         paymentAmount: Number(paymentAmount),
         paymentDate: parseDateOnlyForStorage(paymentDate as string),

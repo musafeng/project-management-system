@@ -52,7 +52,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog({
     const updated = await db.otherReceipt.update({
       where: { id },
       data: {
-        projectId,
+        projectId: projectId ?? undefined,
         receiptType,
         receiptAmount: Number(receiptAmount),
         receiptDate: body.receiptDate !== undefined

@@ -86,7 +86,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const record = await db.salesExpense.create({
       data: {
         id: crypto.randomUUID(),
-        projectId,
+        projectId: projectId ?? undefined,
         category: body.category || 'OTHER',
         expenseAmount: totalAmount,
         expenseDate: parseDateOnlyForStorage(expenseDate as string),

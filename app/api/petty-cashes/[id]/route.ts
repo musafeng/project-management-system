@@ -52,7 +52,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog({
     const updated = await db.pettyCash.update({
       where: { id },
       data: {
-        projectId,
+        projectId: projectId ?? undefined,
         holder,
         applyReason: body.applyReason !== undefined ? (body.applyReason?.trim() || null) : existing.applyReason,
         issuedAmount: Number(issuedAmount),

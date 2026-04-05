@@ -86,7 +86,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const record = await db.pettyCash.create({
       data: {
         id: crypto.randomUUID(),
-        projectId,
+        projectId: projectId ?? undefined,
         holder,
         applyReason: body.applyReason?.trim() || null,
         issuedAmount: Number(issuedAmount),
