@@ -13,7 +13,6 @@ export const serverEnv = {
     accessKeyId: process.env.OSS_ACCESS_KEY_ID || '',
     accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || '',
     bucket: process.env.OSS_BUCKET || '',
-    // 自定义域名（可选，不填则使用默认 OSS 域名）
     customDomain: process.env.OSS_CUSTOM_DOMAIN || '',
   },
   // 钉钉配置

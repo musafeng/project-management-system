@@ -50,10 +50,9 @@ const MENU_ITEMS: MenuItem[] = [
     label: '收入管理',
     icon: <DollarOutlined />,
     children: [
-      { key: '/projects', label: '项目新增' },
-      { key: '/project-contracts', label: '项目合同' },
-      { key: '/contract-receipts', label: '项目合同收款' },
-      { key: '/other-receipts', label: '其他收款' },
+      { key: '/projects', label: '项目台账' },
+      { key: '/project-contracts', label: '销售合同' },
+      { key: '/contract-receipts', label: '收款记录' },
     ],
   },
   {
@@ -62,24 +61,13 @@ const MENU_ITEMS: MenuItem[] = [
     icon: <FileTextOutlined />,
     children: [
       { key: '/construction-approvals', label: '施工立项' },
+      { key: '/payment-apply', label: '付款申请' },
       { key: '/procurement-contracts', label: '采购合同' },
       { key: '/procurement-payments', label: '采购付款' },
       { key: '/labor-contracts', label: '劳务合同' },
       { key: '/labor-payments', label: '劳务付款' },
       { key: '/subcontract-contracts', label: '分包合同' },
       { key: '/subcontract-payments', label: '分包付款' },
-      { key: '/other-payments', label: '其他付款' },
-    ],
-  },
-  {
-    key: 'expense',
-    label: '费用报销',
-    icon: <FileTextOutlined />,
-    children: [
-      { key: '/project-expenses', label: '项目费用报销' },
-      { key: '/management-expenses', label: '管理费用报销' },
-      { key: '/sales-expenses', label: '销售费用报销' },
-      { key: '/petty-cashes', label: '备用金申请' },
     ],
   },
   {
@@ -91,11 +79,6 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/suppliers', label: '供应商档案' },
       { key: '/labor-workers', label: '劳务人员' },
     ],
-  },
-  {
-    key: '/financial-summary',
-    label: '财务汇总',
-    icon: <DollarOutlined />,
   },
   {
     key: 'system-mgmt',

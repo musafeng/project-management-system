@@ -17,6 +17,8 @@ import { getActionLogs, getActionLogsCount } from '@/lib/action-log'
 
 type ActionTypeValue = 'CREATE' | 'UPDATE' | 'DELETE'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     // 权限校验：仅系统管理员

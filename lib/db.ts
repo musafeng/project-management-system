@@ -49,6 +49,7 @@ export const db = {
   // 系统管理表
   systemUser: prisma.systemUser,
   actionLog: prisma.actionLog,
+  featureFlag: prisma.featureFlag,
 
   // 区域工作空间
   region: prisma.region,

@@ -2,8 +2,14 @@ import { db } from './db'
 
 export async function getProjectStats(projectId: string) {
   try {
+    const projectContracts = await db.projectContract.findMany({
+      where: { projectId },
+      select: { id: true }
+    })
+    const contractIds = projectContracts.map((contract) => contract.id)
+
     const incomeResult = await db.contractReceipt.aggregate({
-      where: { contract: { projectId } },
+      where: { contractId: { in: contractIds } },
       _sum: { receiptAmount: true }
     })
     const income = Number(incomeResult._sum.receiptAmount || 0)

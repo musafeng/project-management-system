@@ -10,11 +10,22 @@ import { apiHandler, success, BadRequestError } from '@/lib/api'
 import { getAuthCookie } from '@/lib/auth'
 import { getSystemUserRoleAndStatus, upsertSystemUserFromDingTalkUser, getSystemUserDeptInfo } from '@/lib/system-user'
 import { getUserDetail } from '@/lib/dingtalk'
+import { ensureLocalDevAuth, isLocalDevAuthEnabled } from '@/lib/local-dev-auth'
+
+export const dynamic = 'force-dynamic'
 
 export const GET = apiHandler(async (req) => {
   try {
     // 从 cookie 中获取登录用户信息
-    const user = await getAuthCookie()
+    let user = await getAuthCookie()
+
+    if (!user && isLocalDevAuthEnabled()) {
+      const localDevUser = await ensureLocalDevAuth()
+      if (localDevUser) {
+        return success(localDevUser)
+      }
+      user = await getAuthCookie()
+    }
 
     if (!user) {
       throw new BadRequestError('未登录')
@@ -61,4 +72,3 @@ export const GET = apiHandler(async (req) => {
     throw new BadRequestError('获取用户信息失败')
   }
 })
-

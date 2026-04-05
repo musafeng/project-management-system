@@ -11,6 +11,8 @@ import { apiHandler, success, ApiError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 
+export const dynamic = 'force-dynamic'
+
 type ProjectWithCustomer = Prisma.ProjectGetPayload<{ include: { customer: { select: { name: true } } } }>
 
 /**

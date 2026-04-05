@@ -7,6 +7,7 @@ import { cookies } from 'next/headers'
 import { SystemUserRole } from '@prisma/client'
 import { getSystemUserRoleAndStatus } from '@/lib/system-user'
 import { serverEnv } from '@/lib/env'
+import { ensureLocalDevAuth, isLocalDevAuthEnabled } from '@/lib/local-dev-auth'
 
 /**
  * 当前认证用户信息
@@ -30,6 +31,20 @@ export async function getCurrentUser(): Promise<AuthenticatedUser> {
   const authCookie = cookieStore.get('auth')
 
   if (!authCookie) {
+    if (isLocalDevAuthEnabled()) {
+      const localDevUser = await ensureLocalDevAuth()
+      if (localDevUser) {
+        return {
+          userid: localDevUser.userid,
+          name: localDevUser.name,
+          mobile: localDevUser.mobile,
+          unionid: localDevUser.unionid,
+          systemRole: localDevUser.systemRole,
+          isActive: localDevUser.isActive,
+        }
+      }
+    }
+
     throw new Error('未登录或登录已失效')
   }
 
@@ -128,4 +143,3 @@ export async function requireSystemManager(): Promise<AuthenticatedUser> {
   }
   return user
 }
-

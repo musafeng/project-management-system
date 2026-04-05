@@ -1,41 +1,40 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Form, Input, InputNumber, DatePicker, Select, Button, Table, Upload, Space } from 'antd'
-import { PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import { useEffect, useMemo, useState } from 'react'
+import { Form, Input, InputNumber, DatePicker, Select, Upload, Button, message } from 'antd'
 import type { FormInstance } from 'antd'
+import type { Rule } from 'antd/es/form'
+import type { UploadFile, UploadProps } from 'antd'
+import { UploadOutlined } from '@ant-design/icons'
+import { getLowRiskFieldRule, type LowRiskFormCode, validateScopedFieldValue } from '@/lib/low-risk-form-validation'
+
+interface SelectOption {
+  label: string
+  value: string
+}
 
 export interface FormFieldConfig {
   id: string
   fieldKey: string
   label: string
-  componentType: 'input' | 'number' | 'date' | 'select' | 'textarea' | 'table' | 'file' | 'cascadeSelect'
+  componentType: 'input' | 'number' | 'date' | 'select' | 'textarea' | 'file' | 'cascadeSelect'
   required: boolean
   optionsJson?: string | null
   sortOrder: number
-  dependsOn?: string | null
-  dependsValue?: string | null
-  computeFormula?: string | null
   linkedTable?: string | null
   linkedLabelField?: string | null
   linkedValueField?: string | null
-  linkedCopyFields?: string | null
-  placeholder?: string | null
-  isReadonly?: boolean
-  tableColumnsJson?: string | null
 }
 
 interface DynamicFormProps {
   fields: FormFieldConfig[]
   form: FormInstance
   disabled?: boolean
-  /** 级联选择器加载远端选项的函数 */
-  onLoadOptions?: (table: string) => Promise<{ label: string; value: string; raw?: any }[]>
-  /** 级联选择后自动带出字段的回调 */
-  onCascadeSelect?: (field: FormFieldConfig, selectedId: string, raw: any) => void
+  onLoadOptions?: (table: string, field?: FormFieldConfig) => Promise<SelectOption[]>
+  validationScope?: LowRiskFormCode
 }
 
-function parseOptions(optionsJson?: string | null): { label: string; value: string }[] {
+function parseOptions(optionsJson?: string | null): SelectOption[] {
   if (!optionsJson) return []
   try {
     const parsed = JSON.parse(optionsJson)
@@ -51,262 +50,180 @@ function parseOptions(optionsJson?: string | null): { label: string; value: stri
   }
 }
 
-function parseTableColumns(tableColumnsJson?: string | null) {
-  if (!tableColumnsJson) return []
-  try {
-    return JSON.parse(tableColumnsJson) as Array<{
-      key: string
-      label: string
-      componentType: string
-      options?: string[]
-    }>
-  } catch {
-    return []
-  }
-}
-
-/** 多行表格字段组件 */
-function TableField({ field, disabled }: { field: FormFieldConfig; disabled?: boolean }) {
-  const cols = parseTableColumns(field.tableColumnsJson)
-  const form = Form.useFormInstance()
-
-  return (
-    <Form.List name={['formData', field.fieldKey]}>
-      {(subFields, { add, remove }) => (
-        <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 8 }}>
-          {subFields.map((subField) => (
-            <Space key={subField.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-              {cols.map((col) => (
-                <Form.Item
-                  key={col.key}
-                  name={[subField.name, col.key]}
-                  label={col.label}
-                  style={{ marginBottom: 0, minWidth: 120 }}
-                >
-                  {col.componentType === 'select' ? (
-                    <Select
-                      placeholder={`选择${col.label}`}
-                      options={(col.options || []).map((o: string) => ({ label: o, value: o }))}
-                      style={{ minWidth: 120 }}
-                      disabled={disabled}
-                    />
-                  ) : col.componentType === 'number' ? (
-                    <InputNumber placeholder={col.label} precision={2} style={{ minWidth: 100 }} disabled={disabled} />
-                  ) : (
-                    <Input placeholder={col.label} disabled={disabled} />
-                  )}
-                </Form.Item>
-              ))}
-              {!disabled && (
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => remove(subField.name)}
-                />
-              )}
-            </Space>
-          ))}
-          {!disabled && (
-            <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} size="small">
-              添加明细
-            </Button>
-          )}
-        </div>
-      )}
-    </Form.List>
-  )
-}
-
-/** 级联选择组件（异步加载远端选项） */
-function CascadeSelectField({
-  field,
+function AttachmentUploader({
+  value,
+  onChange,
   disabled,
-  onLoadOptions,
-  onCascadeSelect,
 }: {
-  field: FormFieldConfig
+  value?: string | null
+  onChange?: (val: string | null) => void
   disabled?: boolean
-  onLoadOptions?: DynamicFormProps['onLoadOptions']
-  onCascadeSelect?: DynamicFormProps['onCascadeSelect']
 }) {
-  const [options, setOptions] = useState<{ label: string; value: string; raw?: any }[]>([])
-  const [loading, setLoading] = useState(false)
+  const buildUploadedFile = (url: string): UploadFile => ({
+    uid: url,
+    name: decodeURIComponent(url.split('/').pop() || '附件'),
+    status: 'done',
+    url,
+  })
+
+  const [fileList, setFileList] = useState<UploadFile[]>(value ? [buildUploadedFile(value)] : [])
 
   useEffect(() => {
-    if (!field.linkedTable || !onLoadOptions) return
-    setLoading(true)
-    onLoadOptions(field.linkedTable)
-      .then(setOptions)
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [field.linkedTable])
+    setFileList(value ? [buildUploadedFile(value)] : [])
+  }, [value])
 
-  const handleChange = (value: string) => {
-    if (!onCascadeSelect) return
-    const raw = options.find((o) => o.value === value)?.raw
-    if (raw) onCascadeSelect(field, value, raw)
-  }
+  const uploadProps: UploadProps = {
+    name: 'file',
+    action: '/api/upload',
+    fileList,
+    maxCount: 1,
+    disabled,
+    onChange(info) {
+      const nextFileList = info.fileList.slice(-1)
 
-  return (
-    <Select
-      showSearch
-      optionFilterProp="label"
-      placeholder={field.placeholder || `请选择${field.label}`}
-      options={options}
-      loading={loading}
-      disabled={disabled}
-      allowClear
-      onChange={handleChange}
-    />
-  )
-}
+      if (info.file.status === 'done') {
+        const resp = info.file.response
+        const url = resp?.data?.url || resp?.url
+        if (url) {
+          const uploadedFile = buildUploadedFile(url)
+          setFileList([uploadedFile])
+          onChange?.(url)
+          message.success('上传成功')
+          return
+        }
 
-/** 文件上传字段（对接阿里云 OSS） */
-function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boolean }) {
-  const form = Form.useFormInstance()
-  const [uploading, setUploading] = useState(false)
-  const [fileName, setFileName] = useState<string>('')
-
-  // 初始化时读取已有值显示文件名
-  const currentUrl: string = form.getFieldValue(['formData', field.fieldKey]) || ''
-  useEffect(() => {
-    if (currentUrl && !fileName) {
-      // 从 URL 中提取文件名
-      const parts = currentUrl.split('/')
-      const raw = parts[parts.length - 1] || ''
-      // 去掉时间戳前缀（格式：timestamp-原文件名）
-      const name = raw.replace(/^\d+-/, '')
-      setFileName(decodeURIComponent(name))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUrl])
-
-  const handleUpload = useCallback(async (file: File) => {
-    setUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) {
-        const { message } = await import('antd')
-        message.error(json.error || '上传失败')
-        return false
+        setFileList([])
+        onChange?.(null)
+        message.error('上传返回异常')
+        return
       }
-      form.setFieldValue(['formData', field.fieldKey], json.url)
-      setFileName(json.name)
-      const { message } = await import('antd')
-      message.success(`${json.name} 上传成功`)
-    } catch {
-      const { message } = await import('antd')
-      message.error('上传失败，请检查网络')
-    } finally {
-      setUploading(false)
-    }
-    return false // 阻止 antd Upload 默认行为
-  }, [field.fieldKey, form])
 
-  const handleClear = useCallback(() => {
-    form.setFieldValue(['formData', field.fieldKey], '')
-    setFileName('')
-  }, [field.fieldKey, form])
+      if (info.file.status === 'error') {
+        setFileList(nextFileList)
+        const errMsg = info.file.response?.error || '上传失败'
+        message.error(errMsg)
+        return
+      }
 
-  if (disabled) {
-    return currentUrl
-      ? <a href={currentUrl} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{fileName || currentUrl}</a>
-      : <span style={{ color: '#999' }}>暂无附件</span>
+      setFileList(nextFileList)
+    },
+    onRemove() {
+      setFileList([])
+      onChange?.(null)
+      return true
+    },
   }
 
   return (
-    <Space>
-      <Upload
-        beforeUpload={handleUpload}
-        showUploadList={false}
-        disabled={uploading}
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
-      >
-        <Button icon={<UploadOutlined />} loading={uploading}>
-          {uploading ? '上传中...' : '选择文件'}
-        </Button>
-      </Upload>
-      {fileName && (
-        <Space size={4}>
-          <a href={currentUrl} target="_blank" rel="noreferrer">{fileName}</a>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={handleClear} />
-        </Space>
-      )}
-      {!fileName && <span style={{ color: '#999', fontSize: 12 }}>支持 图片 / PDF / Word / Excel / ZIP，最大 100MB</span>}
-    </Space>
+    <Upload {...uploadProps}>
+      <Button icon={<UploadOutlined />} disabled={disabled}>上传附件</Button>
+    </Upload>
   )
 }
 
 function renderControl(
   field: FormFieldConfig,
-  disabled?: boolean,
-  onLoadOptions?: DynamicFormProps['onLoadOptions'],
-  onCascadeSelect?: DynamicFormProps['onCascadeSelect'],
+  disabled: boolean | undefined,
+  cascadeOptions: Record<string, SelectOption[]>
 ) {
-  const isDisabled = disabled || field.isReadonly
   switch (field.componentType) {
     case 'input':
-      return <Input placeholder={field.placeholder || `请输入${field.label}`} disabled={isDisabled} />
+      return <Input placeholder={`请输入${field.label}`} disabled={disabled} />
     case 'number':
       return (
         <InputNumber
-          placeholder={field.placeholder || `请输入${field.label}`}
+          placeholder={`请输入${field.label}`}
           style={{ width: '100%' }}
           precision={2}
-          disabled={isDisabled}
+          disabled={disabled}
         />
       )
     case 'date':
-      return <DatePicker style={{ width: '100%' }} disabled={isDisabled} />
+      return <DatePicker style={{ width: '100%' }} disabled={disabled} />
     case 'select':
       return (
         <Select
-          placeholder={field.placeholder || `请选择${field.label}`}
+          placeholder={`请选择${field.label}`}
           options={parseOptions(field.optionsJson)}
-          disabled={isDisabled}
+          disabled={disabled}
           allowClear
-        />
-      )
-    case 'textarea':
-      return (
-        <Input.TextArea
-          placeholder={field.placeholder || `请输入${field.label}`}
-          rows={3}
-          disabled={isDisabled}
         />
       )
     case 'cascadeSelect':
       return (
-        <CascadeSelectField
-          field={field}
-          disabled={isDisabled}
-          onLoadOptions={onLoadOptions}
-          onCascadeSelect={onCascadeSelect}
+        <Select
+          placeholder={`请选择${field.label}`}
+          options={cascadeOptions[field.fieldKey] || []}
+          disabled={disabled}
+          allowClear
         />
       )
     case 'file':
-      return <FileField field={field} disabled={isDisabled} />
-    case 'table':
-      return <TableField field={field} disabled={isDisabled} />
+      return <AttachmentUploader disabled={disabled} />
+    case 'textarea':
+      return (
+        <Input.TextArea
+          placeholder={`请输入${field.label}`}
+          rows={3}
+          disabled={disabled}
+        />
+      )
     default:
-      return <Input placeholder={`请输入${field.label}`} disabled={isDisabled} />
+      return <Input placeholder={`请输入${field.label}`} disabled={disabled} />
   }
 }
 
-export default function DynamicForm({
-  fields,
-  form: _form,
-  disabled,
-  onLoadOptions,
-  onCascadeSelect,
-}: DynamicFormProps) {
-  // 获取当前表单值，用于显隐联动（必须在所有 return 之前调用）
-  const formValues = Form.useWatch([], _form) || {}
-  const allValues = (formValues as any)?.formData || formValues
+function getFieldRules(field: FormFieldConfig, validationScope?: LowRiskFormCode): Rule[] {
+  const scopedRule = validationScope ? getLowRiskFieldRule(validationScope, field.fieldKey) : undefined
+
+  if (scopedRule?.required === false) {
+    return []
+  }
+
+  if (!scopedRule && !field.required) {
+    return []
+  }
+
+  return [{
+    validator: async (_rule, value) => {
+      const fallbackMessage = `${field.label}不能为空`
+      const error = validateScopedFieldValue(scopedRule ?? { required: true }, value, fallbackMessage)
+      if (error) {
+        throw new Error(error)
+      }
+    },
+  }]
+}
+
+export default function DynamicForm({ fields, form: _form, disabled, onLoadOptions, validationScope }: DynamicFormProps) {
+  const [cascadeOptions, setCascadeOptions] = useState<Record<string, SelectOption[]>>({})
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCascadeOptions() {
+      if (!onLoadOptions || !fields?.length) return
+      const cascadeFields = fields.filter((f) => f.componentType === 'cascadeSelect' && f.linkedTable)
+      if (cascadeFields.length === 0) return
+
+      const entries = await Promise.all(
+        cascadeFields.map(async (field) => {
+          const table = field.linkedTable as string
+          const opts = await onLoadOptions(table, field)
+          return [field.fieldKey, opts] as const
+        })
+      )
+
+      if (!cancelled) {
+        setCascadeOptions(Object.fromEntries(entries))
+      }
+    }
+
+    loadCascadeOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [fields, onLoadOptions])
 
   if (!fields || fields.length === 0) {
     return <div style={{ color: '#999', padding: '8px 0' }}>暂无配置字段</div>
@@ -316,38 +233,16 @@ export default function DynamicForm({
 
   return (
     <>
-      {sorted.map((field) => {
-        // 显隐联动
-        if (field.dependsOn && field.dependsValue) {
-          const watchVal = allValues[field.dependsOn]
-          if (watchVal !== field.dependsValue) return null
-        }
-
-        // table 字段用 Form.List，不用 Form.Item 包裹 name
-        if (field.componentType === 'table') {
-          return (
-            <Form.Item key={field.id} label={field.label}>
-              <TableField field={field} disabled={disabled} />
-            </Form.Item>
-          )
-        }
-
-        return (
-          <Form.Item
-            key={field.id}
-            label={field.label}
-            name={['formData', field.fieldKey]}
-            rules={
-              field.required && !field.isReadonly
-                ? [{ required: true, message: `${field.label}不能为空` }]
-                : []
-            }
-            tooltip={field.isReadonly ? '此字段自动计算，无需填写' : undefined}
-          >
-            {renderControl(field, disabled, onLoadOptions, onCascadeSelect)}
-          </Form.Item>
-        )
-      })}
+      {sorted.map((field) => (
+        <Form.Item
+          key={field.id}
+          label={field.label}
+          name={['formData', field.fieldKey]}
+          rules={getFieldRules(field, validationScope)}
+        >
+          {renderControl(field, disabled, cascadeOptions)}
+        </Form.Item>
+      ))}
     </>
   )
 }

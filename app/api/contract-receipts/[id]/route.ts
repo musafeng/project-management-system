@@ -1,5 +1,6 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { BaseSettlementService } from '@/lib/settlement/base-settlement.service'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -60,7 +61,12 @@ const handler = apiHandlerWithMethod({
   /**
    * DELETE /api/contract-receipts/{id}
    * 删除收款记录
-   * 删除规则：回退合同汇总字段
+   * 
+   * 流程：
+   * 1. 验证收款记录存在
+   * 2. 在事务中删除记录
+   * 3. 重新汇总合同下全部收款，更新合同金额字段
+   * 4. 记录审计日志
    */
   DELETE: async (req) => {
     const id = req.url.split('/').pop()
@@ -69,54 +75,59 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少收款记录 ID')
     }
 
-    // 获取收款记录
-    const receipt = await db.contractReceipt.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        contractId: true,
-        receiptAmount: true,
-      },
-    })
+    try {
+      // 在事务中执行删除和金额刷新
+      const result = await BaseSettlementService.executeInTransaction(async (context) => {
+        // 1. 查询并确认收款记录存在
+        const receipt = await db.contractReceipt.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            contractId: true,
+            receiptAmount: true,
+          },
+        })
 
-    if (!receipt) {
-      throw new NotFoundError('收款记录不存在')
+        if (!receipt) {
+          throw new NotFoundError('收款记录不存在')
+        }
+
+        // 2. 验证合同存在
+        const contract = await db.projectContract.findUnique({
+          where: { id: receipt.contractId },
+          select: { id: true },
+        })
+
+        if (!contract) {
+          throw new NotFoundError('关联的合同不存在')
+        }
+
+        // 3. 删除收款记录
+        await db.contractReceipt.delete({
+          where: { id },
+        })
+
+        // 4. 调用统一金额刷新入口
+        // 这会重新汇总该合同下全部收款记录，然后更新合同的 receivedAmount 和 unreceivedAmount
+        await BaseSettlementService.refreshAmounts('ContractReceipt', receipt.contractId, context)
+
+        // 5. 调用审计日志预留方法
+        await BaseSettlementService.logAudit('DELETE', 'ContractReceipt', id, {
+          contractId: receipt.contractId,
+          receiptAmount: receipt.receiptAmount,
+        })
+
+        return { message: '收款记录已删除' }
+      })
+
+      return success(result)
+    } catch (error) {
+      // 统一错误处理
+      const settlementError = BaseSettlementService.handleSettlementError(error)
+      throw new (settlementError.statusCode === 404 ? NotFoundError : BadRequestError)(
+        settlementError.message
+      )
     }
-
-    // 获取合同信息
-    const contract = await db.projectContract.findUnique({
-      where: { id: receipt.contractId },
-      select: {
-        id: true,
-        receivableAmount: true,
-        receivedAmount: true,
-      },
-    })
-
-    if (!contract) {
-      throw new NotFoundError('关联的合同不存在')
-    }
-
-    // 删除收款记录
-    await db.contractReceipt.delete({
-      where: { id },
-    })
-
-    // 回退合同汇总字段
-    const newReceivedAmount =
-      Number(contract.receivedAmount) - Number(receipt.receiptAmount)
-    const newUnreceivedAmount =
-      Number(contract.receivableAmount) - newReceivedAmount
-
-    await db.projectContract.update({
-      where: { id: receipt.contractId },
-      data: {
-        receivedAmount: newReceivedAmount,
-        unreceivedAmount: newUnreceivedAmount,
-      },
-    })
-
-    return success({ message: '收款记录已删除' })
   },
 })
 

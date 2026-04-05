@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getProjectStats } from '../../../lib/stats'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -17,5 +19,4 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: '统计查询失败', message: error.message }, { status: 500 })
   }
 }
-
 

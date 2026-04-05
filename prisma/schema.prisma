@@ -367,8 +367,8 @@ model ContractReceipt {
 /// 其他收款记录 - 业务模块 13
 model OtherReceipt {
   id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   receiptType   String // 收款类型/收款事由
   receiptAmount Decimal  @db.Decimal(18, 2)
@@ -423,20 +423,24 @@ model FormField {
   componentType String // input/number/date/select/textarea/table/file/cascadeSelect
   required      Boolean @default(false)
 
-  optionsJson       String? // select 选项，JSON 格式
-  sortOrder         Int
+  optionsJson      String? // select 选项，JSON 格式
+  tableColumnsJson String? // table 字段列定义，JSON 格式
+  sortOrder        Int
 
-  // 扩展字段：联动与计算
-  dependsOn         String? // 依赖字段 key（用于显隐联动）
-  dependsValue      String? // 当依赖字段等于该值时显示
-  computeFormula    String? // 计算公式，如 "retentionRate * contractAmount / 100"
-  linkedTable       String? // 关联表名（如 suppliers、labor-workers）
-  linkedLabelField  String? // 关联表显示字段（如 name）
-  linkedValueField  String? // 关联表值字段（如 id）
-  linkedCopyFields  String? // 选择后自动带出的字段映射 JSON，如 [{"from":"bankAccount","to":"bankCard"}]
-  placeholder       String? // 字段提示文字
-  isReadonly        Boolean @default(false) // 是否只读
-  tableColumnsJson  String? // 当 componentType=table 时，子列配置 JSON
+  // 联动与计算
+  dependsOn      String? // 显隐联动：依赖字段 key
+  dependsValue   String? // 显隐联动：依赖字段值
+  computeFormula String? // 计算公式（预留）
+
+  // cascadeSelect 远端加载配置
+  linkedTable      String? // 关联表名，如 projects
+  linkedLabelField String? // 显示字段，如 name
+  linkedValueField String? // 值字段，如 id
+  linkedCopyFields String? // 带出字段，JSON 格式（预留）
+
+  // 显示配置
+  placeholder String?
+  isReadonly  Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -789,8 +793,8 @@ model ProjectExpense {
 /// 其他付款记录 - 业务模块 18
 model OtherPayment {
   id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   paymentType   String // 付款类型/付款事由
   paymentAmount Decimal  @db.Decimal(18, 2)
@@ -819,9 +823,9 @@ model OtherPayment {
 
 /// 管理费用报销表 - 业务模块 20
 model ManagementExpense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   category      String // 管理费用类别
   expenseAmount Decimal  @db.Decimal(18, 2)
@@ -851,9 +855,9 @@ model ManagementExpense {
 
 /// 销售费用报销表 - 业务模块 21
 model SalesExpense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   category      String // 销售费用类别
   expenseAmount Decimal  @db.Decimal(18, 2)
@@ -883,9 +887,9 @@ model SalesExpense {
 
 /// 备用金申请表 - 业务模块 19
 model PettyCash {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   holder       String // 申请人/领取人
   issuedAmount Decimal  @db.Decimal(18, 2)
@@ -1098,6 +1102,42 @@ model Region {
   subcontractPayments   SubcontractPayment[]
 
   @@index([isActive])
+}
+
+// ============================================================================
+// Feature Flag 配置表
+// ============================================================================
+
+/// Feature Flag 表 - 用于功能开关和灰度发布
+/// 
+/// 设计说明：
+/// - 全局 Flag：regionId = null（大多数情况）
+/// - 区域级 Flag：regionId = 具体区域 ID（可选）
+/// 
+/// 唯一约束策略（PostgreSQL 部分唯一索引）：
+/// - 全局 Flag 唯一索引：(flagName, environment) WHERE regionId IS NULL
+/// - 区域 Flag 唯一索引：(flagName, environment, regionId) WHERE regionId IS NOT NULL
+/// 
+/// 注意：Prisma 原生不支持部分唯一索引，所以在 migration SQL 中手工创建
+model FeatureFlag {
+  id              String   @id @default(cuid())
+  flagName        String
+  displayName     String
+  description     String?
+  isEnabled       Boolean  @default(false)
+  enabledAt       DateTime?
+  gradualType     String? // 'form' | 'role' | 'whitelist' | 'ability'
+  gradualValue    String? // JSON 格式的灰度配置
+  environment     String // 'test' | 'staging' | 'production'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  updatedBy       String?
+  regionId        String? // null 表示全局 Flag，非 null 表示区域级 Flag
+
+  @@index([environment])
+  @@index([flagName])
+  @@map("feature_flag")
 }
 
 // ============================================================================

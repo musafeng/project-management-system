@@ -104,18 +104,18 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
     roles: FINANCE_ROLES,
   },
 
-  // 其他收款 - FINANCE 专属写权限
+  // 其他收款 - 当前 5 个低风险试点范围内，临时放开为全员可写
   {
     pattern: /^\/api\/other-receipts(\/\[id\])?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
-  // 其他付款 - FINANCE 专属写权限
+  // 其他付款 - 当前 5 个低风险试点范围内，临时放开为全员可写
   {
     pattern: /^\/api\/other-payments(\/\[id\])?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // ============================================================================

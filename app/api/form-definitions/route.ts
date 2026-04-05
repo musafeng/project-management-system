@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
           fields: { orderBy: { sortOrder: 'asc' } },
         },
       })
-      if (!form) return NextResponse.json({ success: true, data: null })
-      return NextResponse.json({ success: true, data: form })
+      if (!form) return NextResponse.json({ success: true, data: [] })
+      return NextResponse.json({ success: true, data: [form] })
     }
 
     // 无 code 参数 = 管理后台拉取列表，需要系统管理权限

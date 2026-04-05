@@ -7,6 +7,8 @@ import { checkAuth } from '@/lib/api'
 import { db } from '@/lib/db'
 import { findSystemUserByDingUserId } from '@/lib/system-user'
 
+export const dynamic = 'force-dynamic'
+
 export const GET = apiHandler(async (req) => {
   const { searchParams } = new URL(req.url)
   const resource = searchParams.get('resource')
