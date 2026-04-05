@@ -59,7 +59,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog({
     const updated = await db.managementExpense.update({
       where: { id },
       data: {
-        projectId,
+        projectId: projectId ?? undefined,
         submitter,
         expenseDate: body.expenseDate !== undefined
           ? parseDateOnlyForStorage(expenseDateInput as string)
