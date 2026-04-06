@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Form, Input, InputNumber, DatePicker, Select, Upload, Button, message } from 'antd'
+import { Form, Input, InputNumber, DatePicker, Select } from 'antd'
 import type { FormInstance } from 'antd'
 import type { Rule } from 'antd/es/form'
-import type { UploadFile, UploadProps } from 'antd'
-import { UploadOutlined } from '@ant-design/icons'
 import { getLowRiskFieldRule, type LowRiskFormCode, validateScopedFieldValue } from '@/lib/low-risk-form-validation'
+import AttachmentField from '@/components/AttachmentField'
 
 interface SelectOption {
   label: string
@@ -50,77 +49,6 @@ function parseOptions(optionsJson?: string | null): SelectOption[] {
   }
 }
 
-function AttachmentUploader({
-  value,
-  onChange,
-  disabled,
-}: {
-  value?: string | null
-  onChange?: (val: string | null) => void
-  disabled?: boolean
-}) {
-  const buildUploadedFile = (url: string): UploadFile => ({
-    uid: url,
-    name: decodeURIComponent(url.split('/').pop() || '附件'),
-    status: 'done',
-    url,
-  })
-
-  const [fileList, setFileList] = useState<UploadFile[]>(value ? [buildUploadedFile(value)] : [])
-
-  useEffect(() => {
-    setFileList(value ? [buildUploadedFile(value)] : [])
-  }, [value])
-
-  const uploadProps: UploadProps = {
-    name: 'file',
-    action: '/api/upload',
-    fileList,
-    maxCount: 1,
-    disabled,
-    onChange(info) {
-      const nextFileList = info.fileList.slice(-1)
-
-      if (info.file.status === 'done') {
-        const resp = info.file.response
-        const url = resp?.data?.url || resp?.url
-        if (url) {
-          const uploadedFile = buildUploadedFile(url)
-          setFileList([uploadedFile])
-          onChange?.(url)
-          message.success('上传成功')
-          return
-        }
-
-        setFileList([])
-        onChange?.(null)
-        message.error('上传返回异常')
-        return
-      }
-
-      if (info.file.status === 'error') {
-        setFileList(nextFileList)
-        const errMsg = info.file.response?.error || '上传失败'
-        message.error(errMsg)
-        return
-      }
-
-      setFileList(nextFileList)
-    },
-    onRemove() {
-      setFileList([])
-      onChange?.(null)
-      return true
-    },
-  }
-
-  return (
-    <Upload {...uploadProps}>
-      <Button icon={<UploadOutlined />} disabled={disabled}>上传附件</Button>
-    </Upload>
-  )
-}
-
 function renderControl(
   field: FormFieldConfig,
   disabled: boolean | undefined,
@@ -159,7 +87,7 @@ function renderControl(
         />
       )
     case 'file':
-      return <AttachmentUploader disabled={disabled} />
+      return <AttachmentField disabled={disabled} />
     case 'textarea':
       return (
         <Input.TextArea

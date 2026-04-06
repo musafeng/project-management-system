@@ -203,9 +203,17 @@ async function main() {
   }
 
   console.log(`找到系统用户：${systemUsers.map(u => u.name).join('、')}\n`)
+  const requiredNames = Array.from(new Set(PROCESS_DEFINITIONS.flatMap((def) => {
+    const approvers = def.nodes.map((node: any) => node.approverName)
+    return def.ccName ? approvers.concat(def.ccName) : approvers
+  })))
+  const missingUsers = requiredNames.filter((name) => !userMap.has(name))
 
-  // 找抄送人卢海霞的 ID
-  const luHaixiaId = userMap.get('卢海霞')
+  if (missingUsers.length > 0) {
+    throw new Error(
+      `审批流程初始化失败，缺少关键审批人/抄送人：${missingUsers.join('、')}。请先在 SystemUser 中准备这些用户后再执行。`
+    )
+  }
 
   for (const def of PROCESS_DEFINITIONS) {
     // 检查是否已存在
@@ -236,9 +244,9 @@ async function main() {
       return {
         order: node.order,
         name: node.name,
-        approverType: approverId ? ('USER' as const) : ('ROLE' as const),
+        approverType: 'USER' as const,
         approverUserId: approverId ?? null,
-        approverRole: approverId ? null : 'ADMIN',
+        approverRole: null,
         ccMode: ccUserId ? ('USER' as const) : ('NONE' as const),
         ccUserId: ccUserId,
       }
@@ -265,8 +273,7 @@ async function main() {
   }
 
   console.log('\n🎉 审批流程初始化完成！')
-  console.log('\n⚠️  注意：审批人按姓名匹配，如果系统用户中没有对应姓名，该节点将降级为 ADMIN 角色审批。')
-  console.log('请确保以下人员已在系统用户中注册：马建波、牟晓山、马玉杰、马亚笑、卢海霞')
+  console.log('\n✅ 关键审批人校验通过：马建波、牟晓山、马玉杰、马亚笑、卢海霞')
 }
 
 main().catch(console.error).finally(() => db.$disconnect())

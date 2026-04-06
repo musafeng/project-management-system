@@ -16,7 +16,7 @@ const { PrismaClient } = require('@prisma/client')
 
 const prisma = new PrismaClient()
 
-async function main() {
+async function runSeed(client = prisma) {
   console.log('🌱 开始初始化数据...')
 
   try {
@@ -100,7 +100,7 @@ async function main() {
 
     for (const flag of flags) {
       try {
-        await prisma.featureFlag.upsert({
+        await client.featureFlag.upsert({
           where: {
             flagName_environment_regionId: {
               flagName: flag.flagName,
@@ -143,7 +143,7 @@ async function main() {
     // ============================================================
 
     // 1. ManagementExpense 表单配置
-    const mgmtForm = await prisma.formDefinition.upsert({
+    const mgmtForm = await client.formDefinition.upsert({
       where: { code: 'management-expenses' },
       update: {},
       create: {
@@ -153,9 +153,9 @@ async function main() {
       },
     })
 
-    await prisma.formField.deleteMany({ where: { formId: mgmtForm.id } })
+    await client.formField.deleteMany({ where: { formId: mgmtForm.id } })
 
-    await prisma.formField.createMany({
+    await client.formField.createMany({
       data: [
         {
           formId: mgmtForm.id,
@@ -206,7 +206,7 @@ async function main() {
     console.log('✅ ManagementExpense 配置完成')
 
     // 2. SalesExpense 表单配置
-    const salesForm = await prisma.formDefinition.upsert({
+    const salesForm = await client.formDefinition.upsert({
       where: { code: 'sales-expenses' },
       update: {},
       create: {
@@ -216,9 +216,9 @@ async function main() {
       },
     })
 
-    await prisma.formField.deleteMany({ where: { formId: salesForm.id } })
+    await client.formField.deleteMany({ where: { formId: salesForm.id } })
 
-    await prisma.formField.createMany({
+    await client.formField.createMany({
       data: [
         {
           formId: salesForm.id,
@@ -269,7 +269,7 @@ async function main() {
     console.log('✅ SalesExpense 配置完成')
 
     // 3. PettyCash 表单配置
-    const pettyCashForm = await prisma.formDefinition.upsert({
+    const pettyCashForm = await client.formDefinition.upsert({
       where: { code: 'petty-cashes' },
       update: {},
       create: {
@@ -279,9 +279,9 @@ async function main() {
       },
     })
 
-    await prisma.formField.deleteMany({ where: { formId: pettyCashForm.id } })
+    await client.formField.deleteMany({ where: { formId: pettyCashForm.id } })
 
-    await prisma.formField.createMany({
+    await client.formField.createMany({
       data: [
         {
           formId: pettyCashForm.id,
@@ -348,7 +348,7 @@ async function main() {
     console.log('✅ PettyCash 配置完成')
 
     // 4. OtherReceipt 表单配置
-    const otherReceiptForm = await prisma.formDefinition.upsert({
+    const otherReceiptForm = await client.formDefinition.upsert({
       where: { code: 'other-receipts' },
       update: {},
       create: {
@@ -358,9 +358,9 @@ async function main() {
       },
     })
 
-    await prisma.formField.deleteMany({ where: { formId: otherReceiptForm.id } })
+    await client.formField.deleteMany({ where: { formId: otherReceiptForm.id } })
 
-    await prisma.formField.createMany({
+    await client.formField.createMany({
       data: [
         {
           formId: otherReceiptForm.id,
@@ -419,7 +419,7 @@ async function main() {
     console.log('✅ OtherReceipt 配置完成')
 
     // 5. OtherPayment 表单配置
-    const otherPaymentForm = await prisma.formDefinition.upsert({
+    const otherPaymentForm = await client.formDefinition.upsert({
       where: { code: 'other-payments' },
       update: {},
       create: {
@@ -429,9 +429,9 @@ async function main() {
       },
     })
 
-    await prisma.formField.deleteMany({ where: { formId: otherPaymentForm.id } })
+    await client.formField.deleteMany({ where: { formId: otherPaymentForm.id } })
 
-    await prisma.formField.createMany({
+    await client.formField.createMany({
       data: [
         {
           formId: otherPaymentForm.id,
@@ -496,12 +496,21 @@ async function main() {
   }
 }
 
-main()
-  .catch((e) => {
-    console.error('初始化失败:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+async function main() {
+  await runSeed(prisma)
+}
 
+module.exports = {
+  runSeed,
+}
+
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error('初始化失败:', e)
+      process.exit(1)
+    })
+    .finally(async () => {
+      await prisma.$disconnect()
+    })
+}

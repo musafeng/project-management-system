@@ -2,17 +2,23 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { getCurrentRegionId } from '@/lib/region'
+import { parsePaginationParams } from '@/lib/list-pagination'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/labor-contracts
    * 获取劳务合同列表
-   * 支持参数：projectId（可选）、constructionId（可选）
+   * 支持参数：projectId、constructionId、keyword、approvalStatus、startDate、endDate
    */
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
     const constructionId = searchParams.get('constructionId')
+    const keyword = searchParams.get('keyword')
+    const approvalStatus = searchParams.get('approvalStatus')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const pagination = parsePaginationParams(searchParams)
 
     const regionId = await getCurrentRegionId()
     const where: any = {}
@@ -27,49 +33,113 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       where.constructionId = constructionId
     }
 
-    const contracts = await db.laborContract.findMany({
-      where,
-      select: {
-        id: true,
-        code: true,
-        projectId: true,
-        constructionId: true,
-        project: {
-          select: { name: true },
+    if (approvalStatus && approvalStatus !== 'ALL') {
+      where.approvalStatus = approvalStatus
+    }
+
+    if (keyword) {
+      where.OR = [
+        { code: { contains: keyword } },
+        { name: { contains: keyword } },
+        { project: { name: { contains: keyword } } },
+        { construction: { name: { contains: keyword } } },
+        { worker: { name: { contains: keyword } } },
+      ]
+    }
+
+    if (startDate || endDate) {
+      where.signDate = {}
+      if (startDate) where.signDate.gte = new Date(`${startDate}T00:00:00.000Z`)
+      if (endDate) where.signDate.lte = new Date(`${endDate}T23:59:59.999Z`)
+    }
+
+    const [total, summary, contracts] = await Promise.all([
+      pagination.paginated ? db.laborContract.count({ where }) : Promise.resolve(0),
+      pagination.paginated
+        ? db.laborContract.aggregate({
+            where,
+            _sum: {
+              contractAmount: true,
+              changedAmount: true,
+              payableAmount: true,
+              paidAmount: true,
+              unpaidAmount: true,
+            },
+          })
+        : Promise.resolve(null),
+      db.laborContract.findMany({
+        where,
+        select: {
+          id: true,
+          code: true,
+          projectId: true,
+          constructionId: true,
+          project: {
+            select: { name: true },
+          },
+          construction: {
+            select: { name: true },
+          },
+          worker: {
+            select: { name: true },
+          },
+          name: true,
+          contractAmount: true,
+          changedAmount: true,
+          payableAmount: true,
+          paidAmount: true,
+          unpaidAmount: true,
+          signDate: true,
+          status: true,
+          approvalStatus: true,
+          attachmentUrl: true,
+          createdAt: true,
         },
-        construction: {
-          select: { name: true },
-        },
-        worker: {
-          select: { name: true },
-        },
-        contractAmount: true,
-        payableAmount: true,
-        paidAmount: true,
-        unpaidAmount: true,
-        signDate: true,
-        approvalStatus: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+        orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        ...(pagination.paginated ? { skip: pagination.skip, take: pagination.take } : {}),
+      }),
+    ])
 
     // 转换返回格式
     type ContractItem = (typeof contracts)[number]
     const result = contracts.map((contract: ContractItem) => ({
       id: contract.id,
       code: contract.code,
+      name: contract.name,
       projectName: contract.project.name,
       constructionName: contract.construction.name,
       laborWorkerName: contract.worker.name,
       contractAmount: contract.contractAmount,
+      changedAmount: contract.changedAmount,
       payableAmount: contract.payableAmount,
       paidAmount: contract.paidAmount,
       unpaidAmount: contract.unpaidAmount,
       signDate: contract.signDate,
+      status: contract.status,
       approvalStatus: contract.approvalStatus,
+      attachmentUrl: contract.attachmentUrl,
       createdAt: contract.createdAt,
     }))
+
+    if (pagination.paginated) {
+      const payableAmountTotal = Number(summary?._sum.payableAmount || 0)
+      const paidAmountTotal = Number(summary?._sum.paidAmount || 0)
+      return success({
+        items: result,
+        total,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        summary: {
+          contractAmountTotal: Number(summary?._sum.contractAmount || 0),
+          changedAmountTotal: Number(summary?._sum.changedAmount || 0),
+          payableAmountTotal,
+          paidAmountTotal,
+          unpaidAmountTotal: Number(summary?._sum.unpaidAmount || 0),
+          paymentProgress: payableAmountTotal > 0 ? (paidAmountTotal / payableAmountTotal) * 100 : 0,
+          resultCount: total,
+        },
+      })
+    }
 
     return success(result)
   },
@@ -101,6 +171,27 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     if (body.contractAmount <= 0) {
       throw new BadRequestError('合同金额必须大于 0')
+    }
+
+    if (!body.signDate || typeof body.signDate !== 'string') {
+      throw new BadRequestError('签订日期为必填项')
+    }
+
+    const signDate = new Date(body.signDate)
+    if (Number.isNaN(signDate.getTime())) {
+      throw new BadRequestError('签订日期格式不正确')
+    }
+
+    const startDate = body.startDate ? new Date(body.startDate) : null
+    const endDate = body.endDate ? new Date(body.endDate) : null
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      throw new BadRequestError('开始日期格式不正确')
+    }
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      throw new BadRequestError('结束日期格式不正确')
+    }
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequestError('结束日期不能早于开始日期')
     }
 
     // 验证项目是否存在
@@ -154,8 +245,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         payableAmount: body.contractAmount,
         paidAmount: 0,
         unpaidAmount: body.contractAmount,
-        signDate: body.signDate ? new Date(body.signDate) : null,
-        status: 'DRAFT',
+        signDate,
+        startDate,
+        endDate,
+        status: body.status || 'DRAFT',
         laborType: body.laborType?.trim() || null,
         attachmentUrl: body.attachmentUrl?.trim() || null,
         remark: body.remark?.trim() || null,
@@ -208,4 +301,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'labor-contracts',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

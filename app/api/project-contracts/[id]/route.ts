@@ -1,5 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { getCurrentRegionId } from '@/lib/region'
+import { getAfterRecordWhere, getBeforeRecordWhere, getDescNavigationOrder } from '@/lib/record-navigation'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -7,10 +9,36 @@ const handler = apiHandlerWithMethod({
    * 获取合同详情
    */
   GET: async (req) => {
-    const id = req.url.split('/').pop()
+    const { pathname, searchParams } = new URL(req.url)
+    const id = pathname.split('/').pop()
 
     if (!id) {
       throw new BadRequestError('缺少合同 ID')
+    }
+
+    const projectId = searchParams.get('projectId')
+    const keyword = searchParams.get('keyword')
+    const status = searchParams.get('status')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    const regionId = await getCurrentRegionId()
+    const navigationWhere: any = {}
+    if (regionId) navigationWhere.regionId = regionId
+    if (projectId) navigationWhere.projectId = projectId
+    if (status && status !== 'ALL') navigationWhere.status = status
+    if (keyword) {
+      navigationWhere.OR = [
+        { name: { contains: keyword } },
+        { code: { contains: keyword } },
+        { project: { name: { contains: keyword } } },
+        { customer: { name: { contains: keyword } } },
+      ]
+    }
+    if (startDate || endDate) {
+      navigationWhere.signDate = {}
+      if (startDate) navigationWhere.signDate.gte = new Date(`${startDate}T00:00:00.000Z`)
+      if (endDate) navigationWhere.signDate.lte = new Date(`${endDate}T23:59:59.999Z`)
     }
 
     const contract = await db.projectContract.findUnique({
@@ -33,6 +61,12 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        contractType: true,
+        paymentMethod: true,
+        hasRetention: true,
+        retentionRate: true,
+        retentionAmount: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
@@ -42,6 +76,65 @@ const handler = apiHandlerWithMethod({
     if (!contract) {
       throw new NotFoundError('合同不存在')
     }
+
+    const currentInScopeWhere = { AND: [navigationWhere, { id: contract.id }] }
+    const beforeWhere = getBeforeRecordWhere(navigationWhere, 'signDate', contract.signDate || contract.createdAt, contract.createdAt, contract.id)
+    const afterWhere = getAfterRecordWhere(navigationWhere, 'signDate', contract.signDate || contract.createdAt, contract.createdAt, contract.id)
+
+    const [recentReceipts, changeRecords, currentScopedCount, total, beforeCount, prevRecord, nextRecord] = await Promise.all([
+      db.contractReceipt.findMany({
+        where: { contractId: contract.id },
+        orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
+        take: 5,
+        select: {
+          id: true,
+          receiptDate: true,
+          receiptAmount: true,
+          receiptMethod: true,
+          receiptNumber: true,
+          status: true,
+          approvalStatus: true,
+        },
+      }),
+      db.projectContractChange.findMany({
+        where: { contractId: contract.id },
+        orderBy: [{ changeDate: 'desc' }, { createdAt: 'desc' }],
+        take: 10,
+        select: {
+          id: true,
+          changeType: true,
+          changeAmount: true,
+          changeReason: true,
+          changeDate: true,
+          originalAmount: true,
+          totalAmount: true,
+          approvalStatus: true,
+          createdAt: true,
+        },
+      }),
+      db.projectContract.count({ where: currentInScopeWhere }),
+      db.projectContract.count({ where: navigationWhere }),
+      db.projectContract.count({ where: beforeWhere }),
+      db.projectContract.findFirst({
+        where: beforeWhere,
+        orderBy: getDescNavigationOrder('signDate'),
+        select: { id: true },
+      }),
+      db.projectContract.findFirst({
+        where: afterWhere,
+        orderBy: getDescNavigationOrder('signDate'),
+        select: { id: true },
+      }),
+    ])
+
+    const navigation = currentScopedCount > 0
+      ? {
+          prevId: prevRecord?.id || null,
+          nextId: nextRecord?.id || null,
+          position: beforeCount + 1,
+          total,
+        }
+      : null
 
     return success({
       id: contract.id,
@@ -59,9 +152,35 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      contractType: contract.contractType,
+      paymentMethod: contract.paymentMethod,
+      hasRetention: contract.hasRetention,
+      retentionRate: contract.retentionRate,
+      retentionAmount: contract.retentionAmount,
+      attachmentUrl: contract.attachmentUrl,
       remark: contract.remark,
       createdAt: contract.createdAt,
       updatedAt: contract.updatedAt,
+      recentFlows: recentReceipts.map((item) => ({
+        id: item.id,
+        date: item.receiptDate,
+        amount: item.receiptAmount,
+        method: item.receiptMethod,
+        number: item.receiptNumber,
+        status: item.status,
+        approvalStatus: item.approvalStatus,
+      })),
+      changeRecords: changeRecords.map((item) => ({
+        id: item.id,
+        changedAt: item.changeDate || item.createdAt,
+        beforeAmount: item.originalAmount,
+        changeAmount: item.changeAmount,
+        afterAmount: item.totalAmount,
+        changeType: item.changeType,
+        reason: item.changeReason,
+        approvalStatus: item.approvalStatus,
+      })),
+      navigation,
     })
   },
 
@@ -97,20 +216,90 @@ const handler = apiHandlerWithMethod({
       updateData.name = body.name.trim()
     }
 
+    if (body.projectId !== undefined) {
+      if (typeof body.projectId !== 'string' || body.projectId.trim() === '') {
+        throw new BadRequestError('项目不能为空')
+      }
+      const project = await db.project.findUnique({
+        where: { id: body.projectId },
+        select: { id: true, customerId: true },
+      })
+      if (!project) {
+        throw new NotFoundError('项目不存在')
+      }
+      updateData.projectId = project.id
+      updateData.customerId = project.customerId
+    }
+
+    if (body.contractAmount !== undefined) {
+      if (typeof body.contractAmount !== 'number' || body.contractAmount <= 0) {
+        throw new BadRequestError('合同金额必须大于 0')
+      }
+      const receivableAmount = Number(body.contractAmount) + Number(existingContract.changedAmount)
+      updateData.contractAmount = body.contractAmount
+      updateData.receivableAmount = receivableAmount
+      updateData.unreceivedAmount = receivableAmount - Number(existingContract.receivedAmount)
+    }
+
     if (body.signDate !== undefined) {
-      updateData.signDate = body.signDate ? new Date(body.signDate) : null
+      if (!body.signDate || typeof body.signDate !== 'string') {
+        throw new BadRequestError('签订日期不能为空')
+      }
+      const signDate = new Date(body.signDate)
+      if (Number.isNaN(signDate.getTime())) {
+        throw new BadRequestError('签订日期格式不正确')
+      }
+      updateData.signDate = signDate
     }
 
     if (body.startDate !== undefined) {
-      updateData.startDate = body.startDate ? new Date(body.startDate) : null
+      const startDate = body.startDate ? new Date(body.startDate) : null
+      if (startDate && Number.isNaN(startDate.getTime())) {
+        throw new BadRequestError('履约开始日期格式不正确')
+      }
+      updateData.startDate = startDate
     }
 
     if (body.endDate !== undefined) {
-      updateData.endDate = body.endDate ? new Date(body.endDate) : null
+      const endDate = body.endDate ? new Date(body.endDate) : null
+      if (endDate && Number.isNaN(endDate.getTime())) {
+        throw new BadRequestError('履约结束日期格式不正确')
+      }
+      updateData.endDate = endDate
+    }
+
+    const nextStartDate = updateData.startDate ?? existingContract.startDate
+    const nextEndDate = updateData.endDate ?? existingContract.endDate
+    if (nextStartDate && nextEndDate && nextEndDate < nextStartDate) {
+      throw new BadRequestError('履约结束日期不能早于履约开始日期')
     }
 
     if (body.status !== undefined) {
       updateData.status = body.status
+    }
+
+    if (body.contractType !== undefined) {
+      updateData.contractType = body.contractType?.trim() || null
+    }
+
+    if (body.paymentMethod !== undefined) {
+      updateData.paymentMethod = body.paymentMethod?.trim() || null
+    }
+
+    if (body.hasRetention !== undefined) {
+      updateData.hasRetention = Boolean(body.hasRetention)
+    }
+
+    if (body.retentionRate !== undefined) {
+      updateData.retentionRate = body.retentionRate === null || body.retentionRate === '' ? null : Number(body.retentionRate)
+    }
+
+    if (body.retentionAmount !== undefined) {
+      updateData.retentionAmount = body.retentionAmount === null || body.retentionAmount === '' ? null : Number(body.retentionAmount)
+    }
+
+    if (body.attachmentUrl !== undefined) {
+      updateData.attachmentUrl = body.attachmentUrl?.trim() || null
     }
 
     if (body.remark !== undefined) {
@@ -139,6 +328,12 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        contractType: true,
+        paymentMethod: true,
+        hasRetention: true,
+        retentionRate: true,
+        retentionAmount: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
@@ -161,6 +356,12 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      contractType: contract.contractType,
+      paymentMethod: contract.paymentMethod,
+      hasRetention: contract.hasRetention,
+      retentionRate: contract.retentionRate,
+      retentionAmount: contract.retentionAmount,
+      attachmentUrl: contract.attachmentUrl,
       remark: contract.remark,
       createdAt: contract.createdAt,
       updatedAt: contract.updatedAt,
@@ -220,3 +421,6 @@ const handler = apiHandlerWithMethod({
   },
 })
 
+export const GET = handler
+export const PUT = handler
+export const DELETE = handler

@@ -16,11 +16,13 @@ import {
   ProcessInstanceStatus,
   ProcessNodeApproverType,
 } from '@prisma/client'
+import { APPROVAL_PAGE_SIZE } from '@/lib/approval-context'
 
 export const dynamic = 'force-dynamic'
 
 const RESOURCE_LABELS: Record<string, string> = {
   'construction-approvals': '施工立项',
+  'contract-receipts': '合同收款',
   'procurement-contracts': '采购合同',
   'procurement-payments': '采购付款',
   'labor-contracts': '劳务合同',
@@ -34,8 +36,9 @@ const RESOURCE_LABELS: Record<string, string> = {
  * 用于在审批记录里做 resourceId 过滤
  */
 async function getResourceIdsByProject(projectId: string): Promise<Set<string>> {
-  const [ca, pc, pp, lc, lp, sc, sp] = await Promise.all([
+  const [ca, cr, pc, pp, lc, lp, sc, sp] = await Promise.all([
     db.constructionApproval.findMany({ where: { projectId }, select: { id: true } }),
+    db.contractReceipt.findMany({ where: { contract: { projectId } }, select: { id: true } }),
     db.procurementContract.findMany({ where: { projectId }, select: { id: true } }),
     db.procurementPayment.findMany({ where: { projectId }, select: { id: true } }),
     db.laborContract.findMany({ where: { projectId }, select: { id: true } }),
@@ -44,7 +47,7 @@ async function getResourceIdsByProject(projectId: string): Promise<Set<string>> 
     db.subcontractPayment.findMany({ where: { projectId }, select: { id: true } }),
   ])
   const ids = new Set<string>()
-  for (const row of [...ca, ...pc, ...pp, ...lc, ...lp, ...sc, ...sp]) {
+  for (const row of [...ca, ...cr, ...pc, ...pp, ...lc, ...lp, ...sc, ...sp]) {
     ids.add(row.id)
   }
   return ids
@@ -59,6 +62,10 @@ export const GET = apiHandler(async (req: Request) => {
   const resourceType = searchParams.get('resourceType') || ''
   const keyword = searchParams.get('keyword') || ''
   const projectId = searchParams.get('projectId') || ''
+  const page = Math.max(1, Number(searchParams.get('page') || '1') || 1)
+  const pageSize = Math.max(1, Number(searchParams.get('pageSize') || String(APPROVAL_PAGE_SIZE)) || APPROVAL_PAGE_SIZE)
+  const focusTaskId = searchParams.get('focusTaskId') || ''
+  const focusResourceId = searchParams.get('focusResourceId') || ''
 
   const sysUser = await findSystemUserByDingUserId(authUser.userid)
   const systemUserId = sysUser?.id ?? ''
@@ -192,5 +199,38 @@ export const GET = apiHandler(async (req: Request) => {
     )
   }
 
-  return success({ items: instances, total: instances.length })
+  const total = instances.length
+  const pageStart = (page - 1) * pageSize
+  const pageItems = instances.slice(pageStart, pageStart + pageSize)
+
+  const focusIndex = instances.findIndex((item) => {
+    if (focusTaskId && item.taskId === focusTaskId) return true
+    if (focusResourceId && item.resourceId === focusResourceId) return true
+    return false
+  })
+
+  const navigation = focusIndex >= 0 ? {
+    position: focusIndex + 1,
+    total,
+    prev: focusIndex > 0 ? {
+      resourceType: instances[focusIndex - 1].resourceType,
+      resourceId: instances[focusIndex - 1].resourceId,
+      taskId: instances[focusIndex - 1].taskId || undefined,
+      page: Math.floor((focusIndex - 1) / pageSize) + 1,
+    } : undefined,
+    next: focusIndex < total - 1 ? {
+      resourceType: instances[focusIndex + 1].resourceType,
+      resourceId: instances[focusIndex + 1].resourceId,
+      taskId: instances[focusIndex + 1].taskId || undefined,
+      page: Math.floor((focusIndex + 1) / pageSize) + 1,
+    } : undefined,
+  } : null
+
+  return success({
+    items: pageItems,
+    total,
+    page,
+    pageSize,
+    navigation,
+  })
 })

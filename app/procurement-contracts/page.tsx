@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Table,
   Button,
@@ -16,10 +16,37 @@ import {
   InputNumber,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
+import AttachmentField from '@/components/AttachmentField'
+import AttachmentLink from '@/components/AttachmentLink'
+import DetailModal from '@/components/DetailModal'
+import LedgerDetailExtra, { type LedgerChangeRecord, type LedgerFlowRecord } from '@/components/LedgerDetailExtra'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import { APPROVAL_STATUS_OPTIONS, getApprovalBatchActionHint, isApprovalReadonly } from '@/lib/approval-ui'
+import { downloadExportFile } from '@/lib/export-client'
+import { endDateAfterStartRule, positiveAmountRules, requiredDateRule } from '@/lib/form-rules'
+import {
+  getApprovalActionBoundaryHint,
+  getApprovalStatusHint,
+  getBusinessStatusLabel,
+  getContractChangeHint,
+  getDeleteConfirmDescription,
+  getDeleteConfirmTitle,
+  getDeleteSuccessMessage,
+  getDisplayText,
+  getExecutionStatusHint,
+  getLedgerEmptyText,
+  getProgressText,
+  getSaveSuccessMessage,
+  joinDetailHints,
+  READONLY_ACTION_HINT,
+} from '@/lib/ledger-ui'
+import { buildApprovalDetailPath, buildApprovalFilterSummary, buildApprovalPositionSummary, readApprovalRouteContext, type ApprovalRouteContext } from '@/lib/approval-context'
+import { buildLedgerFilterSummary, buildLedgerRouteHref, readLedgerRouteContext } from '@/lib/ledger-context'
+import { appendPaginationParams, getPageAfterDelete, normalizePaginatedList } from '@/lib/list-pagination'
+import { fmtDate, fmtMoney } from '@/lib/utils/format'
 
 /**
  * 采购合同数据类型
@@ -27,15 +54,19 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 interface ProcurementContract {
   id: string
   code: string
+  name?: string
   projectName: string
   constructionName: string
   supplierName: string
   contractAmount: number
+  changedAmount?: number
   payableAmount: number
   paidAmount: number
   unpaidAmount: number
   signDate: string | null
+  status?: string
   approvalStatus: string
+  attachmentUrl?: string | null
   createdAt: string
 }
 
@@ -50,8 +81,12 @@ interface ProcurementContractDetail extends ProcurementContract {
   status?: string
   startDate?: string | null
   endDate?: string | null
+  materialCategory?: string | null
+  attachmentUrl?: string | null
   remark?: string | null
   updatedAt?: string
+  recentFlows?: LedgerFlowRecord[]
+  changeRecords?: LedgerChangeRecord[]
 }
 
 /**
@@ -101,29 +136,26 @@ interface ApiResponse<T> {
   error?: string
 }
 
-/**
- * 格式化日期
- */
-function formatDate(dateString: string | null): string {
-  if (!dateString) return '-'
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN')
-  } catch {
-    return dateString
-  }
+const DEFAULT_PAGE_SIZE = 20
+const EMPTY_SUMMARY = {
+  contractAmountTotal: 0,
+  changedAmountTotal: 0,
+  payableAmountTotal: 0,
+  paidAmountTotal: 0,
+  unpaidAmountTotal: 0,
+  paymentProgress: 0,
+  resultCount: 0,
 }
 
-/**
- * 格式化金额
- */
-function formatCurrency(value: number | undefined): string {
-  if (value === undefined || value === null) return '-'
-  return `¥${value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
+const CONTRACT_STATUS_OPTIONS = [
+  { label: '草稿', value: 'DRAFT' },
+  { label: '待审批', value: 'PENDING' },
+  { label: '已批准', value: 'APPROVED' },
+  { label: '执行中', value: 'EXECUTING' },
+  { label: '已完成', value: 'COMPLETED' },
+  { label: '已终止', value: 'TERMINATED' },
+  { label: '已取消', value: 'CANCELLED' },
+]
 
 export default function ProcurementContractsPage() {
   const [contracts, setContracts] = useState<ProcurementContract[]>([])
@@ -134,16 +166,60 @@ export default function ProcurementContractsPage() {
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [constructionsLoading, setConstructionsLoading] = useState(true)
   const [suppliersLoading, setSuppliersLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [approvalStatus, setApprovalStatus] = useState<string | undefined>(undefined)
+  const [dateRange, setDateRange] = useState<any>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailData, setDetailData] = useState<ProcurementContractDetail | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState(EMPTY_SUMMARY)
+  const [approvalReturnPath, setApprovalReturnPath] = useState<string | undefined>(undefined)
+  const [approvalPrevPath, setApprovalPrevPath] = useState<string | undefined>(undefined)
+  const [approvalNextPath, setApprovalNextPath] = useState<string | undefined>(undefined)
+  const [approvalContextHint, setApprovalContextHint] = useState<string | undefined>(undefined)
+  const detailCacheRef = useRef<Record<string, ProcurementContractDetail>>({})
+  const pageCacheRef = useRef<Record<number, ProcurementContract[]>>({})
+  const approvalContextRef = useRef<ApprovalRouteContext>({})
   const [form] = Form.useForm()
+  const selectedProjectId = Form.useWatch('projectId', form)
+  const startDateValue = Form.useWatch('startDate', form)
+  const filteredConstructions = constructions.filter((construction) => !selectedProjectId || construction.projectId === selectedProjectId)
+  const formatProgress = (value?: number) => `${Number(value || 0).toFixed(1)}%`
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
   }, [])
+
+  const clearPrefetchCache = () => {
+    detailCacheRef.current = {}
+    pageCacheRef.current = {}
+  }
+
+  const buildListParams = (
+    searchKeyword?: string,
+    searchProjectId?: string,
+    searchApprovalStatus?: string,
+    searchDateRange?: [any, any] | null,
+    nextPage = page,
+    nextPageSize = pageSize,
+  ) => {
+    const params = new URLSearchParams()
+    if (searchKeyword?.trim()) params.append('keyword', searchKeyword.trim())
+    if (searchProjectId) params.append('projectId', searchProjectId)
+    if (searchApprovalStatus) params.append('approvalStatus', searchApprovalStatus)
+    if (searchDateRange?.[0]) params.append('startDate', searchDateRange[0].format('YYYY-MM-DD'))
+    if (searchDateRange?.[1]) params.append('endDate', searchDateRange[1].format('YYYY-MM-DD'))
+    appendPaginationParams(params, nextPage, nextPageSize)
+    return params
+  }
 
   /**
    * 加载项目列表
@@ -211,35 +287,44 @@ export default function ProcurementContractsPage() {
   /**
    * 加载采购合同列表
    */
-  const loadContracts = async (searchKeyword?: string, searchProjectId?: string) => {
+  const loadContracts = async (
+    searchKeyword?: string,
+    searchProjectId?: string,
+    searchApprovalStatus?: string,
+    searchDateRange?: [any, any] | null,
+    nextPage = page,
+    nextPageSize = pageSize,
+  ) => {
     try {
       setLoading(true)
-      const params = new URLSearchParams()
-      if (searchProjectId) params.append('projectId', searchProjectId)
+      const params = buildListParams(searchKeyword, searchProjectId, searchApprovalStatus, searchDateRange, nextPage, nextPageSize)
 
       const url = `/api/procurement-contracts${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
-      const result: ApiResponse<ProcurementContract[]> = await response.json()
+      const result: ApiResponse<any> = await response.json()
 
       if (result.success && result.data) {
-        // 如果有关键词，进行客户端过滤
-        let filtered = result.data
-        if (searchKeyword) {
-          filtered = result.data.filter(
-            (contract) =>
-              contract.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-              contract.projectName.toLowerCase().includes(searchKeyword.toLowerCase())
-          )
-        }
-        setContracts(filtered)
+        const normalized = normalizePaginatedList<ProcurementContract>(result.data, nextPage, nextPageSize)
+        pageCacheRef.current[nextPage] = normalized.items
+        setContracts(normalized.items)
+        setPage(normalized.page)
+        setPageSize(normalized.pageSize)
+        setTotal(normalized.total)
+        setSummary(result.data?.summary || { ...EMPTY_SUMMARY, resultCount: normalized.total })
+        return normalized.items
       } else {
         message.error(result.error || '数据加载失败')
         setContracts([])
+        setTotal(0)
+        setSummary(EMPTY_SUMMARY)
+        return []
       }
     } catch (err) {
       console.error('加载采购合同列表失败:', err)
       message.error('数据加载失败，请检查网络连接')
       setContracts([])
+      setSummary(EMPTY_SUMMARY)
+      return []
     } finally {
       setLoading(false)
     }
@@ -249,35 +334,63 @@ export default function ProcurementContractsPage() {
    * 初次加载数据
    */
   useEffect(() => {
+    const context = readLedgerRouteContext()
+    const approvalContext = readApprovalRouteContext()
+    approvalContextRef.current = approvalContext
+    const initialDateRange = context.startDate && context.endDate ? [dayjs(context.startDate), dayjs(context.endDate)] as any : null
+    setKeyword(context.keyword || '')
+    setProjectId(context.projectId)
+    setApprovalStatus(context.approvalStatus)
+    setDateRange(initialDateRange)
+    setApprovalReturnPath(context.returnPath?.includes('/approval') ? context.returnPath : undefined)
+    clearPrefetchCache()
     loadProjects()
     loadConstructions()
     loadSuppliers()
-    loadContracts()
+    loadContracts(context.keyword || '', context.projectId, context.approvalStatus, initialDateRange, 1, pageSize)
+      .then(async () => {
+        if (context.detailId) {
+          await handleViewClick(context.detailId)
+          await loadApprovalWorkflowContext(context.detailId)
+        }
+      })
   }, [])
 
   /**
    * 查询处理
    */
   const handleSearch = () => {
-    loadContracts(keyword, projectId)
+    clearPrefetchCache()
+    loadContracts(keyword, projectId, approvalStatus, dateRange, 1, pageSize)
   }
 
   /**
    * 重置处理
    */
   const handleReset = () => {
+    clearPrefetchCache()
     setKeyword('')
     setProjectId(undefined)
-    loadContracts('', undefined)
+    setApprovalStatus(undefined)
+    setDateRange(null)
+    loadContracts('', undefined, undefined, null, 1, pageSize)
+  }
+
+  const openCreateModal = () => {
+    setEditingId(null)
+    form.resetFields()
+    form.setFieldsValue({
+      signDate: dayjs(),
+      status: 'DRAFT',
+    })
+    setIsModalVisible(true)
   }
 
   /**
    * 打开新增弹窗
    */
   const handleAddClick = () => {
-    setEditingId(null)
-    form.resetFields()
-    setIsModalVisible(true)
+    openCreateModal()
   }
 
   /**
@@ -291,11 +404,17 @@ export default function ProcurementContractsPage() {
       if (result.success && result.data) {
         setEditingId(id)
         form.setFieldsValue({
+          name: result.data.name || undefined,
           projectId: result.data.projectId,
           constructionId: result.data.constructionId,
           supplierId: result.data.supplierId,
           contractAmount: result.data.contractAmount,
           signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
+          startDate: result.data.startDate ? dayjs(result.data.startDate) : undefined,
+          endDate: result.data.endDate ? dayjs(result.data.endDate) : undefined,
+          status: result.data.status || undefined,
+          materialCategory: result.data.materialCategory || undefined,
+          attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
         })
         setIsModalVisible(true)
@@ -305,6 +424,162 @@ export default function ProcurementContractsPage() {
     } catch (err) {
       console.error('获取合同信息失败:', err)
       message.error('获取合同信息失败')
+    }
+  }
+
+  const fetchContractDetail = async (id: string) => {
+    const cached = detailCacheRef.current[id]
+    if (cached) return cached
+    const response = await fetch(`/api/procurement-contracts/${id}`)
+    const result: ApiResponse<ProcurementContractDetail> = await response.json()
+    if (!result.success || !result.data) throw new Error(result.error || '获取合同信息失败')
+    detailCacheRef.current[id] = result.data
+    return result.data
+  }
+
+  const loadApprovalWorkflowContext = async (resourceId: string) => {
+    const context = approvalContextRef.current
+    if (!context.approvalTab) {
+      setApprovalContextHint(undefined)
+      setApprovalPrevPath(undefined)
+      setApprovalNextPath(undefined)
+      return
+    }
+    try {
+      const params = new URLSearchParams({ tab: context.approvalTab })
+      if (context.approvalResourceType) params.set('resourceType', context.approvalResourceType)
+      if (context.approvalKeyword) params.set('keyword', context.approvalKeyword)
+      if (context.approvalTaskId) params.set('focusTaskId', context.approvalTaskId)
+      if (resourceId) params.set('focusResourceId', resourceId)
+      const response = await fetch(`/api/approval?${params.toString()}`, { credentials: 'include' })
+      const result = await response.json()
+      if (!result.success) return
+      const navigation = result.data?.navigation
+      setApprovalPrevPath(navigation?.prev ? buildApprovalDetailPath(navigation.prev, {
+        ...context,
+        approvalPage: navigation.prev.page || context.approvalPage,
+      }) || undefined : undefined)
+      setApprovalNextPath(navigation?.next ? buildApprovalDetailPath(navigation.next, {
+        ...context,
+        approvalPage: navigation.next.page || context.approvalPage,
+      }) || undefined : undefined)
+      setApprovalContextHint(buildApprovalPositionSummary(context, navigation))
+    } catch {}
+  }
+
+  const handleApprovalActionSuccess = async (recordId: string) => {
+    const hasNext = Boolean(approvalNextPath)
+    await refreshContractContext(recordId)
+    if (approvalContextRef.current.approvalTab) {
+      const summary = buildApprovalFilterSummary(approvalContextRef.current)
+      setApprovalContextHint(`${summary} · ${getApprovalBatchActionHint(hasNext)}`)
+    }
+  }
+
+  const loadContractDetail = async (id: string, openModal = false) => {
+    if (openModal) setDetailOpen(true)
+    try {
+      const cached = detailCacheRef.current[id]
+      if (cached) {
+        setDetailData(cached)
+        setDetailLoading(false)
+      } else {
+        setDetailLoading(true)
+      }
+      const detail = await fetchContractDetail(id)
+      setDetailData(detail)
+      await loadApprovalWorkflowContext(id)
+    } catch (err) {
+      console.error('获取合同信息失败:', err)
+      message.error('获取合同信息失败')
+      if (openModal) setDetailOpen(false)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const handleViewClick = async (id: string) => {
+    await loadContractDetail(id, true)
+  }
+
+  const refreshContractContext = async (recordId?: string, targetPage = page) => {
+    await loadContracts(keyword, projectId, approvalStatus, dateRange, targetPage, pageSize)
+    if (recordId && detailOpen && detailData?.id === recordId) {
+      await loadContractDetail(recordId)
+    }
+  }
+
+  const detailIndex = detailData ? contracts.findIndex((item) => item.id === detailData.id) : -1
+  const globalPosition = detailIndex >= 0 ? (page - 1) * pageSize + detailIndex + 1 : 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const canPrevDetail = globalPosition > 1
+  const canNextDetail = globalPosition > 0 && globalPosition < total
+  const contextSummary = buildLedgerFilterSummary({
+    projectName: projects.find((item) => item.id === projectId)?.name,
+    keyword,
+    statusLabel: APPROVAL_STATUS_OPTIONS.find((item) => item.value === approvalStatus)?.label,
+    startDate: dateRange?.[0]?.format?.('YYYY-MM-DD'),
+    endDate: dateRange?.[1]?.format?.('YYYY-MM-DD'),
+  })
+  const detailToolbarText = approvalContextHint || (globalPosition > 0 ? `${contextSummary} · 第 ${globalPosition} 条 / 共 ${total} 条 · 当前切换与导出均基于这组筛选结果` : '当前记录不在本次筛选结果中')
+
+  const formatContextDate = (value: any) => value?.format ? value.format('YYYY-MM-DD') : undefined
+
+  const prefetchContractPage = async (targetPage: number) => {
+    if (targetPage < 1 || targetPage > totalPages || pageCacheRef.current[targetPage]) return
+    try {
+      const params = buildListParams(keyword, projectId, approvalStatus, dateRange, targetPage, pageSize)
+      const response = await fetch(`/api/procurement-contracts?${params.toString()}`)
+      const result: ApiResponse<any> = await response.json()
+      if (result.success && result.data) {
+        const normalized = normalizePaginatedList<ProcurementContract>(result.data, targetPage, pageSize)
+        pageCacheRef.current[targetPage] = normalized.items
+      }
+    } catch {}
+  }
+
+  const prefetchContractDetail = async (id?: string | null) => {
+    if (!id || detailCacheRef.current[id]) return
+    try {
+      const detail = await fetchContractDetail(id)
+      detailCacheRef.current[id] = detail
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!detailOpen || !detailData) return
+    const currentIndex = contracts.findIndex((item) => item.id === detailData.id)
+    if (currentIndex > 0) void prefetchContractDetail(contracts[currentIndex - 1]?.id)
+    if (currentIndex >= 0 && currentIndex < contracts.length - 1) void prefetchContractDetail(contracts[currentIndex + 1]?.id)
+    if (canPrevDetail && currentIndex <= 0) {
+      void prefetchContractPage(page - 1).then(() => {
+        const items = pageCacheRef.current[page - 1]
+        if (items?.length) void prefetchContractDetail(items[items.length - 1]?.id)
+      })
+    }
+    if (canNextDetail && currentIndex === contracts.length - 1) {
+      void prefetchContractPage(page + 1).then(() => {
+        const items = pageCacheRef.current[page + 1]
+        if (items?.length) void prefetchContractDetail(items[0]?.id)
+      })
+    }
+  }, [detailOpen, detailData?.id, page, pageSize, total, contracts])
+
+  const handleDetailNavigate = async (direction: 'prev' | 'next') => {
+    if (!detailData) return
+    const currentIndex = contracts.findIndex((item) => item.id === detailData.id)
+    if (currentIndex < 0) return
+    const targetIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1
+    if (contracts[targetIndex]) {
+      await loadContractDetail(contracts[targetIndex].id, false)
+      return
+    }
+    const targetPage = direction === 'next' ? page + 1 : page - 1
+    if (targetPage < 1 || targetPage > totalPages) return
+    const targetItems = pageCacheRef.current[targetPage] || await loadContracts(keyword, projectId, approvalStatus, dateRange, targetPage, pageSize)
+    const targetId = direction === 'next' ? targetItems[0]?.id : targetItems[targetItems.length - 1]?.id
+    if (targetId) {
+      await loadContractDetail(targetId, false)
     }
   }
 
@@ -319,8 +594,8 @@ export default function ProcurementContractsPage() {
       const result: ApiResponse<any> = await response.json()
 
       if (result.success) {
-        message.success('采购合同已删除')
-        loadContracts(keyword, projectId)
+        message.success(getDeleteSuccessMessage('采购合同'))
+        await refreshContractContext(id, getPageAfterDelete(page, contracts.length))
       } else {
         message.error(result.error || '删除失败')
       }
@@ -339,11 +614,17 @@ export default function ProcurementContractsPage() {
       const method = editingId ? 'PUT' : 'POST'
 
       const payload = {
+        name: values.name || null,
         projectId: values.projectId,
         constructionId: values.constructionId,
         supplierId: values.supplierId,
         contractAmount: values.contractAmount,
         signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
+        endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
+        status: values.status || undefined,
+        materialCategory: values.materialCategory || null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -358,16 +639,37 @@ export default function ProcurementContractsPage() {
       const result: ApiResponse<any> = await response.json()
 
       if (result.success) {
-        message.success(editingId ? '采购合同已更新' : '采购合同已创建')
+        message.success(getSaveSuccessMessage('采购合同', Boolean(editingId)))
         setIsModalVisible(false)
+        setEditingId(null)
         form.resetFields()
-        loadContracts(keyword, projectId)
+        await refreshContractContext(editingId || result.data?.id)
       } else {
         message.error(result.error || '操作失败')
       }
     } catch (err) {
       console.error('提交表单失败:', err)
       message.error('操作失败，请检查网络连接')
+    }
+  }
+
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (keyword.trim()) params.set('keyword', keyword.trim())
+      if (projectId) params.set('projectId', projectId)
+      if (approvalStatus) params.set('approvalStatus', approvalStatus)
+      if (dateRange?.[0]) params.set('startDate', dateRange[0].format('YYYY-MM-DD'))
+      if (dateRange?.[1]) params.set('endDate', dateRange[1].format('YYYY-MM-DD'))
+      const exportUrl = params.toString() ? `/api/procurement-contracts/export?${params.toString()}` : '/api/procurement-contracts/export'
+      await downloadExportFile(exportUrl, `采购合同台账_${dayjs().format('YYYYMMDD_HHmmss')}.csv`, '导出失败')
+      message.success('导出成功')
+    } catch (error: any) {
+      message.error(error?.message || '导出失败')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -381,6 +683,14 @@ export default function ProcurementContractsPage() {
       key: 'code',
       width: 130,
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
+      ellipsis: true,
+      render: (text: string | undefined) => getDisplayText(text),
     },
     {
       title: '项目名称',
@@ -399,6 +709,7 @@ export default function ProcurementContractsPage() {
       dataIndex: 'supplierName',
       key: 'supplierName',
       width: 130,
+      render: (text?: string) => getDisplayText(text),
     },
     {
       title: '合同金额',
@@ -406,7 +717,15 @@ export default function ProcurementContractsPage() {
       key: 'contractAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number) => fmtMoney(value),
+    },
+    {
+      title: '变更金额',
+      dataIndex: 'changedAmount',
+      key: 'changedAmount',
+      width: 120,
+      align: 'right',
+      render: (value?: number) => fmtMoney(value),
     },
     {
       title: '应付金额',
@@ -414,7 +733,7 @@ export default function ProcurementContractsPage() {
       key: 'payableAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number) => fmtMoney(value),
     },
     {
       title: '已付金额',
@@ -422,7 +741,7 @@ export default function ProcurementContractsPage() {
       key: 'paidAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatCurrency(value)}</span>,
+      render: (value: number) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{fmtMoney(value)}</span>,
     },
     {
       title: '未付金额',
@@ -430,21 +749,35 @@ export default function ProcurementContractsPage() {
       key: 'unpaidAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{formatCurrency(value)}</span>,
+      render: (value: number) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{fmtMoney(value)}</span>,
     },
     {
       title: '签订日期',
       dataIndex: 'signDate',
       key: 'signDate',
       width: 120,
-      render: (text: string | null) => formatDate(text),
+      render: fmtDate,
+    },
+    {
+      title: '合同状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status?: string) => getBusinessStatusLabel(status),
+    },
+    {
+      title: '附件',
+      dataIndex: 'attachmentUrl',
+      key: 'attachmentUrl',
+      width: 100,
+      render: (value: string | null | undefined) => <AttachmentLink url={value} />,
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 120,
-      render: (text: string) => formatDate(text),
+      render: fmtDate,
     },
     {
       title: '审批状态',
@@ -456,20 +789,21 @@ export default function ProcurementContractsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <Popconfirm title="删除采购合同" description="确定删除该采购合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={record.approvalStatus !== 'REJECTED'}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>删除</Button>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewClick(record.id)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={isApprovalReadonly(record.approvalStatus)} title={isApprovalReadonly(record.approvalStatus) ? READONLY_ACTION_HINT : ''} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Popconfirm title={getDeleteConfirmTitle('采购合同')} description={getDeleteConfirmDescription('采购合同')} onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={isApprovalReadonly(record.approvalStatus)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalReadonly(record.approvalStatus)} title={isApprovalReadonly(record.approvalStatus) ? READONLY_ACTION_HINT : ''}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
             resource="procurement-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={({ action }) => refreshContractContext(action ? record.id : undefined)}
           />
         </Space>
       ),
@@ -529,12 +863,28 @@ export default function ProcurementContractsPage() {
           >
             <Space wrap style={{ width: '100%' }}>
               <Input
-                placeholder="输入合同编号搜索"
+                placeholder="搜索合同名称 / 编号 / 项目 / 供应商"
                 prefix={<SearchOutlined />}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
+                style={{ width: 260 }}
                 onPressEnter={handleSearch}
+              />
+
+              <Select
+                placeholder="审批状态"
+                value={approvalStatus || undefined}
+                onChange={setApprovalStatus}
+                allowClear
+                style={{ width: 140 }}
+                options={APPROVAL_STATUS_OPTIONS}
+              />
+
+              <DatePicker.RangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                style={{ width: 260 }}
+                placeholder={['签订开始', '签订结束']}
               />
 
               <Select
@@ -563,10 +913,14 @@ export default function ProcurementContractsPage() {
                 重置
               </Button>
 
+              <Button icon={<DownloadOutlined />} onClick={handleExport} loading={exporting}>
+                导出
+              </Button>
+
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={handleAddClick}
+                onClick={openCreateModal}
                 style={{ marginLeft: 'auto' }}
               >
                 新增合同
@@ -580,11 +934,29 @@ export default function ProcurementContractsPage() {
             columns={columns}
             dataSource={contracts}
             loading={loading}
-            pagination={false}
-            scroll={{ x: 1600 }}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showTotal: (count) => `共 ${count} 条`,
+              showSizeChanger: true,
+              pageSizeOptions: ['20', '50', '100'],
+              showQuickJumper: total > pageSize,
+              onChange: (nextPage, nextPageSize) => loadContracts(keyword, projectId, approvalStatus, dateRange, nextPage, nextPageSize),
+            }}
+            scroll={{ x: 1760 }}
             size="small"
+            summary={() => (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={columns.length}>
+                  <span style={{ fontWeight: 600 }}>
+                    当前筛选合计：合同金额 {fmtMoney(summary.contractAmountTotal)}，变更金额 {fmtMoney(summary.changedAmountTotal)}，合同已付金额 {fmtMoney(summary.paidAmountTotal)}，合同未付金额 {fmtMoney(summary.unpaidAmountTotal)}，整体付款进度 {formatProgress(summary.paymentProgress)}；筛选结果共 {total} 条
+                  </span>
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            )}
             locale={{
-              emptyText: '暂无采购合同数据',
+              emptyText: getLedgerEmptyText('采购合同', '新增合同'),
             }}
           />
         </div>
@@ -597,6 +969,7 @@ export default function ProcurementContractsPage() {
         onOk={() => form.submit()}
         onCancel={() => {
           setIsModalVisible(false)
+          setEditingId(null)
           form.resetFields()
         }}
         width={600}
@@ -607,8 +980,21 @@ export default function ProcurementContractsPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
+          onValuesChange={(changedValues) => {
+            if ('projectId' in changedValues) {
+              form.setFieldsValue({ constructionId: undefined })
+            }
+          }}
           style={{ marginTop: 20 }}
         >
+          <Form.Item
+            label="合同名称"
+            name="name"
+            rules={[{ required: true, message: '请输入合同名称' }]}
+          >
+            <Input placeholder="请输入合同名称" />
+          </Form.Item>
+
           <Form.Item
             label="项目"
             name="projectId"
@@ -617,8 +1003,10 @@ export default function ProcurementContractsPage() {
             <Select
               placeholder="请选择项目"
               loading={projectsLoading}
+              showSearch
+              optionFilterProp="label"
               options={projects.map((project) => ({
-                label: project.name,
+                label: `${project.name}（${project.code}）`,
                 value: project.id,
               }))}
             />
@@ -631,9 +1019,12 @@ export default function ProcurementContractsPage() {
           >
             <Select
               placeholder="请选择施工立项"
+              disabled={!selectedProjectId}
               loading={constructionsLoading}
-              options={constructions.map((construction) => ({
-                label: construction.name,
+              showSearch
+              optionFilterProp="label"
+              options={filteredConstructions.map((construction) => ({
+                label: `${construction.name}（${construction.code}）`,
                 value: construction.id,
               }))}
             />
@@ -647,8 +1038,10 @@ export default function ProcurementContractsPage() {
             <Select
               placeholder="请选择供应商"
               loading={suppliersLoading}
+              showSearch
+              optionFilterProp="label"
               options={suppliers.map((supplier) => ({
-                label: supplier.name,
+                label: `${supplier.name}${supplier.phone ? `（${supplier.phone}）` : ''}`,
                 value: supplier.id,
               }))}
             />
@@ -657,21 +1050,38 @@ export default function ProcurementContractsPage() {
           <Form.Item
             label="合同金额"
             name="contractAmount"
-            rules={[
-              { required: true, message: '请输入合同金额' },
-              { type: 'number', min: 0, message: '合同金额必须大于 0' },
-            ]}
+            rules={positiveAmountRules('合同金额')}
           >
             <InputNumber
               placeholder="请输入合同金额"
               style={{ width: '100%' }}
-              min={0}
+              min={0.01}
               precision={2}
             />
           </Form.Item>
 
-          <Form.Item label="签订日期" name="signDate">
+          <Form.Item label="签订日期" name="signDate" rules={[requiredDateRule('签订日期')]}>
             <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item label="开始日期" name="startDate">
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item label="结束日期" name="endDate" dependencies={['startDate']} rules={[endDateAfterStartRule(() => startDateValue)]}>
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item label="合同状态" name="status">
+            <Select placeholder="请选择合同状态" options={CONTRACT_STATUS_OPTIONS} />
+          </Form.Item>
+
+          <Form.Item label="物资类别" name="materialCategory">
+            <Input placeholder="请输入物资类别" />
+          </Form.Item>
+
+          <Form.Item label="合同附件" name="attachmentUrl">
+            <AttachmentField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">
@@ -679,7 +1089,189 @@ export default function ProcurementContractsPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <DetailModal
+        title={detailData ? `采购合同详情 · ${detailData.code}` : '采购合同详情'}
+        open={detailOpen}
+        loading={detailLoading}
+        onClose={() => { setDetailOpen(false); setDetailData(null) }}
+        toolbar={(
+          <Space size="small" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <span style={{ color: '#8c8c8c', fontSize: 12 }}>
+              {detailToolbarText}
+            </span>
+            <Space size="small">
+              <Button size="small" onClick={() => { void handleDetailNavigate('prev') }} disabled={!canPrevDetail}>上一条</Button>
+              <Button size="small" onClick={() => { void handleDetailNavigate('next') }} disabled={!canNextDetail}>下一条</Button>
+            </Space>
+          </Space>
+        )}
+        items={[
+          { key: 'code', label: '合同编号', value: getDisplayText(detailData?.code) },
+          { key: 'name', label: '合同名称', value: getDisplayText(detailData?.name) },
+          { key: 'projectName', label: '项目名称', value: getDisplayText(detailData?.projectName) },
+          { key: 'constructionName', label: '施工立项', value: getDisplayText(detailData?.constructionName) },
+          { key: 'supplierName', label: '供应商', value: getDisplayText(detailData?.supplierName) },
+          { key: 'contractAmount', label: '合同金额', value: detailData ? fmtMoney(detailData.contractAmount) : getDisplayText() },
+          { key: 'changedAmount', label: '变更金额', value: detailData ? fmtMoney(detailData.changedAmount) : getDisplayText() },
+          { key: 'payableAmount', label: '合同应付金额', value: detailData ? fmtMoney(detailData.payableAmount) : getDisplayText() },
+          { key: 'paidAmount', label: '合同已付金额', value: detailData ? fmtMoney(detailData.paidAmount) : getDisplayText() },
+          { key: 'unpaidAmount', label: '合同未付金额', value: detailData ? fmtMoney(detailData.unpaidAmount) : getDisplayText() },
+          { key: 'status', label: '合同执行状态', value: CONTRACT_STATUS_OPTIONS.find((item) => item.value === detailData?.status)?.label || getBusinessStatusLabel(detailData?.status) },
+          { key: 'approvalStatus', label: '审批状态', value: detailData?.approvalStatus ? <ApprovalStatusTag status={detailData.approvalStatus} /> : '-' },
+          { key: 'signDate', label: '签订日期', value: fmtDate(detailData?.signDate || null) },
+          { key: 'startDate', label: '开始日期', value: fmtDate(detailData?.startDate || null) },
+          { key: 'endDate', label: '结束日期', value: fmtDate(detailData?.endDate || null) },
+          { key: 'materialCategory', label: '物资类别', value: getDisplayText(detailData?.materialCategory) },
+          { key: 'attachmentUrl', label: '合同附件', value: <AttachmentLink url={detailData?.attachmentUrl} /> },
+          { key: 'createdAt', label: '登记时间', value: fmtDate(detailData?.createdAt || null) },
+          { key: 'updatedAt', label: '最近更新时间', value: fmtDate(detailData?.updatedAt || null) },
+          { key: 'remark', label: '备注', value: getDisplayText(detailData?.remark), span: 2 },
+        ]}
+        extra={detailData ? (
+          <LedgerDetailExtra
+            summaryItems={[
+              { key: 'summary-contractAmount', label: '合同金额', value: fmtMoney(detailData.contractAmount) },
+              { key: 'summary-changedAmount', label: '变更金额', value: fmtMoney(detailData.changedAmount ?? 0) },
+              { key: 'summary-payableAmount', label: '合同应付', value: fmtMoney(detailData.payableAmount) },
+              {
+                key: 'summary-paidAmount',
+                label: '合同已付',
+                value: (
+                  <Space size={4} wrap>
+                    <span>{fmtMoney(detailData.paidAmount)}</span>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => window.open(buildLedgerRouteHref('/procurement-payments', {
+                        contractId: detailData.id,
+                        projectId: detailData.projectId,
+                      }), '_blank')}
+                    >
+                      查看付款台账
+                    </Button>
+                  </Space>
+                ),
+              },
+              {
+                key: 'summary-unpaidAmount',
+                label: '合同未付',
+                value: (
+                  <Space size={4} wrap>
+                    <span>{fmtMoney(detailData.unpaidAmount)}</span>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => window.open(buildLedgerRouteHref('/procurement-payments', {
+                        contractId: detailData.id,
+                        projectId: detailData.projectId,
+                      }), '_blank')}
+                    >
+                      查看付款台账
+                    </Button>
+                  </Space>
+                ),
+              },
+              { key: 'summary-progress', label: '付款进度', value: getProgressText(detailData.paidAmount, detailData.payableAmount) },
+            ]}
+            summaryHint={joinDetailHints(
+              getContractChangeHint(detailData.changedAmount),
+              getExecutionStatusHint(detailData.status),
+              getApprovalStatusHint(detailData.approvalStatus),
+              getApprovalActionBoundaryHint(detailData.approvalStatus, '采购合同'),
+              '下一步可先看付款台账核对进度，再看最近付款流水和合同变更记录',
+            )}
+            actionBar={(
+              <Space size="small" wrap>
+                {detailData.recentFlows?.[0]?.id ? (
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => { window.location.href = buildLedgerRouteHref('/procurement-payments', {
+                      contractId: detailData.id,
+                      projectId: detailData.projectId,
+                      detailId: detailData.recentFlows?.[0]?.id,
+                      returnPath: buildLedgerRouteHref('/procurement-contracts', {
+                        projectId,
+                        keyword,
+                        approvalStatus,
+                        startDate: formatContextDate(dateRange?.[0]),
+                        endDate: formatContextDate(dateRange?.[1]),
+                        detailId: detailData.id,
+                      }),
+                    }) }}
+                  >
+                    进入最新付款详情
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => window.open(buildLedgerRouteHref('/procurement-payments', {
+                    contractId: detailData.id,
+                    projectId: detailData.projectId,
+                  }), '_blank')}
+                >
+                  查看关联付款台账
+                </Button>
+                {approvalReturnPath ? (
+                  <Button size="small" type="link" onClick={() => { window.location.href = approvalReturnPath }}>
+                    返回审批列表
+                  </Button>
+                ) : null}
+                {approvalPrevPath ? (
+                  <Button size="small" type="link" onClick={() => { window.location.href = approvalPrevPath }}>
+                    上一条待办
+                  </Button>
+                ) : null}
+                {approvalNextPath ? (
+                  <Button size="small" type="link" onClick={() => { window.location.href = approvalNextPath }}>
+                    继续处理下一条待办
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => { void loadContractDetail(detailData.id, false) }}
+                >
+                  刷新详情
+                </Button>
+                <ApprovalActions
+                  id={detailData.id}
+                  approvalStatus={detailData.approvalStatus}
+                  resource="procurement-contracts"
+                  enableCancel
+                  onSuccess={() => handleApprovalActionSuccess(detailData.id)}
+                />
+              </Space>
+            )}
+            changeTitle="合同变更记录"
+            changes={detailData.changeRecords}
+            changeEmptyText="当前合同暂无更多变更记录"
+            flowTitle="最近付款流水"
+            flows={detailData.recentFlows}
+            activeFlowId={detailData.id}
+            flowEmptyText="当前合同暂无付款流水"
+            onFlowClick={(flow) => {
+              if (flow.id) {
+                window.location.href = buildLedgerRouteHref('/procurement-payments', {
+                  contractId: detailData.id,
+                  projectId: detailData.projectId,
+                  detailId: flow.id,
+                  returnPath: buildLedgerRouteHref('/procurement-contracts', {
+                    projectId,
+                    keyword,
+                    approvalStatus,
+                    startDate: formatContextDate(dateRange?.[0]),
+                    endDate: formatContextDate(dateRange?.[1]),
+                    detailId: detailData.id,
+                  }),
+                })
+              }
+            }}
+          />
+        ) : null}
+      />
     </ConfigProvider>
   )
 }
-

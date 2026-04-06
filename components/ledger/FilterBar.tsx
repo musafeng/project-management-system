@@ -18,7 +18,7 @@
 
 import { Input, Select, DatePicker, Button, Space } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -41,10 +41,17 @@ interface FilterBarProps {
   onReset?: () => void
   loading?: boolean
   extra?: ReactNode   // 导出按钮等，弱化在右侧
+  initialValues?: FilterValues
 }
 
-export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterBarProps) {
+export function FilterBar({ fields, onSearch, onReset, loading, extra, initialValues }: FilterBarProps) {
   const [values, setValues] = useState<FilterValues>({})
+
+  useEffect(() => {
+    if (initialValues) {
+      setValues(initialValues)
+    }
+  }, [initialValues])
 
   const set = (key: string, val: FilterValue) =>
     setValues((prev) => ({ ...prev, [key]: val }))
@@ -99,11 +106,15 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
         }
         if (f.type === 'dateRange') {
           const ph = f.placeholder as [string, string] | undefined
+          const rangeValue = Array.isArray(values[f.key]) && values[f.key]?.[0] && values[f.key]?.[1]
+            ? [dayjs(values[f.key]?.[0] as string), dayjs(values[f.key]?.[1] as string)]
+            : null
           return (
             <RangePicker
               key={f.key}
               size="small"
               placeholder={ph ?? ['开始日期', '结束日期']}
+              value={rangeValue as any}
               style={{ width: f.width ?? 220 }}
               onChange={(dates) => {
                 if (dates && dates[0] && dates[1]) {
@@ -134,7 +145,6 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
     </div>
   )
 }
-
 
 
 

@@ -11,6 +11,21 @@ import {
   SearchOutlined, CheckOutlined, CloseOutlined,
   EyeOutlined, RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
 } from '@ant-design/icons'
+import {
+  APPROVAL_RESOURCE_LABELS,
+  APPROVAL_RESOURCE_ROUTE,
+  APPROVAL_PAGE_SIZE,
+  type ApprovalNavigationState,
+  buildApprovalDetailPath,
+  buildApprovalFilterSummary,
+  buildApprovalListPath,
+} from '@/lib/approval-context'
+import {
+  getApprovalBatchActionHint,
+  getApprovalBatchListHint,
+  getApprovalErrorMessage,
+  getApprovalSuccessMessage,
+} from '@/lib/approval-ui'
 
 // ============================================================
 // TypeScript 类型
@@ -43,6 +58,7 @@ type TabKey = 'pending' | 'done' | 'cc' | 'mine'
 const RESOURCE_TYPES = [
   { label: '全部类型', value: '' },
   { label: '施工立项', value: 'construction-approvals' },
+  { label: '合同收款', value: 'contract-receipts' },
   { label: '采购合同', value: 'procurement-contracts' },
   { label: '采购付款', value: 'procurement-payments' },
   { label: '劳务合同', value: 'labor-contracts' },
@@ -51,18 +67,9 @@ const RESOURCE_TYPES = [
   { label: '分包付款', value: 'subcontract-payments' },
 ]
 
-const RESOURCE_ROUTE: Record<string, string> = {
-  'construction-approvals': '/construction-approvals',
-  'procurement-contracts': '/procurement-contracts',
-  'procurement-payments': '/procurement-payments',
-  'labor-contracts': '/labor-contracts',
-  'labor-payments': '/labor-payments',
-  'subcontract-contracts': '/subcontract-contracts',
-  'subcontract-payments': '/subcontract-payments',
-}
-
 const RESOURCE_COLOR: Record<string, string> = {
   'construction-approvals': '#1677ff',
+  'contract-receipts': '#2f54eb',
   'procurement-contracts': '#faad14',
   'procurement-payments': '#eb2f96',
   'labor-contracts': '#52c41a',
@@ -137,7 +144,7 @@ function FilterBar({
 
 function buildColumns(
   tab: TabKey,
-  router: ReturnType<typeof useRouter>,
+  onView: (row: ApprovalItem) => void,
   onApprove: (item: ApprovalItem) => void,
   onReject: (item: ApprovalItem) => void,
   onRevoke: (item: ApprovalItem) => void,
@@ -204,7 +211,7 @@ function buildColumns(
         <Space size={4} wrap>
           <Button
             type="link" size="small" icon={<EyeOutlined />}
-            onClick={() => router.push(RESOURCE_ROUTE[row.resourceType] || '/')}
+            onClick={() => onView(row)}
           >查看</Button>
           {tab === 'pending' && row.canApprove && (
             <>
@@ -228,53 +235,155 @@ function buildColumns(
 
 export default function ApprovalCenterPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<TabKey>('pending')
+  const initialParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams()
+  const initialTab = (initialParams.get('tab') as TabKey | null) || 'pending'
+  const initialResourceType = initialParams.get('resourceType') || ''
+  const initialKeyword = initialParams.get('keyword') || ''
+  const initialPage = Math.max(1, Number(initialParams.get('page') || '1') || 1)
+  const initialFocusTaskId = initialParams.get('focusTaskId') || ''
+  const [tab, setTab] = useState<TabKey>(initialTab)
   const [items, setItems] = useState<ApprovalItem[]>([])
   const [loading, setLoading] = useState(false)
-  const [resourceType, setResourceType] = useState('')
-  const [keyword, setKeyword] = useState('')
+  const [resourceType, setResourceType] = useState(initialResourceType)
+  const [keyword, setKeyword] = useState(initialKeyword)
+  const [page, setPage] = useState(initialPage)
+  const [focusTaskId, setFocusTaskId] = useState(initialFocusTaskId)
+  const [total, setTotal] = useState(0)
+  const [navigation, setNavigation] = useState<ApprovalNavigationState | null>(null)
   // 驳回弹窗
   const [rejectTarget, setRejectTarget] = useState<ApprovalItem | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const load = useCallback(async (t = tab, rt = resourceType, kw = keyword) => {
+  const load = useCallback(async (t = tab, rt = resourceType, kw = keyword, nextPage = page, nextFocusTaskId = focusTaskId) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ tab: t })
       if (rt) params.set('resourceType', rt)
       if (kw) params.set('keyword', kw)
+      params.set('page', String(nextPage))
+      params.set('pageSize', String(APPROVAL_PAGE_SIZE))
+      if (nextFocusTaskId) params.set('focusTaskId', nextFocusTaskId)
       const res = await fetch(`/api/approval?${params}`, { credentials: 'include' })
       const json = await res.json()
-      if (json.success) setItems(json.data.items)
-      else message.error(json.error || '加载失败')
+      if (json.success) {
+        setItems(json.data.items)
+        setTotal(json.data.total || 0)
+        setNavigation(json.data.navigation || null)
+      }
+      else {
+        setItems([])
+        setTotal(0)
+        setNavigation(null)
+        message.error(json.error || '加载失败')
+      }
     } catch {
       message.error('网络错误')
+      setNavigation(null)
     } finally {
       setLoading(false)
     }
-  }, [tab, resourceType, keyword])
+  }, [tab, resourceType, keyword, page, focusTaskId])
 
-  useEffect(() => { load() }, [tab]) // eslint-disable-line
+  useEffect(() => { load(tab, resourceType, keyword, page, focusTaskId) }, [tab, page]) // eslint-disable-line
 
-  const handleSearch = () => load(tab, resourceType, keyword)
+  useEffect(() => {
+    router.replace(buildApprovalListPath({
+      tab,
+      resourceType,
+      keyword,
+      page,
+      focusTaskId,
+    }), { scroll: false })
+  }, [router, tab, resourceType, keyword, page, focusTaskId])
+
+  const handleSearch = () => {
+    setPage(1)
+    setFocusTaskId('')
+    setNavigation(null)
+    load(tab, resourceType, keyword, 1, '')
+  }
   const handleReset = () => {
     setResourceType('')
     setKeyword('')
-    load(tab, '', '')
+    setPage(1)
+    setFocusTaskId('')
+    setNavigation(null)
+    load(tab, '', '', 1, '')
+  }
+
+  const handleView = (row: ApprovalItem) => {
+    const targetPath = buildApprovalDetailPath(
+      {
+        resourceType: row.resourceType,
+        resourceId: row.resourceId,
+        taskId: row.taskId || undefined,
+      },
+      {
+        approvalTab: tab,
+        approvalResourceType: resourceType || undefined,
+        approvalKeyword: keyword || undefined,
+        approvalPage: page,
+      },
+    )
+
+    if (!targetPath || !APPROVAL_RESOURCE_ROUTE[row.resourceType]) {
+      message.error(`暂不支持直接打开${APPROVAL_RESOURCE_LABELS[row.resourceType] || row.resourceLabel}详情`)
+      return
+    }
+
+    setFocusTaskId(row.taskId || row.resourceId)
+    router.push(targetPath)
+  }
+
+  const resolveNextApprovalTarget = async (row: ApprovalItem) => {
+    try {
+      const params = new URLSearchParams({ tab })
+      if (resourceType) params.set('resourceType', resourceType)
+      if (keyword) params.set('keyword', keyword)
+      params.set('page', String(page))
+      params.set('pageSize', String(APPROVAL_PAGE_SIZE))
+      if (row.taskId) params.set('focusTaskId', row.taskId)
+      params.set('focusResourceId', row.resourceId)
+      const res = await fetch(`/api/approval?${params.toString()}`, { credentials: 'include' })
+      const json = await res.json()
+      return json.success ? json.data?.navigation?.next || null : null
+    } catch {
+      return null
+    }
+  }
+
+  const refreshAfterAction = async (row: ApprovalItem, nextItem?: {
+    resourceType?: string
+    resourceId?: string
+    taskId?: string
+    page?: number
+  } | null) => {
+    const target = nextItem ?? await resolveNextApprovalTarget(row)
+    const nextPage = target?.page || page
+    const nextFocusTaskId = target?.taskId || target?.resourceId || ''
+    setPage(nextPage)
+    setFocusTaskId(nextFocusTaskId)
+    await load(tab, resourceType, keyword, nextPage, nextFocusTaskId)
   }
 
   // 审批通过
   const handleApprove = async (row: ApprovalItem) => {
     setActionLoading(true)
     try {
+      const nextItem = await resolveNextApprovalTarget(row)
       const res = await fetch(`/api/${row.resourceType}/${row.resourceId}/approve`, {
         method: 'POST', credentials: 'include',
       })
       const json = await res.json()
-      if (json.success) { message.success('审批通过'); load() }
-      else message.error(json.error || '操作失败')
-    } catch { message.error('网络错误') }
+      if (json.success) {
+        message.success(`${getApprovalSuccessMessage('approve')}，${getApprovalBatchActionHint(Boolean(nextItem))}`)
+        await refreshAfterAction(row, nextItem)
+      }
+      else message.error(json.error || getApprovalErrorMessage('approve'))
+    } catch { message.error(`${getApprovalErrorMessage('approve')}，请检查网络连接`) }
     finally { setActionLoading(false) }
   }
 
@@ -283,6 +392,7 @@ export default function ApprovalCenterPage() {
     if (!rejectTarget) return
     setActionLoading(true)
     try {
+      const nextItem = await resolveNextApprovalTarget(rejectTarget)
       const res = await fetch(`/api/${rejectTarget.resourceType}/${rejectTarget.resourceId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -290,9 +400,14 @@ export default function ApprovalCenterPage() {
         body: JSON.stringify({ reason: rejectReason }),
       })
       const json = await res.json()
-      if (json.success) { message.success('已驳回'); setRejectTarget(null); setRejectReason(''); load() }
-      else message.error(json.error || '操作失败')
-    } catch { message.error('网络错误') }
+      if (json.success) {
+        message.success(`${getApprovalSuccessMessage('reject')}，${getApprovalBatchActionHint(Boolean(nextItem))}`)
+        setRejectTarget(null)
+        setRejectReason('')
+        await refreshAfterAction(rejectTarget, nextItem)
+      }
+      else message.error(json.error || getApprovalErrorMessage('reject'))
+    } catch { message.error(`${getApprovalErrorMessage('reject')}，请检查网络连接`) }
     finally { setActionLoading(false) }
   }
 
@@ -304,20 +419,30 @@ export default function ApprovalCenterPage() {
       okText: '确认撤回', cancelText: '取消', okButtonProps: { danger: true },
       onOk: async () => {
         try {
+          const nextItem = await resolveNextApprovalTarget(row)
           const res = await fetch(`/api/${row.resourceType}/${row.resourceId}/cancel`, {
             method: 'POST', credentials: 'include',
           })
           const json = await res.json()
-          if (json.success) { message.success('已撤回'); load() }
-          else message.error(json.error || '操作失败')
-        } catch { message.error('网络错误') }
+          if (json.success) {
+            message.success(`${getApprovalSuccessMessage('cancel')}，${getApprovalBatchActionHint(Boolean(nextItem))}`)
+            await refreshAfterAction(row, nextItem)
+          }
+          else message.error(json.error || getApprovalErrorMessage('cancel'))
+        } catch { message.error(`${getApprovalErrorMessage('cancel')}，请检查网络连接`) }
       },
     })
   }
 
-  const columns = buildColumns(tab, router, handleApprove, (row) => setRejectTarget(row), handleRevoke)
+  const columns = buildColumns(tab, handleView, handleApprove, (row) => setRejectTarget(row), handleRevoke)
 
-  const pendingCount = tab === 'pending' ? items.length : 0
+  const pendingCount = tab === 'pending' ? total : 0
+  const approvalSummary = buildApprovalFilterSummary({
+    approvalTab: tab,
+    approvalResourceType: resourceType || undefined,
+    approvalKeyword: keyword || undefined,
+    approvalPage: page,
+  })
 
   const tabItems = [
     {
@@ -342,7 +467,7 @@ export default function ApprovalCenterPage() {
       {/* Tabs */}
       <Tabs
         activeKey={tab}
-        onChange={(k) => { setTab(k as TabKey); setItems([]) }}
+        onChange={(k) => { setTab(k as TabKey); setItems([]); setPage(1); setFocusTaskId(''); setNavigation(null) }}
         items={tabItems.map((t) => ({
           key: t.key,
           label: t.label,
@@ -363,14 +488,33 @@ export default function ApprovalCenterPage() {
                 dataSource={items}
                 loading={loading}
                 size="small"
-                pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
+                pagination={{
+                  current: page,
+                  pageSize: APPROVAL_PAGE_SIZE,
+                  total,
+                  showTotal: (t) => `共 ${t} 条`,
+                  showSizeChanger: false,
+                  onChange: (nextPage) => setPage(nextPage),
+                }}
                 scroll={{ x: 700 }}
-                locale={{ emptyText: tab === 'cc' ? '抄送功能即将开放' : '暂无数据' }}
+                locale={{ emptyText: tab === 'cc' ? '抄送功能即将开放' : tab === 'pending' ? (keyword || resourceType ? '当前筛选结果暂无待处理审批' : '当前暂无待处理审批') : (keyword || resourceType ? '当前筛选结果暂无审批记录' : '当前暂无审批记录') }}
                 rowClassName={(row) => {
-                  if (tab === 'pending' && diffDays(row.startedAt) >= 3) return 'approval-row-urgent'
-                  return ''
+                  const classes: string[] = []
+                  if (tab === 'pending' && diffDays(row.startedAt) >= 3) classes.push('approval-row-urgent')
+                  if (focusTaskId && (row.taskId === focusTaskId || row.resourceId === focusTaskId)) classes.push('approval-row-focused')
+                  return classes.join(' ')
                 }}
               />
+              <div style={{ marginTop: 8, color: '#8c8c8c', fontSize: 12 }}>
+                {getApprovalBatchListHint({
+                  summary: approvalSummary,
+                  page,
+                  pageItemCount: items.length,
+                  total,
+                  position: navigation?.position,
+                  hasNext: Boolean(navigation?.next),
+                })}
+              </div>
             </div>
           ),
         }))}
@@ -399,8 +543,9 @@ export default function ApprovalCenterPage() {
       <style dangerouslySetInnerHTML={{ __html: `
         .approval-row-urgent td { background: #fff7e6 !important; }
         .approval-row-urgent:hover td { background: #fff1d6 !important; }
+        .approval-row-focused td { background: #e6f4ff !important; }
+        .approval-row-focused:hover td { background: #d6edff !important; }
       ` }} />
     </div>
   )
 }
-

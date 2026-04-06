@@ -22,6 +22,9 @@ export interface ExportFilter {
   resourceType: ResourceType
   regionId?: string
   projectId?: string
+  contractId?: string
+  keyword?: string
+  status?: string
   approvalStatus?: string
   startDate?: string
   endDate?: string
@@ -83,7 +86,7 @@ async function exportConstructionApprovals(f: ExportFilter) {
       contract: { select: { code: true, name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }],
   })
   return rows.map((r) => {
     let formData: Record<string, unknown> = {}
@@ -117,10 +120,19 @@ async function exportProjectContracts(f: ExportFilter) {
   const where: any = {}
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
+  if (f.status && f.status !== 'ALL') where.status = f.status
+  if (f.keyword) {
+    where.OR = [
+      { code: { contains: f.keyword } },
+      { name: { contains: f.keyword } },
+      { project: { name: { contains: f.keyword } } },
+      { customer: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.signDate = {}
+    if (f.startDate) where.signDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.signDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.projectContract.findMany({
     where,
@@ -129,7 +141,7 @@ async function exportProjectContracts(f: ExportFilter) {
       customer: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -140,12 +152,21 @@ async function exportProjectContracts(f: ExportFilter) {
     项目名称: r.project.name,
     客户名称: r.customer.name,
     合同金额: fmtDecimal(r.contractAmount),
-    变更后金额: fmtDecimal(r.changedAmount),
+    变更金额: fmtDecimal(r.changedAmount),
     应收金额: fmtDecimal(r.receivableAmount),
     已收金额: fmtDecimal(r.receivedAmount),
     未收金额: fmtDecimal(r.unreceivedAmount),
-    状态: r.status,
+    合同状态: r.status,
     签订日期: fmtDate(r.signDate),
+    履约开始: fmtDate(r.startDate),
+    履约结束: fmtDate(r.endDate),
+    合同类型: r.contractType ?? '',
+    收款方式: r.paymentMethod ?? '',
+    是否质保: r.hasRetention ? '是' : '否',
+    质保比例: fmtDecimal(r.retentionRate),
+    质保金额: fmtDecimal(r.retentionAmount),
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -154,18 +175,44 @@ async function exportProjectContracts(f: ExportFilter) {
 async function exportContractReceipts(f: ExportFilter) {
   const where: any = {}
   if (f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.contract = { ...(where.contract || {}), projectId: f.projectId }
+  if (f.contractId) where.contractId = f.contractId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.contract = {
+      ...(where.contract || {}),
+      OR: [
+        { code: { contains: f.keyword } },
+        { name: { contains: f.keyword } },
+        { project: { name: { contains: f.keyword } } },
+        { project: { customer: { name: { contains: f.keyword } } } },
+      ],
+    }
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.receiptDate = {}
+    if (f.startDate) where.receiptDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.receiptDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.contractReceipt.findMany({
     where,
     include: {
-      contract: { select: { code: true, name: true, project: { select: { name: true, code: true } } } },
+      contract: {
+        select: {
+          code: true,
+          name: true,
+          project: {
+            select: {
+              name: true,
+              code: true,
+              customer: { select: { name: true } },
+            },
+          },
+        },
+      },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -174,10 +221,14 @@ async function exportContractReceipts(f: ExportFilter) {
     合同名称: r.contract.name,
     项目编号: r.contract.project.code,
     项目名称: r.contract.project.name,
+    客户名称: r.contract.project.customer.name,
     收款金额: fmtDecimal(r.receiptAmount),
     收款日期: fmtDate(r.receiptDate),
     收款方式: r.receiptMethod ?? '',
+    收款编号: r.receiptNumber ?? '',
     收款状态: r.status,
+    审批状态: r.approvalStatus,
+    附件: r.attachmentUrl ?? '',
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -189,19 +240,29 @@ async function exportProcurementContracts(f: ExportFilter) {
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { code: { contains: f.keyword } },
+      { name: { contains: f.keyword } },
+      { project: { name: { contains: f.keyword } } },
+      { construction: { name: { contains: f.keyword } } },
+      { supplier: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.signDate = {}
+    if (f.startDate) where.signDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.signDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.procurementContract.findMany({
     where,
     include: {
       project: { select: { name: true, code: true } },
+      construction: { select: { name: true } },
       supplier: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -210,14 +271,21 @@ async function exportProcurementContracts(f: ExportFilter) {
     区域: r.region?.name ?? '',
     项目编号: r.project.code,
     项目名称: r.project.name,
+    施工立项: r.construction.name,
     供应商: r.supplier.name,
     合同金额: fmtDecimal(r.contractAmount),
+    变更金额: fmtDecimal(r.changedAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
     未付金额: fmtDecimal(r.unpaidAmount),
-    状态: r.status,
+    合同状态: r.status,
     审批状态: r.approvalStatus,
     签订日期: fmtDate(r.signDate),
+    开始日期: fmtDate(r.startDate),
+    结束日期: fmtDate(r.endDate),
+    物资类别: r.materialCategory ?? '',
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -227,20 +295,30 @@ async function exportProcurementPayments(f: ExportFilter) {
   const where: any = {}
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
+  if (f.contractId) where.contractId = f.contractId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { paymentNumber: { contains: f.keyword } },
+      { contract: { code: { contains: f.keyword } } },
+      { contract: { name: { contains: f.keyword } } },
+      { project: { name: { contains: f.keyword } } },
+      { contract: { supplier: { name: { contains: f.keyword } } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.paymentDate = {}
+    if (f.startDate) where.paymentDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.paymentDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.procurementPayment.findMany({
     where,
     include: {
       project: { select: { name: true, code: true } },
-      contract: { select: { code: true, name: true } },
+      contract: { select: { code: true, name: true, supplier: { select: { name: true } } } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -249,10 +327,12 @@ async function exportProcurementPayments(f: ExportFilter) {
     项目名称: r.project.name,
     合同编号: r.contract.code,
     合同名称: r.contract.name,
+    供应商: r.contract.supplier.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     付款方式: r.paymentMethod ?? '',
-    状态: r.status,
+    付款单号: r.paymentNumber ?? '',
+    付款状态: r.status,
     审批状态: r.approvalStatus,
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
@@ -265,19 +345,29 @@ async function exportLaborContracts(f: ExportFilter) {
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { code: { contains: f.keyword } },
+      { name: { contains: f.keyword } },
+      { project: { name: { contains: f.keyword } } },
+      { construction: { name: { contains: f.keyword } } },
+      { worker: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.signDate = {}
+    if (f.startDate) where.signDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.signDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.laborContract.findMany({
     where,
     include: {
       project: { select: { name: true, code: true } },
+      construction: { select: { name: true } },
       worker: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -286,14 +376,21 @@ async function exportLaborContracts(f: ExportFilter) {
     区域: r.region?.name ?? '',
     项目编号: r.project.code,
     项目名称: r.project.name,
-    劳务人员: r.worker.name,
+    施工立项: r.construction.name,
+    劳务班组: r.worker.name,
     合同金额: fmtDecimal(r.contractAmount),
+    变更金额: fmtDecimal(r.changedAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
     未付金额: fmtDecimal(r.unpaidAmount),
-    状态: r.status,
+    合同状态: r.status,
     审批状态: r.approvalStatus,
     签订日期: fmtDate(r.signDate),
+    开始日期: fmtDate(r.startDate),
+    结束日期: fmtDate(r.endDate),
+    劳务类型: r.laborType ?? '',
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -303,11 +400,21 @@ async function exportLaborPayments(f: ExportFilter) {
   const where: any = {}
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
+  if (f.contractId) where.contractId = f.contractId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { paymentNumber: { contains: f.keyword } },
+      { contract: { code: { contains: f.keyword } } },
+      { contract: { name: { contains: f.keyword } } },
+      { project: { name: { contains: f.keyword } } },
+      { worker: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.paymentDate = {}
+    if (f.startDate) where.paymentDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.paymentDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.laborPayment.findMany({
     where,
@@ -317,7 +424,7 @@ async function exportLaborPayments(f: ExportFilter) {
       worker: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -326,10 +433,12 @@ async function exportLaborPayments(f: ExportFilter) {
     项目名称: r.project.name,
     合同编号: r.contract.code,
     合同名称: r.contract.name,
-    劳务人员: r.worker.name,
+    劳务班组: r.worker.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
-    状态: r.status,
+    付款方式: r.paymentMethod ?? '',
+    付款单号: r.paymentNumber ?? '',
+    付款状态: r.status,
     审批状态: r.approvalStatus,
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
@@ -342,19 +451,29 @@ async function exportSubcontractContracts(f: ExportFilter) {
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { code: { contains: f.keyword } },
+      { name: { contains: f.keyword } },
+      { project: { name: { contains: f.keyword } } },
+      { construction: { name: { contains: f.keyword } } },
+      { vendor: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.signDate = {}
+    if (f.startDate) where.signDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.signDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.subcontractContract.findMany({
     where,
     include: {
       project: { select: { name: true, code: true } },
+      construction: { select: { name: true } },
       vendor: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -363,14 +482,21 @@ async function exportSubcontractContracts(f: ExportFilter) {
     区域: r.region?.name ?? '',
     项目编号: r.project.code,
     项目名称: r.project.name,
+    施工立项: r.construction.name,
     分包单位: r.vendor.name,
     合同金额: fmtDecimal(r.contractAmount),
+    变更金额: fmtDecimal(r.changedAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
     未付金额: fmtDecimal(r.unpaidAmount),
-    状态: r.status,
+    合同状态: r.status,
     审批状态: r.approvalStatus,
     签订日期: fmtDate(r.signDate),
+    开始日期: fmtDate(r.startDate),
+    结束日期: fmtDate(r.endDate),
+    分包类型: r.subcontractType ?? '',
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -380,11 +506,21 @@ async function exportSubcontractPayments(f: ExportFilter) {
   const where: any = {}
   if (f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
+  if (f.contractId) where.contractId = f.contractId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
+  if (f.keyword) {
+    where.OR = [
+      { paymentNumber: { contains: f.keyword } },
+      { contract: { code: { contains: f.keyword } } },
+      { contract: { name: { contains: f.keyword } } },
+      { project: { name: { contains: f.keyword } } },
+      { vendor: { name: { contains: f.keyword } } },
+    ]
+  }
   if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+    where.paymentDate = {}
+    if (f.startDate) where.paymentDate.gte = new Date(`${f.startDate}T00:00:00.000Z`)
+    if (f.endDate) where.paymentDate.lte = new Date(`${f.endDate}T23:59:59.999Z`)
   }
   const rows = await db.subcontractPayment.findMany({
     where,
@@ -394,7 +530,7 @@ async function exportSubcontractPayments(f: ExportFilter) {
       vendor: { select: { name: true } },
       region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -406,7 +542,9 @@ async function exportSubcontractPayments(f: ExportFilter) {
     分包单位: r.vendor.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
-    状态: r.status,
+    付款方式: r.paymentMethod ?? '',
+    付款单号: r.paymentNumber ?? '',
+    付款状态: r.status,
     审批状态: r.approvalStatus,
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
@@ -470,7 +608,3 @@ export async function exportToCsv(filter: ExportFilter): Promise<string> {
   const rows = await previewExportData(filter)
   return toCsv(rows)
 }
-
-
-
-

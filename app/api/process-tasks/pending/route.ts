@@ -15,13 +15,13 @@ export const GET = apiHandler(async (req) => {
   const resourceId = searchParams.get('resourceId')
 
   if (!resource || !resourceId) {
-    return success({ canApprove: false, task: null })
+    return success({ canApprove: false, canCancel: false, task: null })
   }
 
   // 获取当前用户（未登录时返回无权限）
   const authUser = await checkAuth()
   if (!authUser) {
-    return success({ canApprove: false, task: null })
+    return success({ canApprove: false, canCancel: false, task: null })
   }
 
   // 查询当前单据最新 PENDING 流程实例的第一个 PENDING task
@@ -40,7 +40,7 @@ export const GET = apiHandler(async (req) => {
   const task = instance?.tasks[0] ?? null
 
   if (!task) {
-    return success({ canApprove: false, task: null })
+    return success({ canApprove: false, canCancel: false, task: null })
   }
 
   // 判断当前用户是否是该 task 的审批人
@@ -57,6 +57,7 @@ export const GET = apiHandler(async (req) => {
 
   return success({
     canApprove,
+    canCancel: instance?.submitterUserId === authUser.userid,
     task: {
       id: task.id,
       approverType: task.approverType,

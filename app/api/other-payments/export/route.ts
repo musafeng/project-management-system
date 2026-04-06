@@ -96,3 +96,4 @@ export const { GET } = apiHandlerWithPermissionAndLog({
 }, { resource: 'other-payments' })
 
 
+

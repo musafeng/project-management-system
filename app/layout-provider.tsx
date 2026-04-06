@@ -32,6 +32,7 @@ interface MenuItem {
   icon?: React.ReactNode
   children?: MenuItem[]
   disabled?: boolean
+  adminOnly?: boolean
 }
 
 const MENU_ITEMS: MenuItem[] = [
@@ -46,13 +47,21 @@ const MENU_ITEMS: MenuItem[] = [
     icon: <AuditOutlined />,
   },
   {
+    key: 'project-mgmt',
+    label: '项目管理',
+    icon: <ProjectOutlined />,
+    children: [
+      { key: '/projects', label: '项目台账' },
+    ],
+  },
+  {
     key: 'income',
     label: '收入管理',
     icon: <DollarOutlined />,
     children: [
-      { key: '/projects', label: '项目台账' },
       { key: '/project-contracts', label: '销售合同' },
       { key: '/contract-receipts', label: '收款记录' },
+      { key: '/other-receipts', label: '其他收款' },
     ],
   },
   {
@@ -60,38 +69,40 @@ const MENU_ITEMS: MenuItem[] = [
     label: '成本管理',
     icon: <FileTextOutlined />,
     children: [
-      { key: '/construction-approvals', label: '施工立项' },
-      { key: '/payment-apply', label: '付款申请' },
       { key: '/procurement-contracts', label: '采购合同' },
       { key: '/procurement-payments', label: '采购付款' },
       { key: '/labor-contracts', label: '劳务合同' },
       { key: '/labor-payments', label: '劳务付款' },
       { key: '/subcontract-contracts', label: '分包合同' },
       { key: '/subcontract-payments', label: '分包付款' },
+      { key: '/management-expenses', label: '管理费用' },
+      { key: '/sales-expenses', label: '销售费用' },
+      { key: '/petty-cashes', label: '备用金' },
+      { key: '/other-payments', label: '其他付款' },
     ],
   },
   {
-    key: 'master',
-    label: '基础档案',
-    icon: <ProjectOutlined />,
+    key: 'base-data',
+    label: '基础资料',
+    icon: <UserOutlined />,
     children: [
       { key: '/customers', label: '客户档案' },
       { key: '/suppliers', label: '供应商档案' },
       { key: '/labor-workers', label: '劳务人员' },
+      { key: '/system-users', label: '用户管理', adminOnly: true },
+      { key: '/org-units', label: '组织管理', adminOnly: true },
+      { key: '/regions', label: '区域管理', adminOnly: true },
     ],
   },
   {
-    key: 'system-mgmt',
-    label: '系统管理',
+    key: 'system-settings',
+    label: '系统设置',
     icon: <SettingOutlined />,
     children: [
-      { key: '/action-logs', label: '操作日志' },
-      { key: '/system-users', label: '用户管理' },
-      { key: '/regions', label: '区域管理' },
-      { key: '/org-units', label: '组织管理' },
       { key: '/process-definitions', label: '审批流程配置' },
       { key: '/form-definitions', label: '表单配置管理' },
       { key: '/data-exports', label: '数据下载中心' },
+      { key: '/action-logs', label: '操作日志' },
     ],
   },
 ]
@@ -107,12 +118,13 @@ function checkIsSystemManager(user: AuthUser | null): boolean {
 }
 
 /** 系统管理分组 key，其下子菜单仅系统管理员可见 */
-const ADMIN_ONLY_GROUP = 'system-mgmt'
+const ADMIN_ONLY_GROUP = 'system-settings'
 
 function filterMenuItemsByRole(items: MenuItem[], isSystemMgr: boolean): MenuItem[] {
   return items
     .filter((item) => {
       if (item.key === ADMIN_ONLY_GROUP) return isSystemMgr
+      if (item.adminOnly) return isSystemMgr
       return true
     })
     .map((item) => ({
@@ -155,8 +167,8 @@ function getOpenKeys(pathname: string): string[] {
       }
     }
   }
-  // 默认展开收入管理和成本管理
-  if (keys.length === 0) return ['income', 'cost']
+  // 默认展开项目管理、收入管理和成本管理
+  if (keys.length === 0) return ['project-mgmt', 'income', 'cost']
   return keys
 }
 

@@ -2,17 +2,23 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { getCurrentRegionId } from '@/lib/region'
+import { parsePaginationParams } from '@/lib/list-pagination'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/subcontract-payments
    * 获取分包付款列表
-   * 支持参数：contractId（可选）、projectId（可选）
+   * 支持参数：contractId、projectId、keyword、approvalStatus、startDate、endDate
    */
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const contractId = searchParams.get('contractId')
     const projectId = searchParams.get('projectId')
+    const keyword = searchParams.get('keyword')
+    const approvalStatus = searchParams.get('approvalStatus')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const pagination = parsePaginationParams(searchParams)
 
     const regionId = await getCurrentRegionId()
     const where: any = {}
@@ -27,44 +33,122 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       where.projectId = projectId
     }
 
-    const payments = await db.subcontractPayment.findMany({
-      where,
-      select: {
-        id: true,
-        contractId: true,
-        contract: {
-          select: {
-            code: true,
-            project: {
-              select: { name: true },
-            },
-            vendor: {
-              select: { name: true },
+    if (approvalStatus && approvalStatus !== 'ALL') {
+      where.approvalStatus = approvalStatus
+    }
+
+    if (keyword) {
+      where.OR = [
+        { paymentNumber: { contains: keyword } },
+        { contract: { code: { contains: keyword } } },
+        { contract: { name: { contains: keyword } } },
+        { contract: { project: { name: { contains: keyword } } } },
+        { contract: { vendor: { name: { contains: keyword } } } },
+      ]
+    }
+
+    if (startDate || endDate) {
+      where.paymentDate = {}
+      if (startDate) where.paymentDate.gte = new Date(`${startDate}T00:00:00.000Z`)
+      if (endDate) where.paymentDate.lte = new Date(`${endDate}T23:59:59.999Z`)
+    }
+
+    const [total, paymentSummary, relatedContractIds, payments] = await Promise.all([
+      pagination.paginated ? db.subcontractPayment.count({ where }) : Promise.resolve(0),
+      pagination.paginated
+        ? db.subcontractPayment.aggregate({
+            where,
+            _sum: { paymentAmount: true },
+          })
+        : Promise.resolve(null),
+      pagination.paginated
+        ? db.subcontractPayment.findMany({
+            where,
+            distinct: ['contractId'],
+            select: { contractId: true },
+          })
+        : Promise.resolve([]),
+      db.subcontractPayment.findMany({
+        where,
+        select: {
+          id: true,
+          contractId: true,
+          contract: {
+            select: {
+              code: true,
+              name: true,
+              project: {
+                select: { name: true },
+              },
+              vendor: {
+                select: { name: true },
+              },
             },
           },
+          paymentAmount: true,
+          paymentDate: true,
+          paymentMethod: true,
+          paymentNumber: true,
+          status: true,
+          approvalStatus: true,
+          remark: true,
+          createdAt: true,
         },
-        paymentAmount: true,
-        paymentDate: true,
-        approvalStatus: true,
-        remark: true,
-        createdAt: true,
-      },
-      orderBy: { paymentDate: 'desc' },
-    })
+        orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        ...(pagination.paginated ? { skip: pagination.skip, take: pagination.take } : {}),
+      }),
+    ])
+
+    const relatedContractSummary =
+      pagination.paginated && relatedContractIds.length > 0
+        ? await db.subcontractContract.aggregate({
+            where: { id: { in: relatedContractIds.map((item) => item.contractId) } },
+            _sum: {
+              payableAmount: true,
+              paidAmount: true,
+              unpaidAmount: true,
+            },
+          })
+        : null
 
     // 转换返回格式
     type PaymentItem = (typeof payments)[number]
     const result = payments.map((payment: PaymentItem) => ({
       id: payment.id,
+      contractId: payment.contractId,
       contractCode: payment.contract.code,
+      contractName: payment.contract.name,
       projectName: payment.contract.project.name,
       subcontractVendorName: payment.contract.vendor.name,
       amount: payment.paymentAmount,
       paymentDate: payment.paymentDate,
+      paymentMethod: payment.paymentMethod,
+      paymentNumber: payment.paymentNumber,
+      status: payment.status,
       approvalStatus: payment.approvalStatus,
       remark: payment.remark,
       createdAt: payment.createdAt,
     }))
+
+    if (pagination.paginated) {
+      const payableAmountTotal = Number(relatedContractSummary?._sum.payableAmount || 0)
+      const paidAmountTotal = Number(relatedContractSummary?._sum.paidAmount || 0)
+      return success({
+        items: result,
+        total,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        summary: {
+          paymentAmountTotal: Number(paymentSummary?._sum.paymentAmount || 0),
+          relatedPayableAmountTotal: payableAmountTotal,
+          relatedPaidAmountTotal: paidAmountTotal,
+          relatedUnpaidAmountTotal: Number(relatedContractSummary?._sum.unpaidAmount || 0),
+          paymentProgress: payableAmountTotal > 0 ? (paidAmountTotal / payableAmountTotal) * 100 : 0,
+          relatedContractCount: relatedContractIds.length,
+          resultCount: total,
+        },
+      })
+    }
 
     return success(result)
   },
@@ -88,6 +172,15 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     if (body.amount <= 0) {
       throw new BadRequestError('付款金额必须大于 0')
+    }
+
+    if (!body.paymentDate || typeof body.paymentDate !== 'string') {
+      throw new BadRequestError('付款日期为必填项')
+    }
+
+    const paymentDate = new Date(body.paymentDate)
+    if (Number.isNaN(paymentDate.getTime())) {
+      throw new BadRequestError('付款日期格式不正确')
     }
 
     // 验证合同是否存在
@@ -114,7 +207,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       contractId: body.contractId,
       vendorId: contract.vendorId,
       paymentAmount: body.amount,
-      paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
+      paymentDate,
+      paymentMethod: body.paymentMethod?.trim() || null,
+      paymentNumber: body.paymentNumber?.trim() || null,
       status: 'PAID',
       remark: body.remark?.trim() || null,
       regionId: regionId ?? undefined,
@@ -127,6 +222,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         contract: {
           select: {
             code: true,
+            name: true,
             project: {
               select: { name: true },
             },
@@ -137,6 +233,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         },
         paymentAmount: true,
         paymentDate: true,
+        paymentMethod: true,
+        paymentNumber: true,
         approvalStatus: true,
         remark: true,
         createdAt: true,
@@ -159,11 +257,15 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     return success({
       id: payment.id,
+      contractId: payment.contractId,
       contractCode: payment.contract.code,
+      contractName: payment.contract.name,
       projectName: payment.contract.project.name,
       subcontractVendorName: payment.contract.vendor.name,
       amount: payment.paymentAmount,
       paymentDate: payment.paymentDate,
+      paymentMethod: payment.paymentMethod,
+      paymentNumber: payment.paymentNumber,
       approvalStatus: payment.approvalStatus,
       remark: payment.remark,
       createdAt: payment.createdAt,
@@ -173,4 +275,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'subcontract-payments',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

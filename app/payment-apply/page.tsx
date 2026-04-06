@@ -592,10 +592,15 @@ export default function PaymentApplyPage() {
             labor: 'labor-payments',
             subcontract: 'subcontract-payments',
           }[selectedType]
-          await fetch(`/api/${resourceType}/${j.data.id}/submit`, {
+          const submitRes = await fetch(`/api/${resourceType}/${j.data.id}/submit`, {
             method: 'POST',
             credentials: 'include',
-          }).catch(() => {}) // 审批流程提交失败不阻断主流程
+          })
+          const submitJson = await submitRes.json().catch(() => null)
+          if (!submitRes.ok || !submitJson?.success) {
+            message.error(submitJson?.error || '付款申请已创建，但提交审批失败，请联系管理员在对应付款台账中继续处理')
+            return
+          }
         }
         setDone(true)
       } else {

@@ -2,17 +2,22 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { getCurrentRegionId } from '@/lib/region'
+import { parsePaginationParams } from '@/lib/list-pagination'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/project-contracts
    * 获取合同列表
-   * 支持参数：projectId（按项目过滤）、keyword（按合同名称搜索）
+   * 支持参数：projectId、keyword、status、startDate、endDate
    */
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
     const keyword = searchParams.get('keyword')
+    const status = searchParams.get('status')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const pagination = parsePaginationParams(searchParams)
 
     const regionId = await getCurrentRegionId()
     const where: any = {}
@@ -23,41 +28,69 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       where.projectId = projectId
     }
 
+    if (status && status !== 'ALL') {
+      where.status = status
+    }
+
     if (keyword) {
       where.OR = [
         { name: { contains: keyword } },
         { code: { contains: keyword } },
+        { project: { name: { contains: keyword } } },
+        { customer: { name: { contains: keyword } } },
       ]
     }
 
-    const contracts = await db.projectContract.findMany({
-      where,
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        projectId: true,
-        project: {
-          select: { name: true, customer: { select: { name: true } } },
+    if (startDate || endDate) {
+      where.signDate = {}
+      if (startDate) where.signDate.gte = new Date(`${startDate}T00:00:00.000Z`)
+      if (endDate) where.signDate.lte = new Date(`${endDate}T23:59:59.999Z`)
+    }
+
+    const [total, summary, contracts] = await Promise.all([
+      pagination.paginated ? db.projectContract.count({ where }) : Promise.resolve(0),
+      pagination.paginated
+        ? db.projectContract.aggregate({
+            where,
+            _sum: {
+              contractAmount: true,
+              changedAmount: true,
+              receivableAmount: true,
+              receivedAmount: true,
+              unreceivedAmount: true,
+            },
+          })
+        : Promise.resolve(null),
+      db.projectContract.findMany({
+        where,
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          projectId: true,
+          project: {
+            select: { name: true, customer: { select: { name: true } } },
+          },
+          contractAmount: true,
+          changedAmount: true,
+          receivableAmount: true,
+          receivedAmount: true,
+          unreceivedAmount: true,
+          signDate: true,
+          startDate: true,
+          status: true,
+          contractType: true,
+          paymentMethod: true,
+          hasRetention: true,
+          retentionRate: true,
+          retentionAmount: true,
+          attachmentUrl: true,
+          createdAt: true,
         },
-        contractAmount: true,
-        changedAmount: true,
-        receivableAmount: true,
-        receivedAmount: true,
-        unreceivedAmount: true,
-        signDate: true,
-        startDate: true,
-        status: true,
-        contractType: true,
-        paymentMethod: true,
-        hasRetention: true,
-        retentionRate: true,
-        retentionAmount: true,
-        attachmentUrl: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+        orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        ...(pagination.paginated ? { skip: pagination.skip, take: pagination.take } : {}),
+      }),
+    ])
 
     // 转换返回格式
     type ContractItem = (typeof contracts)[number]
@@ -85,6 +118,26 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       createdAt: contract.createdAt,
     }))
 
+    if (pagination.paginated) {
+      const receivableAmountTotal = Number(summary?._sum.receivableAmount || 0)
+      const receivedAmountTotal = Number(summary?._sum.receivedAmount || 0)
+      return success({
+        items: result,
+        total,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        summary: {
+          contractAmountTotal: Number(summary?._sum.contractAmount || 0),
+          changedAmountTotal: Number(summary?._sum.changedAmount || 0),
+          receivableAmountTotal,
+          receivedAmountTotal,
+          unreceivedAmountTotal: Number(summary?._sum.unreceivedAmount || 0),
+          receiptProgress: receivableAmountTotal > 0 ? (receivedAmountTotal / receivableAmountTotal) * 100 : 0,
+          resultCount: total,
+        },
+      })
+    }
+
     return success(result)
   },
 
@@ -106,6 +159,27 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     if (body.contractAmount <= 0) {
       throw new BadRequestError('合同金额必须大于 0')
+    }
+
+    if (!body.signDate || typeof body.signDate !== 'string') {
+      throw new BadRequestError('签订日期为必填项')
+    }
+
+    const signDate = new Date(body.signDate)
+    if (Number.isNaN(signDate.getTime())) {
+      throw new BadRequestError('签订日期格式不正确')
+    }
+
+    const startDate = body.startDate ? new Date(body.startDate) : null
+    const endDate = body.endDate ? new Date(body.endDate) : null
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      throw new BadRequestError('履约开始日期格式不正确')
+    }
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      throw new BadRequestError('履约结束日期格式不正确')
+    }
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequestError('履约结束日期不能早于履约开始日期')
     }
 
     // 验证项目是否存在
@@ -133,9 +207,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       receivableAmount: body.contractAmount,
       receivedAmount: 0,
       unreceivedAmount: body.contractAmount,
-      signDate: body.signDate ? new Date(body.signDate) : null,
-      startDate: body.startDate ? new Date(body.startDate) : null,
-      status: 'DRAFT',
+      signDate,
+      startDate,
+      endDate,
+      status: body.status || 'DRAFT',
       contractType: body.contractType?.trim() || null,
       paymentMethod: body.paymentMethod?.trim() || null,
       hasRetention: body.hasRetention ?? false,
@@ -189,4 +264,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'project-contracts',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-
