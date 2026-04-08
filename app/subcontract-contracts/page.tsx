@@ -27,9 +27,10 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 interface SubcontractContract {
   id: string
   code: string
+  name: string
   projectName: string
   constructionName: string
-  subcontractVendorName: string
+  subcontractWorkerName: string
   contractAmount: number
   payableAmount: number
   paidAmount: number
@@ -45,11 +46,13 @@ interface SubcontractContract {
 interface SubcontractContractDetail extends SubcontractContract {
   projectId?: string
   constructionId?: string
-  vendorId?: string
+  workerId?: string
   changedAmount?: number
   status?: string
   startDate?: string | null
   endDate?: string | null
+  attachmentUrl?: string | null
+  subcontractType?: string | null
   remark?: string | null
   updatedAt?: string
 }
@@ -81,14 +84,16 @@ interface ConstructionApproval {
 }
 
 /**
- * 分包单位数据类型
+ * 分包人员数据类型
  */
-interface SubcontractVendor {
+interface SubcontractWorker {
   id: string
   code: string
   name: string
-  contact: string | null
   phone: string | null
+  idNumber?: string | null
+  bankAccount?: string | null
+  bankName?: string | null
   createdAt: string
 }
 
@@ -129,7 +134,7 @@ export default function SubcontractContractsPage() {
   const [contracts, setContracts] = useState<SubcontractContract[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [constructions, setConstructions] = useState<ConstructionApproval[]>([])
-  const [vendors, setVendors] = useState<SubcontractVendor[]>([])
+  const [vendors, setVendors] = useState<SubcontractWorker[]>([])
   const [loading, setLoading] = useState(true)
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [constructionsLoading, setConstructionsLoading] = useState(true)
@@ -140,6 +145,7 @@ export default function SubcontractContractsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+  const selectedProjectId = Form.useWatch('projectId', form)
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -188,21 +194,21 @@ export default function SubcontractContractsPage() {
   }
 
   /**
-   * 加载分包单位列表
+   * 加载分包人员列表
    */
   const loadVendors = async () => {
     try {
       setVendorsLoading(true)
-      const response = await fetch('/api/subcontract-vendors')
-      const result: ApiResponse<SubcontractVendor[]> = await response.json()
+      const response = await fetch('/api/labor-workers')
+      const result: ApiResponse<SubcontractWorker[]> = await response.json()
 
       if (result.success && result.data) {
         setVendors(result.data)
       } else {
-        console.error('加载分包单位列表失败:', result.error)
+        console.error('加载分包人员列表失败:', result.error)
       }
     } catch (err) {
-      console.error('加载分包单位列表失败:', err)
+      console.error('加载分包人员列表失败:', err)
     } finally {
       setVendorsLoading(false)
     }
@@ -228,6 +234,8 @@ export default function SubcontractContractsPage() {
           filtered = result.data.filter(
             (contract) =>
               contract.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+              contract.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+              contract.subcontractWorkerName.toLowerCase().includes(searchKeyword.toLowerCase()) ||
               contract.projectName.toLowerCase().includes(searchKeyword.toLowerCase())
           )
         }
@@ -291,11 +299,13 @@ export default function SubcontractContractsPage() {
       if (result.success && result.data) {
         setEditingId(id)
         form.setFieldsValue({
+          name: result.data.name,
           projectId: result.data.projectId,
           constructionId: result.data.constructionId,
-          subcontractVendorId: result.data.vendorId,
+          workerId: result.data.workerId,
           contractAmount: result.data.contractAmount,
           signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
+          attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
         })
         setIsModalVisible(true)
@@ -339,11 +349,13 @@ export default function SubcontractContractsPage() {
       const method = editingId ? 'PUT' : 'POST'
 
       const payload = {
+        name: values.name,
         projectId: values.projectId,
         constructionId: values.constructionId,
-        subcontractVendorId: values.subcontractVendorId,
+        workerId: values.workerId,
         contractAmount: values.contractAmount,
         signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -383,6 +395,12 @@ export default function SubcontractContractsPage() {
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
     },
     {
+      title: '合同名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
+    },
+    {
       title: '项目名称',
       dataIndex: 'projectName',
       key: 'projectName',
@@ -395,9 +413,9 @@ export default function SubcontractContractsPage() {
       width: 150,
     },
     {
-      title: '分包单位',
-      dataIndex: 'subcontractVendorName',
-      key: 'subcontractVendorName',
+      title: '分包人员',
+      dataIndex: 'subcontractWorkerName',
+      key: 'subcontractWorkerName',
       width: 130,
     },
     {
@@ -610,6 +628,14 @@ export default function SubcontractContractsPage() {
           style={{ marginTop: 20 }}
         >
           <Form.Item
+            label="合同名称"
+            name="name"
+            rules={[{ required: true, message: '请输入合同名称' }]}
+          >
+            <Input placeholder="请输入合同名称" />
+          </Form.Item>
+
+          <Form.Item
             label="项目"
             name="projectId"
             rules={[{ required: true, message: '请选择项目' }]}
@@ -632,20 +658,22 @@ export default function SubcontractContractsPage() {
             <Select
               placeholder="请选择施工立项"
               loading={constructionsLoading}
-              options={constructions.map((construction) => ({
-                label: construction.name,
-                value: construction.id,
-              }))}
+              options={constructions
+                .filter((construction) => !selectedProjectId || construction.projectId === selectedProjectId)
+                .map((construction) => ({
+                  label: construction.name,
+                  value: construction.id,
+                }))}
             />
           </Form.Item>
 
           <Form.Item
-            label="分包单位"
-            name="subcontractVendorId"
-            rules={[{ required: true, message: '请选择分包单位' }]}
+            label="分包人员"
+            name="workerId"
+            rules={[{ required: true, message: '请选择分包人员' }]}
           >
             <Select
-              placeholder="请选择分包单位"
+              placeholder="请选择分包人员"
               loading={vendorsLoading}
               options={vendors.map((vendor) => ({
                 label: vendor.name,
@@ -674,6 +702,10 @@ export default function SubcontractContractsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -682,4 +714,3 @@ export default function SubcontractContractsPage() {
     </ConfigProvider>
   )
 }
-

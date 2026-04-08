@@ -1,7 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { getCurrentRegionId } from '@/lib/region'
+import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -14,10 +14,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const projectId = searchParams.get('projectId')
     const keyword = searchParams.get('keyword')
 
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const where: any = {}
-
-    if (regionId) where.regionId = regionId
+    where.regionId = regionId
 
     if (projectId) {
       where.projectId = projectId
@@ -37,8 +36,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         code: true,
         name: true,
         projectId: true,
-        project: {
-          select: { name: true, customer: { select: { name: true } } },
+        Project: {
+          select: { name: true, Customer: { select: { name: true } } },
         },
         contractAmount: true,
         changedAmount: true,
@@ -66,8 +65,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       code: contract.code,
       name: contract.name,
       projectId: contract.projectId,
-      projectName: contract.project.name,
-      customerName: contract.project.customer.name,
+      projectName: contract.Project.name,
+      customerName: contract.Project.Customer.name,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
       receivableAmount: contract.receivableAmount,
@@ -109,10 +108,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 验证项目是否存在
-    const project = await db.project.findUnique({
-      where: { id: body.projectId },
-      select: { id: true, customerId: true },
-    })
+    const project = await assertProjectInCurrentRegion(body.projectId)
 
     if (!project) {
       throw new NotFoundError('项目不存在')
@@ -122,8 +118,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `CONTRACT${Date.now()}`
 
     // 创建合同
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const createData: Prisma.ProjectContractUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       code,
       name: body.name || `${code}`,
       projectId: body.projectId,
@@ -143,7 +140,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       retentionAmount: body.retentionAmount ?? null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
-      regionId: regionId ?? undefined,
+      regionId,
+      updatedAt: new Date(),
     }
     const contract = await db.projectContract.create({
       data: createData,
@@ -152,8 +150,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         code: true,
         name: true,
         projectId: true,
-        project: {
-          select: { name: true, customer: { select: { name: true } } },
+        Project: {
+          select: { name: true, Customer: { select: { name: true } } },
         },
         contractAmount: true,
         changedAmount: true,
@@ -172,8 +170,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       code: contract.code,
       name: contract.name,
       projectId: contract.projectId,
-      projectName: contract.project.name,
-      customerName: contract.project.customer.name,
+      projectName: contract.Project.name,
+      customerName: contract.Project.Customer.name,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
       receivableAmount: contract.receivableAmount,
@@ -189,4 +187,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'project-contracts',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

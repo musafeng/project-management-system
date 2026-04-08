@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,1147 +7,957 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// 枚举定义
-// ============================================================================
+model ActionLog {
+  id         String     @id
+  userId     String?
+  userName   String
+  userRole   String
+  action     ActionType
+  resource   String
+  resourceId String?
+  method     String
+  path       String
+  detail     String?
+  createdAt  DateTime   @default(now())
 
-enum ProjectStatus {
-  PLANNING // 规划中
-  APPROVED // 已批准
-  IN_PROGRESS // 进行中
-  SUSPENDED // 暂停
-  COMPLETED // 已完成
-  CANCELLED // 已取消
-}
-
-enum ContractStatus {
-  DRAFT // 草稿
-  PENDING // 待审批
-  APPROVED // 已批准
-  EXECUTING // 执行中
-  COMPLETED // 已完成
-  TERMINATED // 已终止
-  CANCELLED // 已取消
-}
-
-enum PaymentStatus {
-  UNPAID // 未付
-  PARTIAL // 部分付款
-  PAID // 已付
-  OVERPAID // 超付
-}
-
-enum ReceiptStatus {
-  UNRECEIVED // 未收
-  PARTIAL // 部分收款
-  RECEIVED // 已收
-  OVERRECEIVED // 超收
-}
-
-enum ChangeType {
-  INCREASE // 增加
-  DECREASE // 减少
-  ADJUSTMENT // 调整
-}
-
-enum ExpenseCategory {
-  MATERIAL // 材料费
-  LABOR // 劳务费
-  EQUIPMENT // 设备费
-  SUBCONTRACT // 分包费
-  MANAGEMENT // 管理费
-  OTHER // 其他
-}
-
-enum PettyCashStatus {
-  ISSUED // 已发放
-  RETURNED // 已退回
-  PARTIAL // 部分退回
-}
-
-enum SystemUserRole {
-  ADMIN // 系统管理员
-  FINANCE // 财务人员
-  PURCHASE // 采购人员
-  PROJECT_MANAGER // 项目经理
-  STAFF // 普通员工
-}
-
-enum ActionType {
-  CREATE // 创建
-  UPDATE // 更新
-  DELETE // 删除
-}
-
-// ============================================================================
-// 主数据表
-// ============================================================================
-
-/// 客户信息表 - 业务模块 1
-model Customer {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  contact     String?
-  phone       String?
-  email       String?
-  address     String?
-  taxId       String? // 税号
-  bankAccount String? // 银行账户
-  bankName    String? // 开户行
-  status      String   @default("active")
-  remark      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  projects         Project[]
-  projectContracts ProjectContract[]
-
-  @@index([code])
-  @@index([name])
-}
-
-/// 项目表 - 业务模块 2
-model Project {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  name       String
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  status    ProjectStatus @default(IN_PROGRESS)
-  startDate DateTime?
-  endDate   DateTime?
-  budget    Decimal       @db.Decimal(18, 2)
-
-  // 新增字段
-  location    String? // 项目地点
-  projectType String? // 项目类型：装修、广告、采购、设计、其他
-  bidMethod   String? // 招标方式：公开招标、阳光平台、不招标
-  area        Decimal? @db.Decimal(18, 2) // 项目面积
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  statusChanges         ProjectStatusChange[]
-  contracts             ProjectContract[]
-  constructionApprovals ConstructionApproval[]
-  procurementContracts  ProcurementContract[]
-  laborContracts        LaborContract[]
-  subcontractContracts  SubcontractContract[]
-
-  otherReceipts       OtherReceipt[]
-  otherPayments       OtherPayment[]
-  projectExpenses     ProjectExpense[]
-  managementExpenses  ManagementExpense[]
-  salesExpenses       SalesExpense[]
-  pettyCashes         PettyCash[]
-  procurementPayments ProcurementPayment[]
-  laborPayments       LaborPayment[]
-  subcontractPayments SubcontractPayment[]
-
-  @@index([customerId])
-  @@index([code])
-  @@index([status])
-}
-
-/// 项目状态变更记录 - 业务模块 3
-model ProjectStatusChange {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  fromStatus   ProjectStatus
-  toStatus     ProjectStatus
-  changeReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
   @@index([createdAt])
+  @@index([resource])
+  @@index([userId])
 }
 
-/// 供应商信息表 - 业务模块 10
-model Supplier {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  contact     String?
-  phone       String?
-  email       String?
-  address     String?
-  taxId       String?
-  bankAccount String?
-  bankName    String?
-  status      String   @default("active")
-  // 新增字段
-  attachmentUrl String? // 附件
-  remark      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model ConstructionApproval {
+  id                  String                @id
+  projectId           String
+  contractId          String
+  code                String                @unique
+  name                String
+  budget              Decimal               @db.Decimal(18, 2)
+  status              String                @default("active")
+  startDate           DateTime?
+  endDate             DateTime?
+  approvalStatus      String                @default("APPROVED")
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  rejectedAt          DateTime?
+  rejectedReason      String?
+  remark              String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  regionId            String?
+  formDataJson        String?
+  ProjectContract     ProjectContract       @relation(fields: [contractId], references: [id])
+  Project             Project               @relation(fields: [projectId], references: [id])
+  Region              Region?               @relation(fields: [regionId], references: [id])
+  LaborContract       LaborContract[]
+  ProcurementContract ProcurementContract[]
+  ProjectExpense      ProjectExpense[]
+  SubcontractContract SubcontractContract[]
 
-  procurementContracts ProcurementContract[]
-
+  @@index([approvalStatus])
   @@index([code])
-  @@index([name])
-}
-
-/// 劳务人员信息表 - 业务模块 11（个人/班组）
-model LaborWorker {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  idNumber    String? // 身份证号
-  phone       String?
-  address     String?
-  bankAccount String?
-  bankName    String?
-  status      String   @default("active")
-  // 新增字段
-  attachmentUrl String? // 附件
-  remark      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  laborContracts LaborContract[]
-  laborPayments  LaborPayment[]
-
-  @@index([code])
-  @@index([name])
-}
-
-/// 专业分包单位表 - 业务模块 11（分包方）
-model SubcontractVendor {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  contact     String?
-  phone       String?
-  email       String?
-  address     String?
-  taxId       String?
-  bankAccount String?
-  bankName    String?
-  status      String   @default("active")
-  remark      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  subcontractContracts SubcontractContract[]
-  subcontractPayments  SubcontractPayment[]
-
-  @@index([code])
-  @@index([name])
-}
-
-// ============================================================================
-// 合同相关表
-// ============================================================================
-
-/// 项目合同表 - 业务模块 4
-model ProjectContract {
-  id         String   @id @default(cuid())
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  code           String  @unique
-  name           String
-  contractAmount Decimal @db.Decimal(18, 2)
-  changedAmount  Decimal @default(0) @db.Decimal(18, 2) // 变更后金额
-
-  status    ContractStatus @default(DRAFT)
-  signDate  DateTime?
-  startDate DateTime?
-  endDate   DateTime?
-
-  // 新增字段
-  contractType    String? // 合同类型：固定总价、固定单价、可变总价、可变单价
-  paymentMethod   String? // 付款方式：按进度、按合同、其他
-  hasRetention    Boolean @default(false) // 有无质保金
-  retentionRate   Decimal? @db.Decimal(5, 2)  // 质保金比例（%）
-  retentionAmount Decimal? @db.Decimal(18, 2) // 质保金金额
-  attachmentUrl   String? // 合同附件
-
-  // 汇总字段（由业务逻辑维护）
-  receivableAmount Decimal @default(0) @db.Decimal(18, 2) // 应收
-  receivedAmount   Decimal @default(0) @db.Decimal(18, 2) // 已收
-  unreceivedAmount Decimal @default(0) @db.Decimal(18, 2) // 未收
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  changes               ProjectContractChange[]
-  receipts              ContractReceipt[]
-  constructionApprovals ConstructionApproval[]
-
-  @@index([projectId])
-  @@index([customerId])
-  @@index([code])
-  @@index([status])
-}
-
-/// 项目合同变更记录 - 业务模块 5
-model ProjectContractChange {
-  id         String          @id @default(cuid())
-  contractId String
-  contract   ProjectContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-
-  changeType      ChangeType
-  changeAmount    Decimal    @db.Decimal(18, 2)
-  changeReason    String?
-
-  // 新增字段
-  changeDate      DateTime?  // 变更日期
-  increaseAmount  Decimal?   @db.Decimal(18, 2) // 增项金额
-  originalAmount  Decimal?   @db.Decimal(18, 2) // 合同原金额
-  totalAmount     Decimal?   @db.Decimal(18, 2) // 合同总金额（变更后）
-  attachmentUrl   String?    // 附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
   @@index([contractId])
-  @@index([createdAt])
+  @@index([projectId])
 }
 
-/// 合同收款记录 - 业务模块 12
 model ContractReceipt {
-  id         String          @id @default(cuid())
-  contractId String
-  contract   ProjectContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?         @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  receiptAmount Decimal  @db.Decimal(18, 2)
-  receiptDate   DateTime
-  receiptMethod String? // 收款方式：转账、现金等
-  receiptNumber String? // 收据号
-
-  // 新增字段
-  deductionItems String? // 费用明细扣款 JSON，如 [{type:"税金",amount:100}]
-  attachmentUrl  String? // 附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  status    ReceiptStatus @default(UNRECEIVED)
-  remark    String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id              String          @id
+  contractId      String
+  receiptDate     DateTime
+  remark          String?
+  createdAt       DateTime        @default(now())
+  receiptAmount   Decimal         @db.Decimal(18, 2)
+  receiptMethod   String?
+  receiptNumber   String?
+  status          ReceiptStatus   @default(UNRECEIVED)
+  updatedAt       DateTime
+  regionId        String?
+  approvalStatus  String          @default("PENDING")
+  approvedAt      DateTime?
+  attachmentUrl   String?
+  deductionItems  String?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+  submittedAt     DateTime?
+  ProjectContract ProjectContract @relation(fields: [contractId], references: [id])
+  Region          Region?         @relation(fields: [regionId], references: [id])
 
   @@index([contractId])
   @@index([receiptDate])
 }
 
-/// 其他收款记录 - 业务模块 13
-model OtherReceipt {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+model Customer {
+  id              String            @id
+  name            String
+  contact         String?
+  phone           String?
+  email           String?
+  address         String?
+  remark          String?
+  createdAt       DateTime          @default(now())
+  bankAccount     String?
+  bankName        String?
+  code            String            @unique
+  status          String            @default("active")
+  taxId           String?
+  updatedAt       DateTime
+  Project         Project[]
+  ProjectContract ProjectContract[]
 
-  receiptType   String // 收款类型/收款事由
-  receiptAmount Decimal  @db.Decimal(18, 2)
-  receiptDate   DateTime
-  receiptMethod String?
-  receiptNumber String?
-
-  // 新增字段
-  attachmentUrl  String? // 附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([receiptDate])
+  @@index([code])
+  @@index([name])
 }
 
-// ============================================================================
-// 表单配置化引擎
-// ============================================================================
-
-/// 表单定义 - 每个业务资源类型对应一个表单定义
 model FormDefinition {
-  id        String   @id @default(cuid())
+  id        String      @id
   name      String
-  code      String   @unique // 如 construction-approvals
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  fields FormField[]
+  code      String      @unique
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime
+  FormField FormField[]
 
   @@index([code])
 }
 
-/// 表单字段 - 属于某个表单定义
 model FormField {
-  id     String         @id @default(cuid())
-  formId String
-  form   FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
-
-  label         String
-  fieldKey      String // 如 projectName
-  componentType String // input/number/date/select/textarea/table/file/cascadeSelect
-  required      Boolean @default(false)
-
-  optionsJson       String? // select 选项，JSON 格式
-  sortOrder         Int
-
-  // 扩展字段：联动与计算
-  dependsOn         String? // 依赖字段 key（用于显隐联动）
-  dependsValue      String? // 当依赖字段等于该值时显示
-  computeFormula    String? // 计算公式，如 "retentionRate * contractAmount / 100"
-  linkedTable       String? // 关联表名（如 suppliers、labor-workers）
-  linkedLabelField  String? // 关联表显示字段（如 name）
-  linkedValueField  String? // 关联表值字段（如 id）
-  linkedCopyFields  String? // 选择后自动带出的字段映射 JSON，如 [{"from":"bankAccount","to":"bankCard"}]
-  placeholder       String? // 字段提示文字
-  isReadonly        Boolean @default(false) // 是否只读
-  tableColumnsJson  String? // 当 componentType=table 时，子列配置 JSON
-
-  createdAt DateTime @default(now())
+  id               String         @id
+  formId           String
+  label            String
+  fieldKey         String
+  componentType    String
+  required         Boolean        @default(false)
+  optionsJson      String?
+  sortOrder        Int
+  createdAt        DateTime       @default(now())
+  computeFormula   String?
+  dependsOn        String?
+  dependsValue     String?
+  isReadonly       Boolean        @default(false)
+  linkedCopyFields String?
+  linkedLabelField String?
+  linkedTable      String?
+  linkedValueField String?
+  placeholder      String?
+  tableColumnsJson String?
+  FormDefinition   FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([formId])
   @@index([formId, sortOrder])
 }
 
-/// 施工立项表 - 业务模块 9
-model ConstructionApproval {
-  id         String          @id @default(cuid())
-  projectId  String
-  project    Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  contractId String
-  contract   ProjectContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?         @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  code   String  @unique
-  name   String
-  budget Decimal @db.Decimal(18, 2)
-
-  status    String    @default("active")
-  startDate DateTime?
-  endDate   DateTime?
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  // 动态表单数据（JSON 存储，兼容旧字段）
-  formDataJson String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  procurementContracts ProcurementContract[]
-  laborContracts       LaborContract[]
-  subcontractContracts SubcontractContract[]
-
-  @@index([projectId])
-  @@index([contractId])
-  @@index([code])
-  @@index([approvalStatus])
-}
-
-/// 采购合同表 - 业务模块 6
-model ProcurementContract {
-  id             String               @id @default(cuid())
-  projectId      String
-  project        Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  constructionId String
-  construction   ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
-  supplierId     String
-  supplier       Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  regionId       String?
-  region         Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  code             String  @unique
-  name             String
-  contractAmount   Decimal @db.Decimal(18, 2)
-  changedAmount    Decimal @default(0) @db.Decimal(18, 2)
-
-  // 新增字段
-  materialCategory String? // 材料类别：油工材料、木工材料、瓦工材料、水电材料、其他杂项
-  attachmentUrl    String? // 附件
-
-  status    ContractStatus @default(DRAFT)
-  signDate  DateTime?
-  startDate DateTime?
-  endDate   DateTime?
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  // 汇总字段
-  payableAmount Decimal @default(0) @db.Decimal(18, 2) // 应付
-  paidAmount    Decimal @default(0) @db.Decimal(18, 2) // 已付
-  unpaidAmount  Decimal @default(0) @db.Decimal(18, 2) // 未付
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  payments ProcurementPayment[]
-
-  @@index([projectId])
-  @@index([constructionId])
-  @@index([supplierId])
-  @@index([code])
-  @@index([status])
-}
-
-/// 采购付款记录 - 业务模块 14
-model ProcurementPayment {
-  id         String              @id @default(cuid())
-  projectId  String
-  project    Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  contractId String
-  contract   ProcurementContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?             @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  paymentAmount Decimal  @db.Decimal(18, 2)
-  paymentDate   DateTime
-  paymentMethod String? // 付款方式
-  paymentNumber String? // 付款单号
-
-  status PaymentStatus @default(UNPAID)
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([contractId])
-  @@index([paymentDate])
-  @@index([approvalStatus])
-}
-
-/// 劳务合同表 - 业务模块 7
 model LaborContract {
-  id             String               @id @default(cuid())
-  projectId      String
-  project        Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  constructionId String
-  construction   ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
-  workerId       String
-  worker         LaborWorker          @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  regionId       String?
-  region         Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  id                   String               @id
+  constructionId       String
+  name                 String
+  code                 String               @unique
+  signDate             DateTime?
+  remark               String?
+  createdAt            DateTime             @default(now())
+  approvalStatus       String               @default("APPROVED")
+  approvedAt           DateTime?
+  changedAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  contractAmount       Decimal              @db.Decimal(18, 2)
+  endDate              DateTime?
+  paidAmount           Decimal              @default(0) @db.Decimal(18, 2)
+  payableAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  projectId            String
+  rejectedAt           DateTime?
+  rejectedReason       String?
+  startDate            DateTime?
+  submittedAt          DateTime?
+  unpaidAmount         Decimal              @default(0) @db.Decimal(18, 2)
+  updatedAt            DateTime
+  workerId             String
+  status               ContractStatus       @default(DRAFT)
+  regionId             String?
+  attachmentUrl        String?
+  laborType            String?
+  ConstructionApproval ConstructionApproval @relation(fields: [constructionId], references: [id])
+  Project              Project              @relation(fields: [projectId], references: [id])
+  Region               Region?              @relation(fields: [regionId], references: [id])
+  LaborWorker          LaborWorker          @relation(fields: [workerId], references: [id])
+  LaborPayment         LaborPayment[]
 
-  code           String  @unique
-  name           String
-  contractAmount Decimal @db.Decimal(18, 2)
-  changedAmount  Decimal @default(0) @db.Decimal(18, 2)
-
-  // 新增字段
-  laborType     String? // 劳务类型：腻子工、瓦工、木工、油工、零工、其它
-  attachmentUrl String? // 附件
-
-  status    ContractStatus @default(DRAFT)
-  signDate  DateTime?
-  startDate DateTime?
-  endDate   DateTime?
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  // 汇总字段
-  payableAmount Decimal @default(0) @db.Decimal(18, 2)
-  paidAmount    Decimal @default(0) @db.Decimal(18, 2)
-  unpaidAmount  Decimal @default(0) @db.Decimal(18, 2)
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  payments LaborPayment[]
-
-  @@index([projectId])
-  @@index([constructionId])
-  @@index([workerId])
-  @@index([code])
-  @@index([status])
   @@index([approvalStatus])
+  @@index([code])
+  @@index([constructionId])
+  @@index([projectId])
+  @@index([status])
+  @@index([workerId])
 }
 
-/// 劳务付款记录 - 业务模块 15
 model LaborPayment {
-  id         String        @id @default(cuid())
-  projectId  String
-  project    Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  contractId String
-  contract   LaborContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  workerId   String
-  worker     LaborWorker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  paymentAmount Decimal  @db.Decimal(18, 2)
-  paymentDate   DateTime
-  paymentMethod String?
-  paymentNumber String?
-
-  status PaymentStatus @default(UNPAID)
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
+  id             String        @id
+  contractId     String
+  remark         String?
+  createdAt      DateTime      @default(now())
+  approvalStatus String        @default("APPROVED")
   approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([contractId])
-  @@index([workerId])
-  @@index([paymentDate])
-  @@index([approvalStatus])
-}
-
-/// 专业分包合同表 - 业务模块 8
-model SubcontractContract {
-  id             String               @id @default(cuid())
+  paymentAmount  Decimal       @db.Decimal(18, 2)
+  paymentDate    DateTime
+  paymentMethod  String?
+  paymentNumber  String?
   projectId      String
-  project        Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  constructionId String
-  construction   ConstructionApproval @relation(fields: [constructionId], references: [id], onDelete: Restrict)
-  vendorId       String
-  vendor         SubcontractVendor    @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  rejectedAt     DateTime?
+  rejectedReason String?
+  status         PaymentStatus @default(UNPAID)
+  submittedAt    DateTime?
+  updatedAt      DateTime
+  workerId       String
   regionId       String?
-  region         Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  attachmentUrl  String?
+  LaborContract  LaborContract @relation(fields: [contractId], references: [id])
+  Project        Project       @relation(fields: [projectId], references: [id])
+  Region         Region?       @relation(fields: [regionId], references: [id])
+  LaborWorker    LaborWorker   @relation(fields: [workerId], references: [id])
 
-  code              String  @unique
-  name              String
-  contractAmount    Decimal @db.Decimal(18, 2)
-  changedAmount     Decimal @default(0) @db.Decimal(18, 2)
-
-  // 新增字段
-  subcontractType String? // 分包类型：装修、广告、设计、其它
-  attachmentUrl   String? // 附件
-
-  status    ContractStatus @default(DRAFT)
-  signDate  DateTime?
-  startDate DateTime?
-  endDate   DateTime?
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  // 汇总字段
-  payableAmount Decimal @default(0) @db.Decimal(18, 2)
-  paidAmount    Decimal @default(0) @db.Decimal(18, 2)
-  unpaidAmount  Decimal @default(0) @db.Decimal(18, 2)
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  payments SubcontractPayment[]
-
-  @@index([projectId])
-  @@index([constructionId])
-  @@index([vendorId])
-  @@index([code])
-  @@index([status])
   @@index([approvalStatus])
-}
-
-/// 分包付款记录 - 业务模块 16
-model SubcontractPayment {
-  id         String              @id @default(cuid())
-  projectId  String
-  project    Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  contractId String
-  contract   SubcontractContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  vendorId   String
-  vendor     SubcontractVendor   @relation(fields: [vendorId], references: [id], onDelete: Restrict)
-  regionId   String?
-  region     Region?             @relation(fields: [regionId], references: [id], onDelete: SetNull)
-
-  paymentAmount Decimal  @db.Decimal(18, 2)
-  paymentDate   DateTime
-  paymentMethod String?
-  paymentNumber String?
-
-  status PaymentStatus @default(UNPAID)
-
-  // 审批状态
-  approvalStatus String    @default("APPROVED") // PENDING / APPROVED / REJECTED
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
   @@index([contractId])
-  @@index([vendorId])
   @@index([paymentDate])
-  @@index([approvalStatus])
-}
-
-// ============================================================================
-// 费用相关表
-// ============================================================================
-
-/// 项目费用报销表 - 业务模块 17
-model ProjectExpense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
-
-  category      ExpenseCategory
-  expenseAmount Decimal         @db.Decimal(18, 2)
-  expenseDate   DateTime
-  description   String?
-
-  // 新增字段
-  submitter     String?  // 报销人
-  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额（自动汇总）
-  expenseItems  String?  // 费用明细 JSON，如 [{type:"材料",amount:100,attachmentUrl:""}]
-  attachmentUrl String?  // 总附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING")
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
   @@index([projectId])
-  @@index([category])
-  @@index([expenseDate])
+  @@index([workerId])
 }
 
-/// 其他付款记录 - 业务模块 18
-model OtherPayment {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+model LaborWorker {
+  id            String          @id
+  code          String          @unique
+  name          String
+  idNumber      String?
+  phone         String?
+  address       String?
+  bankAccount   String?
+  bankName      String?
+  status        String          @default("active")
+  remark        String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  attachmentUrl String?
+  LaborContract LaborContract[]
+  LaborPayment  LaborPayment[]
+  SubcontractContract SubcontractContract[]
+  SubcontractPayment  SubcontractPayment[]
 
-  paymentType   String // 付款类型/付款事由
-  paymentAmount Decimal  @db.Decimal(18, 2)
-  paymentDate   DateTime
-  paymentMethod String?
-  paymentNumber String?
-
-  // 新增字段
-  attachmentUrl  String? // 附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING")
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectedReason String?
-
-  status    PaymentStatus @default(UNPAID)
-  remark    String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@index([projectId])
-  @@index([paymentDate])
+  @@index([code])
+  @@index([name])
 }
 
-/// 管理费用报销表 - 业务模块 20
 model ManagementExpense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
-
-  category      String // 管理费用类别
-  expenseAmount Decimal  @db.Decimal(18, 2)
-  expenseDate   DateTime
-  description   String?
-
-  // 新增字段
-  submitter     String?  // 报销人
-  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额
-  expenseItems  String?  // 费用明细 JSON，如 [{type:"职工薪酬",amount:100,attachmentUrl:""}]
-  attachmentUrl String?  // 总附件
-
-  // 审批状态
+  id             String    @id
+  projectId      String?
+  regionId       String?
+  category       String
+  expenseDate    DateTime
+  description    String?
+  remark         String?
+  createdAt      DateTime  @default(now())
+  expenseAmount  Decimal   @db.Decimal(18, 2)
+  updatedAt      DateTime
   approvalStatus String    @default("PENDING")
-  submittedAt    DateTime?
   approvedAt     DateTime?
+  attachmentUrl  String?
+  expenseItems   String?
   rejectedAt     DateTime?
   rejectedReason String?
+  submittedAt    DateTime?
+  submitter      String?
+  totalAmount    Decimal?  @db.Decimal(18, 2)
+  Project        Project?  @relation(fields: [projectId], references: [id])
+  Region         Region?   @relation(fields: [regionId], references: [id])
 
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
   @@index([expenseDate])
+  @@index([projectId])
+  @@index([regionId])
 }
 
-/// 销售费用报销表 - 业务模块 21
-model SalesExpense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+model OrganizationUnit {
+  id                     String              @id
+  name                   String
+  code                   String?             @unique
+  parentId               String?
+  isActive               Boolean             @default(true)
+  remark                 String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime
+  OrganizationUnit       OrganizationUnit?   @relation("OrganizationUnitToOrganizationUnit", fields: [parentId], references: [id])
+  other_OrganizationUnit OrganizationUnit[]  @relation("OrganizationUnitToOrganizationUnit")
+  SystemUserOrgUnit      SystemUserOrgUnit[]
 
-  category      String // 销售费用类别
-  expenseAmount Decimal  @db.Decimal(18, 2)
-  expenseDate   DateTime
-  description   String?
+  @@index([parentId])
+}
 
-  // 新增字段
-  submitter     String?  // 报销人
-  totalAmount   Decimal? @db.Decimal(18, 2) // 总金额
-  expenseItems  String?  // 费用明细 JSON，如 [{type:"烟酒费",amount:100,attachmentUrl:""}]
-  attachmentUrl String?  // 总附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING")
-  submittedAt    DateTime?
+model OtherPayment {
+  id             String        @id
+  projectId      String?
+  regionId       String?
+  paymentType    String
+  paymentAmount  Decimal       @db.Decimal(18, 2)
+  paymentDate    DateTime
+  paymentMethod  String?
+  paymentNumber  String?
+  status         PaymentStatus @default(UNPAID)
+  remark         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  approvalStatus String        @default("PENDING")
   approvedAt     DateTime?
+  attachmentUrl  String?
   rejectedAt     DateTime?
   rejectedReason String?
+  submittedAt    DateTime?
+  Project        Project?      @relation(fields: [projectId], references: [id])
+  Region         Region?       @relation(fields: [regionId], references: [id])
 
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  @@index([paymentDate])
   @@index([projectId])
-  @@index([expenseDate])
+  @@index([regionId])
 }
 
-/// 备用金申请表 - 业务模块 19
+model OtherReceipt {
+  id             String    @id
+  projectId      String?
+  regionId       String?
+  receiptType    String
+  receiptAmount  Decimal   @db.Decimal(18, 2)
+  receiptDate    DateTime
+  receiptMethod  String?
+  receiptNumber  String?
+  remark         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  approvalStatus String    @default("PENDING")
+  approvedAt     DateTime?
+  attachmentUrl  String?
+  rejectedAt     DateTime?
+  rejectedReason String?
+  submittedAt    DateTime?
+  Project        Project?  @relation(fields: [projectId], references: [id])
+  Region         Region?   @relation(fields: [regionId], references: [id])
+
+  @@index([projectId])
+  @@index([regionId])
+  @@index([receiptDate])
+}
+
 model PettyCash {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
-
-  holder       String // 申请人/领取人
-  issuedAmount Decimal  @db.Decimal(18, 2)
-  issueDate    DateTime
-
-  returnedAmount Decimal   @default(0) @db.Decimal(18, 2)
+  id             String          @id
+  holder         String
+  issueDate      DateTime
   returnDate     DateTime?
-
-  // 新增字段
-  applyReason   String?  // 申请事由
-  attachmentUrl String?  // 附件
-
-  // 审批状态
-  approvalStatus String    @default("PENDING")
-  submittedAt    DateTime?
+  description    String?
+  remark         String?
+  createdAt      DateTime        @default(now())
+  issuedAmount   Decimal         @db.Decimal(18, 2)
+  projectId      String?
+  regionId       String?
+  returnedAmount Decimal         @default(0) @db.Decimal(18, 2)
+  status         PettyCashStatus @default(ISSUED)
+  updatedAt      DateTime
+  applyReason    String?
+  approvalStatus String          @default("PENDING")
   approvedAt     DateTime?
+  attachmentUrl  String?
   rejectedAt     DateTime?
   rejectedReason String?
+  submittedAt    DateTime?
+  Project        Project?        @relation(fields: [projectId], references: [id])
+  Region         Region?         @relation(fields: [regionId], references: [id])
 
-  status      PettyCashStatus @default(ISSUED)
-  description String?
-
-  remark    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
   @@index([issueDate])
+  @@index([projectId])
+  @@index([regionId])
 }
 
-// ============================================================================
-// 流程引擎底座
-// ============================================================================
-
-enum ProcessNodeApproverType {
-  ROLE // 按角色审批
-  USER // 按指定用户审批
-}
-
-enum ProcessNodeCcMode {
-  NONE // 无抄送
-  SUBMITTER // 抄送提交人
-  ROLE // 抄送某角色
-  USER // 抄送指定用户
-}
-
-enum ProcessInstanceStatus {
-  PENDING // 审批中
-  APPROVED // 已通过
-  REJECTED // 已驳回
-  CANCELLED // 已撤销
-}
-
-enum ProcessTaskStatus {
-  PENDING // 待处理
-  APPROVED // 已通过
-  REJECTED // 已驳回
-  SKIPPED // 已跳过
-}
-
-/// 流程定义 - 每个业务资源类型对应一套流程
 model ProcessDefinition {
-  id           String   @id @default(cuid())
-  resourceType String // 如 construction-approvals / procurement-contracts 等
-  name         String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String            @id
+  resourceType    String            @unique
+  name            String
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  ProcessInstance ProcessInstance[]
+  ProcessNode     ProcessNode[]
 
-  nodes     ProcessNode[]
-  instances ProcessInstance[]
-
-  @@unique([resourceType])
   @@index([resourceType])
 }
 
-/// 流程节点 - 流程定义中的每一个审批节点
-model ProcessNode {
-  id           String            @id @default(cuid())
-  definitionId String
-  definition   ProcessDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-
-  order Int // 节点顺序，从 1 开始
-  name  String @default("审批")
-
-  // 审批人配置
-  approverType   ProcessNodeApproverType @default(ROLE)
-  approverRole   String? // 当 approverType=ROLE 时使用，存角色名如 ADMIN
-  approverUserId String? // 当 approverType=USER 时使用，存 SystemUser.id
-
-  // 抄送配置
-  ccMode   ProcessNodeCcMode @default(NONE)
-  ccRole   String? // 当 ccMode=ROLE 时
-  ccUserId String? // 当 ccMode=USER 时
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasks ProcessTask[]
-
-  @@index([definitionId, order])
-}
-
-/// 流程实例 - 每条单据发起审批时创建
 model ProcessInstance {
-  id           String            @id @default(cuid())
-  definitionId String
-  definition   ProcessDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
-
-  resourceType String // 冗余，方便查询
-  resourceId   String // 单据 ID
-
-  submitterUserId String // 提交人 dingUserId
-  submitterName   String
-
-  status     ProcessInstanceStatus @default(PENDING)
-  startedAt  DateTime              @default(now())
-  finishedAt DateTime?
-
-  tasks ProcessTask[]
+  id                String                @id
+  definitionId      String
+  resourceType      String
+  resourceId        String
+  submitterUserId   String
+  submitterName     String
+  status            ProcessInstanceStatus @default(PENDING)
+  startedAt         DateTime              @default(now())
+  finishedAt        DateTime?
+  ProcessDefinition ProcessDefinition     @relation(fields: [definitionId], references: [id])
+  ProcessTask       ProcessTask[]
 
   @@index([resourceType, resourceId])
   @@index([status])
 }
 
-/// 流程任务 - 每个节点的审批任务
+model ProcessNode {
+  id                String                  @id
+  definitionId      String
+  order             Int
+  name              String                  @default("审批")
+  approverType      ProcessNodeApproverType @default(ROLE)
+  approverRole      String?
+  approverUserId    String?
+  ccMode            ProcessNodeCcMode       @default(NONE)
+  ccRole            String?
+  ccUserId          String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime
+  ProcessDefinition ProcessDefinition       @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  ProcessTask       ProcessTask[]
+
+  @@index([definitionId, order])
+}
+
 model ProcessTask {
-  id         String          @id @default(cuid())
-  instanceId String
-  instance   ProcessInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  nodeId     String
-  node       ProcessNode     @relation(fields: [nodeId], references: [id], onDelete: Restrict)
-
-  nodeOrder Int // 冗余节点顺序，方便排序
-
-  // 实际审批人信息（运行时确定）
-  approverType   ProcessNodeApproverType
-  approverRole   String?
-  approverUserId String?
-
-  status    ProcessTaskStatus @default(PENDING)
-  comment   String? // 审批意见
-  handledAt DateTime?
-  handledBy String? // 实际处理人 dingUserId
-
-  createdAt DateTime @default(now())
+  id              String                  @id
+  instanceId      String
+  nodeId          String
+  nodeOrder       Int
+  approverType    ProcessNodeApproverType
+  approverRole    String?
+  approverUserId  String?
+  status          ProcessTaskStatus       @default(PENDING)
+  comment         String?
+  handledAt       DateTime?
+  handledBy       String?
+  createdAt       DateTime                @default(now())
+  ProcessInstance ProcessInstance         @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  ProcessNode     ProcessNode             @relation(fields: [nodeId], references: [id])
 
   @@index([instanceId])
   @@index([nodeId])
   @@index([status])
 }
 
-// ============================================================================
-// 组织单元（简化版）
-// ============================================================================
+model ProcurementContract {
+  id                   String               @id
+  constructionId       String
+  supplierId           String
+  name                 String
+  code                 String               @unique
+  signDate             DateTime?
+  remark               String?
+  createdAt            DateTime             @default(now())
+  approvalStatus       String               @default("APPROVED")
+  approvedAt           DateTime?
+  changedAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  contractAmount       Decimal              @db.Decimal(18, 2)
+  endDate              DateTime?
+  paidAmount           Decimal              @default(0) @db.Decimal(18, 2)
+  payableAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  projectId            String
+  rejectedAt           DateTime?
+  rejectedReason       String?
+  startDate            DateTime?
+  submittedAt          DateTime?
+  unpaidAmount         Decimal              @default(0) @db.Decimal(18, 2)
+  updatedAt            DateTime
+  status               ContractStatus       @default(DRAFT)
+  regionId             String?
+  attachmentUrl        String?
+  materialCategory     String?
+  ConstructionApproval ConstructionApproval @relation(fields: [constructionId], references: [id])
+  Project              Project              @relation(fields: [projectId], references: [id])
+  Region               Region?              @relation(fields: [regionId], references: [id])
+  Supplier             Supplier             @relation(fields: [supplierId], references: [id])
+  ProcurementPayment   ProcurementPayment[]
 
-/// 组织单元 - 支持手动创建，可绑定用户
-model OrganizationUnit {
-  id        String             @id @default(cuid())
-  name      String
-  code      String?            @unique
-  parentId  String?
-  parent    OrganizationUnit?  @relation("OrgUnitTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  OrganizationUnit[] @relation("OrgUnitTree")
-  isActive  Boolean            @default(true)
-  remark    String?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-
-  members SystemUserOrgUnit[]
-
-  @@index([parentId])
+  @@index([code])
+  @@index([constructionId])
+  @@index([projectId])
+  @@index([status])
+  @@index([supplierId])
 }
 
-/// 用户-组织单元关联
+model ProcurementPayment {
+  id                  String              @id
+  contractId          String
+  remark              String?
+  createdAt           DateTime            @default(now())
+  approvalStatus      String              @default("APPROVED")
+  approvedAt          DateTime?
+  paymentAmount       Decimal             @db.Decimal(18, 2)
+  paymentDate         DateTime
+  paymentMethod       String?
+  paymentNumber       String?
+  projectId           String
+  rejectedAt          DateTime?
+  rejectedReason      String?
+  status              PaymentStatus       @default(UNPAID)
+  submittedAt         DateTime?
+  updatedAt           DateTime
+  regionId            String?
+  attachmentUrl       String?
+  ProcurementContract ProcurementContract @relation(fields: [contractId], references: [id])
+  Project             Project             @relation(fields: [projectId], references: [id])
+  Region              Region?             @relation(fields: [regionId], references: [id])
+
+  @@index([approvalStatus])
+  @@index([contractId])
+  @@index([paymentDate])
+  @@index([projectId])
+}
+
+model Project {
+  id                   String                 @id
+  name                 String
+  code                 String                 @unique
+  customerId           String
+  startDate            DateTime?
+  endDate              DateTime?
+  remark               String?
+  createdAt            DateTime               @default(now())
+  budget               Decimal                @db.Decimal(18, 2)
+  updatedAt            DateTime
+  status               ProjectStatus          @default(IN_PROGRESS)
+  regionId             String?
+  area                 Decimal?               @db.Decimal(18, 2)
+  bidMethod            String?
+  location             String?
+  projectType          String?
+  ConstructionApproval ConstructionApproval[]
+  LaborContract        LaborContract[]
+  LaborPayment         LaborPayment[]
+  ManagementExpense    ManagementExpense[]
+  OtherPayment         OtherPayment[]
+  OtherReceipt         OtherReceipt[]
+  PettyCash            PettyCash[]
+  ProcurementContract  ProcurementContract[]
+  ProcurementPayment   ProcurementPayment[]
+  Customer             Customer               @relation(fields: [customerId], references: [id])
+  Region               Region?                @relation(fields: [regionId], references: [id])
+  ProjectContract      ProjectContract[]
+  ProjectExpense       ProjectExpense[]
+  ProjectStatusChange  ProjectStatusChange[]
+  SalesExpense         SalesExpense[]
+  SubcontractContract  SubcontractContract[]
+  SubcontractPayment   SubcontractPayment[]
+
+  @@index([code])
+  @@index([customerId])
+  @@index([status])
+}
+
+model ProjectContract {
+  id                    String                  @id
+  projectId             String
+  name                  String
+  code                  String                  @unique
+  signDate              DateTime?
+  remark                String?
+  createdAt             DateTime                @default(now())
+  changedAmount         Decimal                 @default(0) @db.Decimal(18, 2)
+  contractAmount        Decimal                 @db.Decimal(18, 2)
+  customerId            String
+  endDate               DateTime?
+  receivableAmount      Decimal                 @default(0) @db.Decimal(18, 2)
+  receivedAmount        Decimal                 @default(0) @db.Decimal(18, 2)
+  startDate             DateTime?
+  unreceivedAmount      Decimal                 @default(0) @db.Decimal(18, 2)
+  updatedAt             DateTime
+  status                ContractStatus          @default(DRAFT)
+  regionId              String?
+  attachmentUrl         String?
+  contractType          String?
+  hasRetention          Boolean                 @default(false)
+  paymentMethod         String?
+  retentionAmount       Decimal?                @db.Decimal(18, 2)
+  retentionRate         Decimal?                @db.Decimal(5, 2)
+  ConstructionApproval  ConstructionApproval[]
+  ContractReceipt       ContractReceipt[]
+  Customer              Customer                @relation(fields: [customerId], references: [id])
+  Project               Project                 @relation(fields: [projectId], references: [id])
+  Region                Region?                 @relation(fields: [regionId], references: [id])
+  ProjectContractChange ProjectContractChange[]
+
+  @@index([code])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model ProjectContractChange {
+  id              String          @id
+  contractId      String
+  regionId        String?
+  changeType      ChangeType
+  changeAmount    Decimal         @db.Decimal(18, 2)
+  changeReason    String?
+  remark          String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime
+  approvalStatus  String          @default("PENDING")
+  approvedAt      DateTime?
+  attachmentUrl   String?
+  changeDate      DateTime?
+  increaseAmount  Decimal?        @db.Decimal(18, 2)
+  originalAmount  Decimal?        @db.Decimal(18, 2)
+  rejectedAt      DateTime?
+  rejectedReason  String?
+  submittedAt     DateTime?
+  totalAmount     Decimal?        @db.Decimal(18, 2)
+  ProjectContract ProjectContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  Region          Region?         @relation(fields: [regionId], references: [id])
+
+  @@index([contractId])
+  @@index([createdAt])
+  @@index([regionId])
+}
+
+model ProjectExpense {
+  id             String          @id
+  expenseDate    DateTime
+  description    String?
+  remark         String?
+  createdAt      DateTime        @default(now())
+  expenseAmount  Decimal         @db.Decimal(18, 2)
+  constructionId String?
+  projectId      String
+  updatedAt      DateTime
+  category       ExpenseCategory
+  approvalStatus String          @default("PENDING")
+  approvedAt     DateTime?
+  attachmentUrl  String?
+  expenseItems   String?
+  rejectedAt     DateTime?
+  rejectedReason String?
+  submittedAt    DateTime?
+  submitter      String?
+  totalAmount    Decimal?        @db.Decimal(18, 2)
+  ConstructionApproval ConstructionApproval? @relation(fields: [constructionId], references: [id])
+  Project        Project         @relation(fields: [projectId], references: [id])
+
+  @@index([category])
+  @@index([constructionId])
+  @@index([expenseDate])
+  @@index([projectId])
+}
+
+model ProjectStatusChange {
+  id           String        @id
+  projectId    String
+  fromStatus   ProjectStatus
+  toStatus     ProjectStatus
+  changeReason String?
+  remark       String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime
+  Project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([projectId])
+}
+
+model Region {
+  id                   String                 @id
+  name                 String
+  code                 String?                @unique
+  isActive             Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime
+  ConstructionApproval ConstructionApproval[]
+  ContractReceipt      ContractReceipt[]
+  LaborContract        LaborContract[]
+  LaborPayment         LaborPayment[]
+  ManagementExpense    ManagementExpense[]
+  OtherPayment         OtherPayment[]
+  OtherReceipt         OtherReceipt[]
+  PettyCash            PettyCash[]
+  ProcurementContract  ProcurementContract[]
+  ProcurementPayment   ProcurementPayment[]
+  Project              Project[]
+  ProjectContractChange ProjectContractChange[]
+  ProjectContract      ProjectContract[]
+  SalesExpense         SalesExpense[]
+  SubcontractContract  SubcontractContract[]
+  SubcontractPayment   SubcontractPayment[]
+
+  @@index([isActive])
+}
+
+model SalesExpense {
+  id             String    @id
+  projectId      String?
+  regionId       String?
+  category       String
+  expenseDate    DateTime
+  description    String?
+  remark         String?
+  createdAt      DateTime  @default(now())
+  expenseAmount  Decimal   @db.Decimal(18, 2)
+  updatedAt      DateTime
+  approvalStatus String    @default("PENDING")
+  approvedAt     DateTime?
+  attachmentUrl  String?
+  expenseItems   String?
+  rejectedAt     DateTime?
+  rejectedReason String?
+  submittedAt    DateTime?
+  submitter      String?
+  totalAmount    Decimal?  @db.Decimal(18, 2)
+  Project        Project?  @relation(fields: [projectId], references: [id])
+  Region         Region?   @relation(fields: [regionId], references: [id])
+
+  @@index([expenseDate])
+  @@index([projectId])
+  @@index([regionId])
+}
+
+model SubcontractContract {
+  id                   String               @id
+  constructionId       String
+  name                 String
+  code                 String               @unique
+  signDate             DateTime?
+  remark               String?
+  createdAt            DateTime             @default(now())
+  approvalStatus       String               @default("APPROVED")
+  approvedAt           DateTime?
+  changedAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  contractAmount       Decimal              @db.Decimal(18, 2)
+  endDate              DateTime?
+  paidAmount           Decimal              @default(0) @db.Decimal(18, 2)
+  payableAmount        Decimal              @default(0) @db.Decimal(18, 2)
+  projectId            String
+  rejectedAt           DateTime?
+  rejectedReason       String?
+  startDate            DateTime?
+  submittedAt          DateTime?
+  unpaidAmount         Decimal              @default(0) @db.Decimal(18, 2)
+  updatedAt            DateTime
+  vendorId             String?
+  workerId             String?
+  status               ContractStatus       @default(DRAFT)
+  regionId             String?
+  attachmentUrl        String?
+  subcontractType      String?
+  ConstructionApproval ConstructionApproval @relation(fields: [constructionId], references: [id])
+  Project              Project              @relation(fields: [projectId], references: [id])
+  Region               Region?              @relation(fields: [regionId], references: [id])
+  SubcontractVendor    SubcontractVendor?   @relation(fields: [vendorId], references: [id])
+  LaborWorker          LaborWorker?         @relation(fields: [workerId], references: [id])
+  SubcontractPayment   SubcontractPayment[]
+
+  @@index([approvalStatus])
+  @@index([code])
+  @@index([constructionId])
+  @@index([projectId])
+  @@index([status])
+  @@index([vendorId])
+  @@index([workerId])
+}
+
+model SubcontractPayment {
+  id                  String              @id
+  contractId          String
+  remark              String?
+  createdAt           DateTime            @default(now())
+  approvalStatus      String              @default("APPROVED")
+  approvedAt          DateTime?
+  paymentAmount       Decimal             @db.Decimal(18, 2)
+  paymentDate         DateTime
+  paymentMethod       String?
+  paymentNumber       String?
+  projectId           String
+  rejectedAt          DateTime?
+  rejectedReason      String?
+  status              PaymentStatus       @default(UNPAID)
+  submittedAt         DateTime?
+  updatedAt           DateTime
+  vendorId            String?
+  workerId            String?
+  regionId            String?
+  attachmentUrl       String?
+  SubcontractContract SubcontractContract @relation(fields: [contractId], references: [id])
+  Project             Project             @relation(fields: [projectId], references: [id])
+  Region              Region?             @relation(fields: [regionId], references: [id])
+  SubcontractVendor   SubcontractVendor?  @relation(fields: [vendorId], references: [id])
+  LaborWorker         LaborWorker?        @relation(fields: [workerId], references: [id])
+
+  @@index([approvalStatus])
+  @@index([contractId])
+  @@index([paymentDate])
+  @@index([projectId])
+  @@index([vendorId])
+  @@index([workerId])
+}
+
+model SubcontractVendor {
+  id                  String                @id
+  code                String                @unique
+  name                String
+  contact             String?
+  phone               String?
+  email               String?
+  address             String?
+  taxId               String?
+  bankAccount         String?
+  bankName            String?
+  status              String                @default("active")
+  remark              String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  SubcontractContract SubcontractContract[]
+  SubcontractPayment  SubcontractPayment[]
+
+  @@index([code])
+  @@index([name])
+}
+
+model Supplier {
+  id                  String                @id
+  name                String
+  contact             String?
+  phone               String?
+  email               String?
+  address             String?
+  remark              String?
+  createdAt           DateTime              @default(now())
+  bankAccount         String?
+  bankName            String?
+  code                String                @unique
+  status              String                @default("active")
+  taxId               String?
+  updatedAt           DateTime
+  attachmentUrl       String?
+  ProcurementContract ProcurementContract[]
+
+  @@index([code])
+  @@index([name])
+}
+
+model SystemUser {
+  id                String              @id
+  dingUserId        String              @unique
+  name              String
+  mobile            String?
+  unionid           String?
+  role              SystemUserRole      @default(STAFF)
+  isActive          Boolean             @default(true)
+  deptIdsJson       String?
+  deptNamesJson     String?
+  lastLoginAt       DateTime?
+  remark            String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  SystemUserOrgUnit SystemUserOrgUnit[]
+
+  @@index([createdAt])
+  @@index([dingUserId])
+  @@index([isActive])
+  @@index([role])
+}
+
 model SystemUserOrgUnit {
-  id           String           @id @default(cuid())
-  systemUserId String
-  systemUser   SystemUser       @relation(fields: [systemUserId], references: [id], onDelete: Cascade)
-  orgUnitId    String
-  orgUnit      OrganizationUnit @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
-  createdAt    DateTime         @default(now())
+  id               String           @id
+  systemUserId     String
+  orgUnitId        String
+  createdAt        DateTime         @default(now())
+  OrganizationUnit OrganizationUnit @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  SystemUser       SystemUser       @relation(fields: [systemUserId], references: [id], onDelete: Cascade)
 
   @@unique([systemUserId, orgUnitId])
   @@index([orgUnitId])
 }
 
-// ============================================================================
-// 区域管理
-// ============================================================================
-
-/// 区域表 - 工作空间模式，区域只负责数据归属，不做权限隔离
-model Region {
-  id        String   @id @default(cuid())
-  name      String
-  code      String?  @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  projects              Project[]
-  constructionApprovals ConstructionApproval[]
-  projectContracts      ProjectContract[]
-  contractReceipts      ContractReceipt[]
-  procurementContracts  ProcurementContract[]
-  procurementPayments   ProcurementPayment[]
-  laborContracts        LaborContract[]
-  laborPayments         LaborPayment[]
-  subcontractContracts  SubcontractContract[]
-  subcontractPayments   SubcontractPayment[]
-
-  @@index([isActive])
+enum ActionType {
+  CREATE
+  UPDATE
+  DELETE
 }
 
-// ============================================================================
-// 系统管理表
-// ============================================================================
-
-/// 系统用户表 - 用于权限控制
-model SystemUser {
-  id         String  @id @default(cuid())
-  dingUserId String  @unique // 钉钉 userid，唯一标识
-  name       String
-  mobile     String?
-  unionid    String? // 钉钉 unionid
-
-  role     SystemUserRole @default(STAFF)
-  isActive Boolean        @default(true)
-
-  deptIdsJson   String? // 部门ID数组的JSON字符串，如 "[1,2,3]"
-  deptNamesJson String? // 部门名称数组的JSON字符串，如 "[\"研发部\",\"产品部\"]"
-
-  lastLoginAt DateTime?
-  remark      String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  orgUnits SystemUserOrgUnit[]
-
-  @@index([dingUserId])
-  @@index([role])
-  @@index([isActive])
-  @@index([createdAt])
+enum ChangeType {
+  INCREASE
+  DECREASE
+  ADJUSTMENT
 }
 
-/// 操作日志表 - 用于审计和追踪
-model ActionLog {
-  id       String  @id @default(cuid())
-  userId   String? // 关联 SystemUser，可为空兼容异常情况
-  userName String // 冗余用户名，便于审计
-  userRole String // 冗余角色，便于审计
+enum ContractStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  EXECUTING
+  COMPLETED
+  TERMINATED
+  CANCELLED
+}
 
-  action     ActionType // CREATE / UPDATE / DELETE
-  resource   String // 资源类型，例如 customers / projects
-  resourceId String? // 被操作的数据 ID，可为空
+enum ExpenseCategory {
+  MATERIAL
+  LABOR
+  EQUIPMENT
+  SUBCONTRACT
+  MANAGEMENT
+  OTHER
+}
 
-  method String // HTTP 方法：POST / PUT / DELETE
-  path   String // 请求路径
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERPAID
+}
 
-  detail String? // 文本说明，可为空
+enum PettyCashStatus {
+  ISSUED
+  RETURNED
+  PARTIAL
+}
 
-  createdAt DateTime @default(now())
+enum ProcessInstanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
 
-  @@index([userId])
-  @@index([resource])
-  @@index([createdAt])
+enum ProcessNodeApproverType {
+  ROLE
+  USER
+}
+
+enum ProcessNodeCcMode {
+  NONE
+  SUBMITTER
+  ROLE
+  USER
+}
+
+enum ProcessTaskStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+}
+
+enum ProjectStatus {
+  PLANNING
+  APPROVED
+  IN_PROGRESS
+  SUSPENDED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReceiptStatus {
+  UNRECEIVED
+  PARTIAL
+  RECEIVED
+  OVERRECEIVED
+}
+
+enum SystemUserRole {
+  ADMIN
+  FINANCE
+  PURCHASE
+  PROJECT_MANAGER
+  STAFF
 }

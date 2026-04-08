@@ -50,6 +50,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         code: true,
         name: true,
         phone: true,
+        idNumber: true,
+        bankAccount: true,
+        bankName: true,
+        attachmentUrl: true,
         createdAt: true,
       },
       orderBy: {
@@ -67,10 +71,13 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
    * 请求 body：
    * {
    *   name: string (必填)
-   *   contact?: string
-   *   phone?: string
-   *   address?: string
-   *   remark?: string
+ *   phone?: string
+ *   idNumber: string
+ *   address?: string
+ *   bankAccount: string
+ *   bankName: string
+ *   attachmentUrl?: string
+ *   remark?: string
    * }
    * 
    * 创建规则：
@@ -103,22 +110,48 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       throw new BadRequestError('劳务人员名称长度不能超过 100 个字符')
     }
 
+    const idNumber = String(body.idNumber ?? '').trim()
+    const bankAccount = String(body.bankAccount ?? '').trim()
+    const bankName = String(body.bankName ?? '').trim()
+
+    if (!idNumber) {
+      throw new BadRequestError('身份证号为必填项')
+    }
+
+    if (!bankAccount) {
+      throw new BadRequestError('银行卡号为必填项')
+    }
+
+    if (!bankName) {
+      throw new BadRequestError('开户行为必填项')
+    }
+
     // 创建劳务人员
     const laborWorker = await db.laborWorker.create({
       data: {
+        id: crypto.randomUUID(),
         code: generateLaborWorkerCode(),
         name,
         phone: body.phone?.trim() || null,
+        idNumber,
         address: body.address?.trim() || null,
+        bankAccount,
+        bankName,
+        attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: body.remark?.trim() || null,
         status: 'active',
+        updatedAt: new Date(),
       },
       select: {
         id: true,
         code: true,
         name: true,
         phone: true,
+        idNumber: true,
         address: true,
+        bankAccount: true,
+        bankName: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
       },
@@ -130,4 +163,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'labor-workers',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

@@ -5,7 +5,7 @@
  */
 import { apiHandlerWithPermissionAndLog, success } from '@/lib/api'
 import { db } from '@/lib/db'
-import { getCurrentRegionId } from '@/lib/region'
+import { requireCurrentRegionId } from '@/lib/region'
 import { Decimal } from '@prisma/client/runtime/library'
 
 function toNum(v: Decimal | null | undefined) {
@@ -18,7 +18,7 @@ export const { GET } = apiHandlerWithPermissionAndLog({
     const projectId = searchParams.get('projectId')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
 
     // 项目过滤
     const projectWhere: any = {}
@@ -47,91 +47,87 @@ export const { GET } = apiHandlerWithPermissionAndLog({
       // 收入
       db.contractReceipt.groupBy({
         by: ['contractId'],
-        where: { contract: { projectId: { in: projectIds } }, approvalStatus: 'APPROVED',
+        where: { regionId, ProjectContract: { projectId: { in: projectIds } }, approvalStatus: 'APPROVED',
           ...(dateRange ? { receiptDate: dateRange } : {}) },
         _sum: { receiptAmount: true },
       }),
       db.otherReceipt.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { receiptDate: dateRange } : {}) },
         _sum: { receiptAmount: true },
       }),
       // 支出
       db.procurementPayment.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { paymentDate: dateRange } : {}) },
         _sum: { paymentAmount: true },
       }),
       db.laborPayment.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { paymentDate: dateRange } : {}) },
         _sum: { paymentAmount: true },
       }),
       db.subcontractPayment.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { paymentDate: dateRange } : {}) },
         _sum: { paymentAmount: true },
       }),
       db.projectExpense.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED', Project: { regionId },
           ...(dateRange ? { expenseDate: dateRange } : {}) },
         _sum: { expenseAmount: true },
       }),
       db.managementExpense.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { expenseDate: dateRange } : {}) },
         _sum: { expenseAmount: true },
       }),
       db.salesExpense.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { expenseDate: dateRange } : {}) },
         _sum: { expenseAmount: true },
       }),
       db.otherPayment.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { paymentDate: dateRange } : {}) },
         _sum: { paymentAmount: true },
       }),
       db.pettyCash.groupBy({
         by: ['projectId'],
-        where: { projectId: { in: projectIds }, approvalStatus: 'APPROVED',
+        where: { projectId: { in: projectIds }, regionId, approvalStatus: 'APPROVED',
           ...(dateRange ? { issueDate: dateRange } : {}) },
         _sum: { issuedAmount: true },
       }),
       // 合同汇总
       db.projectContract.findMany({
-        where: { projectId: { in: projectIds } },
+        where: { projectId: { in: projectIds }, regionId },
         select: { projectId: true, contractAmount: true, receivedAmount: true, unreceivedAmount: true },
       }),
       db.procurementContract.findMany({
-        where: { projectId: { in: projectIds } },
+        where: { projectId: { in: projectIds }, regionId },
         select: { projectId: true, contractAmount: true, paidAmount: true, unpaidAmount: true },
       }),
       db.laborContract.findMany({
-        where: { projectId: { in: projectIds } },
+        where: { projectId: { in: projectIds }, regionId },
         select: { projectId: true, contractAmount: true, paidAmount: true, unpaidAmount: true },
       }),
       db.subcontractContract.findMany({
-        where: { projectId: { in: projectIds } },
+        where: { projectId: { in: projectIds }, regionId },
         select: { projectId: true, contractAmount: true, paidAmount: true, unpaidAmount: true },
       }),
     ])
 
     // 查合同收款需要先获取合同的projectId映射
-    const contractProjectMap: Record<string, string> = {}
-    for (const pc of projectContracts) {
-      contractProjectMap[pc.projectId] = pc.projectId
-    }
     const allContracts = await db.projectContract.findMany({
-      where: { projectId: { in: projectIds } },
+      where: { projectId: { in: projectIds }, regionId },
       select: { id: true, projectId: true },
     })
     const contractToProject: Record<string, string> = {}
@@ -164,31 +160,40 @@ export const { GET } = apiHandlerWithPermissionAndLog({
       if (pid && byProject[pid]) byProject[pid].contractReceiptAmount += toNum(r._sum.receiptAmount)
     }
     for (const r of otherReceipts) {
-      if (byProject[r.projectId]) byProject[r.projectId].otherReceiptAmount += toNum(r._sum.receiptAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].otherReceiptAmount += toNum(r._sum.receiptAmount)
     }
     for (const r of procurementPayments) {
-      if (byProject[r.projectId]) byProject[r.projectId].procurementPaymentAmount += toNum(r._sum.paymentAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].procurementPaymentAmount += toNum(r._sum.paymentAmount)
     }
     for (const r of laborPayments) {
-      if (byProject[r.projectId]) byProject[r.projectId].laborPaymentAmount += toNum(r._sum.paymentAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].laborPaymentAmount += toNum(r._sum.paymentAmount)
     }
     for (const r of subcontractPayments) {
-      if (byProject[r.projectId]) byProject[r.projectId].subcontractPaymentAmount += toNum(r._sum.paymentAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].subcontractPaymentAmount += toNum(r._sum.paymentAmount)
     }
     for (const r of projectExpenses) {
-      if (byProject[r.projectId]) byProject[r.projectId].projectExpenseAmount += toNum(r._sum.expenseAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].projectExpenseAmount += toNum(r._sum.expenseAmount)
     }
     for (const r of managementExpenses) {
-      if (byProject[r.projectId]) byProject[r.projectId].managementExpenseAmount += toNum(r._sum.expenseAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].managementExpenseAmount += toNum(r._sum.expenseAmount)
     }
     for (const r of salesExpenses) {
-      if (byProject[r.projectId]) byProject[r.projectId].salesExpenseAmount += toNum(r._sum.expenseAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].salesExpenseAmount += toNum(r._sum.expenseAmount)
     }
     for (const r of otherPayments) {
-      if (byProject[r.projectId]) byProject[r.projectId].otherPaymentAmount += toNum(r._sum.paymentAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].otherPaymentAmount += toNum(r._sum.paymentAmount)
     }
     for (const r of pettyCashes) {
-      if (byProject[r.projectId]) byProject[r.projectId].pettyCashAmount += toNum(r._sum.issuedAmount)
+      const pid = r.projectId
+      if (pid && byProject[pid]) byProject[pid].pettyCashAmount += toNum(r._sum.issuedAmount)
     }
     // 项目合同汇总
     for (const c of projectContracts) {
@@ -253,4 +258,3 @@ export const { GET } = apiHandlerWithPermissionAndLog({
     return success({ projects: result, totals })
   },
 }, { resource: 'financial-summary' })
-

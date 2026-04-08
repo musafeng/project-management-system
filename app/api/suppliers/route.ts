@@ -52,6 +52,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         contact: true,
         phone: true,
         address: true,
+        bankAccount: true,
+        bankName: true,
+        attachmentUrl: true,
         createdAt: true,
       },
       orderBy: {
@@ -69,10 +72,13 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
    * 请求 body：
    * {
    *   name: string (必填)
-   *   contact?: string
-   *   phone?: string
-   *   address?: string
-   *   remark?: string
+ *   contact?: string
+ *   phone?: string
+ *   address?: string
+ *   bankAccount: string
+ *   bankName: string
+ *   attachmentUrl?: string
+ *   remark?: string
    * }
    * 
    * 创建规则：
@@ -105,16 +111,32 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       throw new BadRequestError('供应商名称长度不能超过 100 个字符')
     }
 
+    const bankAccount = String(body.bankAccount ?? '').trim()
+    const bankName = String(body.bankName ?? '').trim()
+
+    if (!bankAccount) {
+      throw new BadRequestError('银行卡号为必填项')
+    }
+
+    if (!bankName) {
+      throw new BadRequestError('开户行为必填项')
+    }
+
     // 创建供应商
     const supplier = await db.supplier.create({
       data: {
+        id: crypto.randomUUID(),
         code: generateSupplierCode(),
         name,
         contact: body.contact?.trim() || null,
         phone: body.phone?.trim() || null,
         address: body.address?.trim() || null,
+        bankAccount,
+        bankName,
+        attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: body.remark?.trim() || null,
         status: 'active',
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -123,6 +145,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         contact: true,
         phone: true,
         address: true,
+        bankAccount: true,
+        bankName: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
       },
@@ -134,4 +159,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'suppliers',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

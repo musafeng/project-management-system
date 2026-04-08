@@ -1,50 +1,92 @@
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import {
+  apiHandlerWithPermissionAndLog,
+  BadRequestError,
+  NotFoundError,
+  success,
+} from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
-export const { GET, POST } = apiHandlerWithPermissionAndLog({
-  GET: async (req) => {
-    const { searchParams } = new URL(req.url)
-    const projectId = searchParams.get('projectId')
-    const where: any = {}
-    if (projectId) where.projectId = projectId
+export const { GET, POST } = apiHandlerWithPermissionAndLog(
+  {
+    GET: async (req) => {
+      const { searchParams } = new URL(req.url)
+      const projectId = searchParams.get('projectId')
+      const regionId = await requireCurrentRegionId()
 
-    const records = await db.pettyCash.findMany({
-      where,
-      select: {
-        id: true, projectId: true,
-        project: { select: { name: true } },
-        holder: true, applyReason: true, issuedAmount: true, returnedAmount: true,
-        issueDate: true, returnDate: true, status: true,
-        attachmentUrl: true, approvalStatus: true, remark: true, createdAt: true,
-      },
-      orderBy: { issueDate: 'desc' },
-    })
-    return success(records.map(r => ({ ...r, projectName: r.project?.name })))
+      const records = await db.pettyCash.findMany({
+        where: {
+          regionId,
+          ...(projectId ? { projectId } : {}),
+        },
+        select: {
+          id: true,
+          regionId: true,
+          projectId: true,
+          Project: { select: { name: true } },
+          holder: true,
+          applyReason: true,
+          issuedAmount: true,
+          returnedAmount: true,
+          issueDate: true,
+          returnDate: true,
+          status: true,
+          attachmentUrl: true,
+          approvalStatus: true,
+          remark: true,
+          createdAt: true,
+        },
+        orderBy: { issueDate: 'desc' },
+      })
+
+      return success(
+        records.map((record) => ({
+          ...record,
+          projectName: record.Project?.name ?? null,
+        }))
+      )
+    },
+
+    POST: async (req) => {
+      const body = await req.json()
+      const regionId = await requireCurrentRegionId()
+      const projectId = String(body.projectId ?? '').trim() || null
+      const holder = String(body.holder ?? '').trim()
+      const issueDate = String(body.issueDate ?? '').trim()
+      const issuedAmount = Number(body.issuedAmount ?? 0)
+
+      if (!holder) throw new BadRequestError('申请人为必填项')
+      if (!issueDate) throw new BadRequestError('日期为必填项')
+      if (issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
+
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
+
+      const now = new Date()
+      const record = await db.pettyCash.create({
+        data: {
+          id: crypto.randomUUID(),
+          regionId,
+          projectId,
+          holder,
+          applyReason: String(body.applyReason ?? '').trim() || null,
+          description: String(body.description ?? '').trim() || null,
+          issuedAmount,
+          issueDate: new Date(issueDate),
+          attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
+          remark: String(body.remark ?? '').trim() || null,
+          status: 'ISSUED',
+          updatedAt: now,
+        },
+      })
+
+      return success(record)
+    },
   },
-
-  POST: async (req) => {
-    const body = await req.json()
-    if (!body.projectId) throw new BadRequestError('项目ID为必填项')
-    if (!body.holder?.trim()) throw new BadRequestError('申请人为必填项')
-    if (!body.issuedAmount || body.issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
-    if (!body.issueDate) throw new BadRequestError('日期为必填项')
-
-    const project = await db.project.findUnique({ where: { id: body.projectId } })
-    if (!project) throw new NotFoundError('项目不存在')
-
-    const record = await db.pettyCash.create({
-      data: {
-        projectId: body.projectId,
-        holder: body.holder.trim(),
-        applyReason: body.applyReason?.trim() || null,
-        issuedAmount: body.issuedAmount,
-        issueDate: new Date(body.issueDate),
-        attachmentUrl: body.attachmentUrl?.trim() || null,
-        remark: body.remark?.trim() || null,
-        approvalStatus: 'PENDING',
-        status: 'ISSUED',
-      },
-    })
-    return success(record)
-  },
-}, { resource: 'petty-cashes', resourceIdExtractor: (req, result) => result?.data?.id || null })
+  {
+    resource: 'petty-cashes',
+    resourceIdExtractor: (_, result) => result?.data?.id ?? null,
+  }
+)

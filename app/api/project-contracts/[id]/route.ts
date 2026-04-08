@@ -1,5 +1,6 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -13,15 +14,17 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少合同 ID')
     }
 
-    const contract = await db.projectContract.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const contract = await db.projectContract.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         code: true,
         name: true,
         projectId: true,
-        project: {
-          select: { id: true, name: true, customer: { select: { id: true, name: true } } },
+        Project: {
+          select: { id: true, name: true, Customer: { select: { id: true, name: true } } },
         },
         customerId: true,
         contractAmount: true,
@@ -48,7 +51,7 @@ const handler = apiHandlerWithMethod({
       code: contract.code,
       name: contract.name,
       projectId: contract.projectId,
-      project: contract.project,
+      project: contract.Project,
       customerId: contract.customerId,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
@@ -79,9 +82,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 检查合同是否存在
-    const existingContract = await db.projectContract.findUnique({
-      where: { id },
-    })
+    const existingContract = await assertDirectRecordInCurrentRegion('projectContract', id)
 
     if (!existingContract) {
       throw new NotFoundError('合同不存在')
@@ -126,8 +127,8 @@ const handler = apiHandlerWithMethod({
         code: true,
         name: true,
         projectId: true,
-        project: {
-          select: { id: true, name: true, customer: { select: { id: true, name: true } } },
+        Project: {
+          select: { id: true, name: true, Customer: { select: { id: true, name: true } } },
         },
         customerId: true,
         contractAmount: true,
@@ -150,7 +151,7 @@ const handler = apiHandlerWithMethod({
       code: contract.code,
       name: contract.name,
       projectId: contract.projectId,
-      project: contract.project,
+      project: contract.Project,
       customerId: contract.customerId,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
@@ -180,9 +181,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 检查合同是否存在
-    const contract = await db.projectContract.findUnique({
-      where: { id },
-    })
+    const contract = await assertDirectRecordInCurrentRegion('projectContract', id)
 
     if (!contract) {
       throw new NotFoundError('合同不存在')
@@ -219,4 +218,3 @@ const handler = apiHandlerWithMethod({
     return success({ message: '合同已删除' })
   },
 })
-

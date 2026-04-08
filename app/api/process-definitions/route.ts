@@ -10,7 +10,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     await requireSystemManager()
     const defs = await db.processDefinition.findMany({
       include: {
-        nodes: { orderBy: { order: 'asc' } },
+        ProcessNode: { orderBy: { order: 'asc' } },
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -27,11 +27,13 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const def = await db.processDefinition.create({
       data: {
+        id: crypto.randomUUID(),
         resourceType: body.resourceType,
         name: body.name,
         isActive: true,
+        updatedAt: new Date(),
       },
-      include: { nodes: true },
+      include: { ProcessNode: true },
     })
     return success(def)
   },
@@ -39,5 +41,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'process-definitions',
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-
-

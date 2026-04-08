@@ -1,30 +1,63 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Table, Button, Space, Modal, Form, Input, InputNumber, DatePicker, Select, message, Popconfirm, Tag } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
+import { useEffect, useMemo, useState } from 'react'
 
-interface ExpenseItem { type: string; amount: number; attachmentUrl?: string }
-interface Expense {
-  id: string; projectId: string; projectName: string
-  submitter: string; totalAmount: number; expenseItems: ExpenseItem[]
-  expenseDate: string; attachmentUrl?: string; approvalStatus: string; remark?: string; createdAt: string
+interface ExpenseItem {
+  type: string
+  amount: number
+  attachmentUrl?: string
 }
-interface Project { id: string; name: string }
+
+interface Expense {
+  id: string
+  projectId: string
+  projectName: string
+  constructionId?: string | null
+  constructionName?: string | null
+  submitter: string
+  totalAmount: number
+  expenseItems: ExpenseItem[]
+  expenseDate: string
+  attachmentUrl?: string
+  approvalStatus: string
+  remark?: string
+  createdAt: string
+}
+
+interface ConstructionApproval {
+  id: string
+  name: string
+  projectName: string
+  approvalStatus: string
+}
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' }, APPROVED: { label: '已通过', color: 'green' }, REJECTED: { label: '已拒绝', color: 'red' },
+  PENDING: { label: '待审批', color: 'orange' },
+  APPROVED: { label: '已通过', color: 'green' },
+  REJECTED: { label: '已拒绝', color: 'red' },
 }
-function fmt(v: number) { return `¥${Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}` }
-function fmtDate(s: string) { try { return new Date(s).toLocaleDateString('zh-CN') } catch { return s } }
 
-const EXPENSE_TYPES = ['材料', '人工', '其它']
+function fmt(v: number) {
+  return `¥${Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
+}
+
+function fmtDate(s: string) {
+  try {
+    return new Date(s).toLocaleDateString('zh-CN')
+  } catch {
+    return s
+  }
+}
+
+const EXPENSE_TYPES = ['辅料', '人工', '材料']
 
 export default function ProjectExpensesPage() {
   const [data, setData] = useState<Expense[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
+  const [constructions, setConstructions] = useState<ConstructionApproval[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
@@ -33,52 +66,118 @@ export default function ProjectExpensesPage() {
 
   const load = async () => {
     setLoading(true)
-    try { const res = await fetch('/api/project-expenses'); const j = await res.json(); if (j.success) setData(j.data) }
-    finally { setLoading(false) }
+    try {
+      const res = await fetch('/api/project-expenses')
+      const j = await res.json()
+      if (j.success) setData(j.data)
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const loadConstructions = async () => {
+    const res = await fetch('/api/construction-approvals')
+    const json = await res.json()
+    if (json.success) {
+      setConstructions(
+        (json.data || []).filter((item: ConstructionApproval) => item.approvalStatus === 'APPROVED')
+      )
+    }
+  }
+
   useEffect(() => {
     load()
-    fetch('/api/projects').then(r => r.json()).then(j => { if (j.success) setProjects(j.data) })
+    loadConstructions()
   }, [])
 
   const totalAmount = items.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+
+  const selectedConstructionId = Form.useWatch('constructionId', form)
+  const selectedConstruction = useMemo(
+    () => constructions.find((item) => item.id === selectedConstructionId),
+    [constructions, selectedConstructionId]
+  )
+
+  useEffect(() => {
+    if (selectedConstruction) {
+      form.setFieldValue('projectName', selectedConstruction.projectName)
+    } else if (!editing) {
+      form.setFieldValue('projectName', undefined)
+    }
+  }, [selectedConstruction, editing, form])
 
   const handleOpen = (record?: Expense) => {
     setEditing(record || null)
     const its = record?.expenseItems?.length ? record.expenseItems : [{ type: '材料', amount: 0 }]
     setItems(its)
     form.resetFields()
-    if (record) form.setFieldsValue({ projectId: record.projectId, submitter: record.submitter, expenseDate: dayjs(record.expenseDate), remark: record.remark, attachmentUrl: record.attachmentUrl })
+    if (record) {
+      form.setFieldsValue({
+        constructionId: record.constructionId,
+        projectName: record.projectName,
+        submitter: record.submitter,
+        expenseDate: dayjs(record.expenseDate),
+        remark: record.remark,
+        attachmentUrl: record.attachmentUrl,
+      })
+    }
     setModalOpen(true)
   }
 
   const handleSubmit = async (values: any) => {
-    const payload = { ...values, expenseDate: values.expenseDate?.format('YYYY-MM-DD'), expenseItems: items, totalAmount }
+    if (items.length === 0 || totalAmount <= 0) {
+      message.error('请至少填写一条有效费用明细')
+      return
+    }
+
+    const payload = {
+      ...values,
+      expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
+      expenseItems: items,
+      totalAmount,
+    }
     const url = editing ? `/api/project-expenses/${editing.id}` : '/api/project-expenses'
     const method = editing ? 'PUT' : 'POST'
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     const json = await res.json()
-    if (json.success) { message.success(editing ? '更新成功' : '创建成功'); setModalOpen(false); load() }
-    else message.error(json.error || '操作失败')
+    if (json.success) {
+      message.success(editing ? '更新成功' : '创建成功')
+      setModalOpen(false)
+      void load()
+    } else {
+      message.error(json.error || '操作失败')
+    }
   }
 
   const handleDelete = async (id: string) => {
     const res = await fetch(`/api/project-expenses/${id}`, { method: 'DELETE' })
     const j = await res.json()
-    if (j.success) { message.success('已删除'); load() } else message.error(j.error || '删除失败')
+    if (j.success) {
+      message.success('已删除')
+      void load()
+    } else {
+      message.error(j.error || '删除失败')
+    }
   }
 
   const columns: ColumnsType<Expense> = [
+    { title: '施工立项', dataIndex: 'constructionName', width: 160, render: (value) => value || '-' },
     { title: '项目', dataIndex: 'projectName', width: 150 },
     { title: '报销人', dataIndex: 'submitter', width: 100 },
     { title: '总金额', dataIndex: 'totalAmount', width: 120, align: 'right', render: v => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(v)}</span> },
     { title: '日期', dataIndex: 'expenseDate', width: 110, render: fmtDate },
     { title: '审批状态', dataIndex: 'approvalStatus', width: 100, render: v => <Tag color={STATUS_MAP[v]?.color}>{STATUS_MAP[v]?.label || v}</Tag> },
-    { title: '操作', key: 'action', width: 120, fixed: 'right',
-      render: (_, r) => (<Space>
-        <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)}>编辑</Button>
-        <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否"><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
-      </Space>) },
+    {
+      title: '操作', key: 'action', width: 120, fixed: 'right',
+      render: (_, r) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)}>编辑</Button>
+          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
+            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ]
 
   return (
@@ -87,11 +186,20 @@ export default function ProjectExpensesPage() {
         <h2 style={{ margin: 0 }}>项目费用报销</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>新增</Button>
       </div>
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 800 }} size="small" />
+      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
       <Modal title={editing ? '编辑项目费用报销' : '新增项目费用报销'} open={modalOpen} onOk={() => form.submit()} onCancel={() => setModalOpen(false)} width={620} okText="确定" cancelText="取消">
         <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
-          <Form.Item label="关联项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
-            <Select placeholder="选择项目" options={projects.map(p => ({ label: p.name, value: p.id }))} />
+          <Form.Item label="施工立项" name="constructionId" rules={[{ required: true, message: '请选择施工立项' }]}>
+            <Select
+              placeholder="请选择已审批通过的施工立项"
+              options={constructions.map((item) => ({
+                label: `${item.name} / ${item.projectName}`,
+                value: item.id,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="关联项目" name="projectName">
+            <Input placeholder="将根据施工立项自动带出" disabled />
           </Form.Item>
           <Form.Item label="报销人" name="submitter" rules={[{ required: true, message: '请填写报销人' }]}>
             <Input placeholder="请输入报销人" />
@@ -117,4 +225,3 @@ export default function ProjectExpensesPage() {
     </div>
   )
 }
-

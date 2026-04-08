@@ -1,91 +1,68 @@
-import { apiHandler, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { createProjectContractChangeRecord } from '@/lib/project-contract-changes'
 
 /**
  * POST /api/project-contracts/{id}/changes
  * 记录合同变更
  */
-export const POST = apiHandler(async (req) => {
-  const id = req.url.split('/').slice(-3)[0]
+export const { POST } = apiHandlerWithPermissionAndLog(
+  {
+    POST: async (req) => {
+      const id = req.url.split('/').slice(-3)[0]
+      if (!id) {
+        throw new BadRequestError('缺少合同 ID')
+      }
 
-  if (!id) {
-    throw new BadRequestError('缺少合同 ID')
-  }
+      const body = await req.json()
+      const increaseAmount = Number(body.increaseAmount ?? body.changeAmount ?? 0)
+      if (increaseAmount <= 0) {
+        throw new BadRequestError('增项金额必须大于 0')
+      }
 
-  const body = await req.json()
+      const change = await createProjectContractChangeRecord({
+        contractId: id,
+        changeDate: body.changeDate || new Date().toISOString().slice(0, 10),
+        increaseAmount,
+        remark: body.remark || body.changeReason || '历史兼容接口创建',
+        attachmentUrl: body.attachmentUrl || '/compat/project-contract-change',
+      })
 
-  // 验证必填字段
-  if (body.changeAmount === undefined || typeof body.changeAmount !== 'number') {
-    throw new BadRequestError('变更金额为必填项且必须是数字')
-  }
+      const contract = await db.projectContract.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          contractAmount: true,
+          changedAmount: true,
+          receivableAmount: true,
+          receivedAmount: true,
+          unreceivedAmount: true,
+          updatedAt: true,
+        },
+      })
 
-  // 检查合同是否存在
-  const contract = await db.projectContract.findUnique({
-    where: { id },
-  })
-
-  if (!contract) {
-    throw new NotFoundError('合同不存在')
-  }
-
-  // 确定变更类型
-  let changeType: 'INCREASE' | 'DECREASE' | 'ADJUSTMENT' = 'ADJUSTMENT'
-  if (body.changeAmount > 0) {
-    changeType = 'INCREASE'
-  } else if (body.changeAmount < 0) {
-    changeType = 'DECREASE'
-  }
-
-  // 创建变更记录
-  const change = await db.projectContractChange.create({
-    data: {
-      contractId: id,
-      changeType,
-      changeAmount: body.changeAmount,
-      changeReason: body.remark?.trim() || null,
+      return success({
+        change: {
+          id: change.id,
+          contractId: change.contractId,
+          changeType: change.changeType,
+          changeAmount: change.changeAmount,
+          increaseAmount: change.increaseAmount,
+          originalAmount: change.originalAmount,
+          totalAmount: change.totalAmount,
+          changeDate: change.changeDate,
+          changeReason: change.remark,
+          approvalStatus: change.approvalStatus,
+          createdAt: change.createdAt,
+        },
+        contract,
+      })
     },
-    select: {
-      id: true,
-      contractId: true,
-      changeType: true,
-      changeAmount: true,
-      changeReason: true,
-      createdAt: true,
-    },
-  })
-
-  // 计算新的变更后金额
-  const newChangedAmount =
-    Number(contract.changedAmount) + Number(body.changeAmount)
-  const newReceivableAmount =
-    Number(contract.contractAmount) + newChangedAmount
-  const newUnreceivedAmount =
-    newReceivableAmount - Number(contract.receivedAmount)
-
-  // 更新合同的汇总字段
-  const updatedContract = await db.projectContract.update({
-    where: { id },
-    data: {
-      changedAmount: newChangedAmount,
-      receivableAmount: newReceivableAmount,
-      unreceivedAmount: newUnreceivedAmount,
-    },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      contractAmount: true,
-      changedAmount: true,
-      receivableAmount: true,
-      receivedAmount: true,
-      unreceivedAmount: true,
-      updatedAt: true,
-    },
-  })
-
-  return success({
-    change,
-    contract: updatedContract,
-  })
-})
-
+  },
+  {
+    resource: 'project-contract-changes',
+    resourceIdExtractor: (_req, result) => result?.data?.change?.id ?? null,
+  }
+)

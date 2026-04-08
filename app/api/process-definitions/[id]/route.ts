@@ -11,7 +11,7 @@ export const { GET, PUT } = apiHandlerWithPermissionAndLog({
     if (!id) throw new NotFoundError('缺少流程定义 ID')
     const def = await db.processDefinition.findUnique({
       where: { id },
-      include: { nodes: { orderBy: { order: 'asc' } } },
+      include: { ProcessNode: { orderBy: { order: 'asc' } } },
     })
     if (!def) throw new NotFoundError('流程定义不存在')
     return success(def)
@@ -30,7 +30,7 @@ export const { GET, PUT } = apiHandlerWithPermissionAndLog({
         name: body.name ?? def.name,
         isActive: body.isActive ?? def.isActive,
       },
-      include: { nodes: { orderBy: { order: 'asc' } } },
+      include: { ProcessNode: { orderBy: { order: 'asc' } } },
     })
     return success(updated)
   },

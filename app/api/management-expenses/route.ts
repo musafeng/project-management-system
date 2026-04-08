@@ -1,56 +1,113 @@
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import {
+  apiHandlerWithPermissionAndLog,
+  BadRequestError,
+  NotFoundError,
+  success,
+} from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
-export const { GET, POST } = apiHandlerWithPermissionAndLog({
-  GET: async (req) => {
-    const { searchParams } = new URL(req.url)
-    const projectId = searchParams.get('projectId')
-    const where: any = {}
-    if (projectId) where.projectId = projectId
+function normalizeExpenseItems(items: unknown) {
+  if (!Array.isArray(items)) return []
 
-    const records = await db.managementExpense.findMany({
-      where,
-      select: {
-        id: true, projectId: true,
-        project: { select: { name: true } },
-        submitter: true, totalAmount: true, expenseItems: true,
-        expenseDate: true, attachmentUrl: true, approvalStatus: true, remark: true, createdAt: true,
-      },
-      orderBy: { expenseDate: 'desc' },
+  return items
+    .map((item: any) => {
+      const type = String(item?.type ?? '').trim()
+      const amount = Number(item?.amount ?? 0)
+      if (!type || amount <= 0) return null
+      return { type, amount }
     })
-    return success(records.map(r => ({
-      ...r, projectName: r.project?.name,
-      expenseItems: r.expenseItems ? JSON.parse(r.expenseItems) : [],
-    })))
+    .filter(
+      (
+        item: { type: string; amount: number } | null
+      ): item is { type: string; amount: number } => item !== null
+    )
+}
+
+export const { GET, POST } = apiHandlerWithPermissionAndLog(
+  {
+    GET: async (req) => {
+      const { searchParams } = new URL(req.url)
+      const projectId = searchParams.get('projectId')
+      const regionId = await requireCurrentRegionId()
+
+      const records = await db.managementExpense.findMany({
+        where: {
+          regionId,
+          ...(projectId ? { projectId } : {}),
+        },
+        select: {
+          id: true,
+          regionId: true,
+          projectId: true,
+          Project: { select: { name: true } },
+          submitter: true,
+          totalAmount: true,
+          expenseItems: true,
+          expenseDate: true,
+          attachmentUrl: true,
+          approvalStatus: true,
+          remark: true,
+          createdAt: true,
+        },
+        orderBy: { expenseDate: 'desc' },
+      })
+
+      return success(
+        records.map((record) => ({
+          ...record,
+          projectName: record.Project?.name ?? null,
+          expenseItems: record.expenseItems ? JSON.parse(record.expenseItems) : [],
+        }))
+      )
+    },
+
+    POST: async (req) => {
+      const body = await req.json()
+      const regionId = await requireCurrentRegionId()
+      const projectId = String(body.projectId ?? '').trim() || null
+      const submitter = String(body.submitter ?? '').trim()
+      const expenseDate = String(body.expenseDate ?? '').trim()
+      const expenseItems = normalizeExpenseItems(body.expenseItems)
+      const totalAmount = expenseItems.reduce(
+        (sum: number, item: { type: string; amount: number }) => sum + item.amount,
+        0
+      )
+
+      if (!submitter) throw new BadRequestError('报销人为必填项')
+      if (!expenseDate) throw new BadRequestError('日期为必填项')
+      if (expenseItems.length === 0 || totalAmount <= 0) {
+        throw new BadRequestError('请至少填写一条有效费用明细')
+      }
+
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
+
+      const now = new Date()
+      const record = await db.managementExpense.create({
+        data: {
+          id: crypto.randomUUID(),
+          regionId,
+          projectId,
+          category: String(body.category ?? '').trim() || expenseItems[0].type,
+          expenseDate: new Date(expenseDate),
+          expenseAmount: totalAmount,
+          submitter,
+          totalAmount,
+          expenseItems: JSON.stringify(expenseItems),
+          attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
+          remark: String(body.remark ?? '').trim() || null,
+          updatedAt: now,
+        },
+      })
+
+      return success(record)
+    },
   },
-
-  POST: async (req) => {
-    const body = await req.json()
-    if (!body.projectId) throw new BadRequestError('项目ID为必填项')
-    if (!body.submitter?.trim()) throw new BadRequestError('报销人为必填项')
-    if (!body.expenseDate) throw new BadRequestError('日期为必填项')
-
-    const project = await db.project.findUnique({ where: { id: body.projectId } })
-    if (!project) throw new NotFoundError('项目不存在')
-
-    const items = body.expenseItems || []
-    const totalAmount = items.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0)
-
-    const record = await db.managementExpense.create({
-      data: {
-        projectId: body.projectId,
-        category: body.category || 'OTHER',
-        expenseAmount: totalAmount,
-        expenseDate: new Date(body.expenseDate),
-        submitter: body.submitter.trim(),
-        totalAmount,
-        expenseItems: items.length > 0 ? JSON.stringify(items) : null,
-        attachmentUrl: body.attachmentUrl?.trim() || null,
-        remark: body.remark?.trim() || null,
-        approvalStatus: 'PENDING',
-      },
-    })
-    return success(record)
-  },
-}, { resource: 'management-expenses', resourceIdExtractor: (req, result) => result?.data?.id || null })
-
+  {
+    resource: 'management-expenses',
+    resourceIdExtractor: (_, result) => result?.data?.id ?? null,
+  }
+)

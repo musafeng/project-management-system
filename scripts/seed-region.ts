@@ -3,6 +3,7 @@
  * 运行方式: npx tsx scripts/seed-region.ts
  */
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 
 const db = new PrismaClient()
 
@@ -12,7 +13,13 @@ async function main() {
 
   if (!defaultRegion) {
     defaultRegion = await db.region.create({
-      data: { name: '默认区域', code: 'DEFAULT', isActive: true },
+      data: {
+        id: randomUUID(),
+        name: '默认区域',
+        code: 'DEFAULT',
+        isActive: true,
+        updatedAt: new Date(),
+      },
     })
     console.log('✅ 默认区域已创建:', defaultRegion.id)
   } else {
@@ -49,7 +56,6 @@ async function main() {
 }
 
 main().catch(console.error).finally(() => db.$disconnect())
-
 
 
 

@@ -13,6 +13,7 @@ import {
   sendApprovalApprovedNotification,
   sendApprovalRejectedNotification,
 } from './dingtalk-notify'
+import { assertResourceInCurrentRegion } from './region'
 
 export const ApprovalStatus = {
   APPROVED: 'APPROVED',
@@ -24,6 +25,7 @@ export type ApprovalStatusType = keyof typeof ApprovalStatus
 
 export type ApprovalModel =
   | 'constructionApproval'
+  | 'projectContractChange'
   | 'procurementContract'
   | 'procurementPayment'
   | 'laborContract'
@@ -34,6 +36,7 @@ export type ApprovalModel =
 /** 各模块 submit 允许的角色（保留，用于提交权限） */
 export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
   constructionApproval: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
+  projectContractChange: ['FINANCE', 'ADMIN'] as SystemUserRole[],
   procurementContract: ['PURCHASE', 'ADMIN'] as SystemUserRole[],
   procurementPayment: ['FINANCE', 'PURCHASE', 'ADMIN'] as SystemUserRole[],
   laborContract: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
@@ -45,6 +48,7 @@ export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
 /** 各模块资源类型（对应 ProcessDefinition.resourceType） */
 export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
   constructionApproval: 'construction-approvals',
+  projectContractChange: 'project-contract-changes',
   procurementContract: 'procurement-contracts',
   procurementPayment: 'procurement-payments',
   laborContract: 'labor-contracts',
@@ -55,6 +59,7 @@ export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
 
 const MODEL_LABEL: Record<ApprovalModel, string> = {
   constructionApproval: '施工立项',
+  projectContractChange: '项目合同变更',
   procurementContract: '采购合同',
   procurementPayment: '采购付款',
   laborContract: '劳务合同',
@@ -119,7 +124,7 @@ async function getPendingTask(model: ApprovalModel, resourceId: string) {
       status: 'PENDING',
     },
     include: {
-      tasks: {
+      ProcessTask: {
         where: { status: 'PENDING' },
         orderBy: { nodeOrder: 'asc' },
         take: 1,
@@ -127,7 +132,7 @@ async function getPendingTask(model: ApprovalModel, resourceId: string) {
     },
     orderBy: { startedAt: 'desc' },
   })
-  return { instance, task: instance?.tasks[0] ?? null }
+  return { instance, task: instance?.ProcessTask[0] ?? null }
 }
 
 /**
@@ -182,6 +187,8 @@ export async function handleSubmit(
   id: string,
   resourcePath: string
 ): Promise<void> {
+  await assertResourceInCurrentRegion(MODEL_RESOURCE_TYPE[model], id)
+
   const submitter = await requireRole(SUBMIT_ROLES[model])
 
   const currentStatus = await getApprovalStatus(model, id)
@@ -192,27 +199,29 @@ export async function handleSubmit(
   const resourceType = MODEL_RESOURCE_TYPE[model]
   const definition = await db.processDefinition.findUnique({
     where: { resourceType },
-    include: { nodes: { orderBy: { order: 'asc' } } },
+    include: { ProcessNode: { orderBy: { order: 'asc' } } },
   })
 
-  if (!definition || !definition.isActive || definition.nodes.length === 0) {
+  if (!definition || !definition.isActive || definition.ProcessNode.length === 0) {
     throw new Error(`流程定义未配置或未激活（resourceType=${resourceType}），请联系管理员`)
   }
 
-  const firstNode = definition.nodes[0]
+  const firstNode = definition.ProcessNode[0]
 
   // 创建流程实例 + 第一个任务
   await db.processInstance.create({
     data: {
+      id: crypto.randomUUID(),
       definitionId: definition.id,
       resourceType,
       resourceId: id,
       submitterUserId: submitter.userid,
       submitterName: submitter.name,
       status: 'PENDING',
-      tasks: {
+      ProcessTask: {
         create: [
           {
+            id: crypto.randomUUID(),
             nodeId: firstNode.id,
             nodeOrder: firstNode.order,
             approverType: firstNode.approverType,
@@ -263,6 +272,8 @@ export async function handleApprove(
   id: string,
   resourcePath: string
 ): Promise<void> {
+  await assertResourceInCurrentRegion(MODEL_RESOURCE_TYPE[model], id)
+
   const currentStatus = await getApprovalStatus(model, id)
   if (currentStatus === null) throw new Error('记录不存在')
   if (currentStatus !== ApprovalStatus.PENDING) throw new Error('只有待审批状态的记录才能审批通过')
@@ -291,6 +302,7 @@ export async function handleApprove(
     // 创建下一个 task
     await db.processTask.create({
       data: {
+        id: crypto.randomUUID(),
         instanceId: instance.id,
         nodeId: nextNode.id,
         nodeOrder: nextNode.order,
@@ -340,6 +352,8 @@ export async function handleReject(
   reason: string | undefined,
   resourcePath: string
 ): Promise<void> {
+  await assertResourceInCurrentRegion(MODEL_RESOURCE_TYPE[model], id)
+
   const currentStatus = await getApprovalStatus(model, id)
   if (currentStatus === null) throw new Error('记录不存在')
   if (currentStatus !== ApprovalStatus.PENDING) throw new Error('只有待审批状态的记录才能驳回')

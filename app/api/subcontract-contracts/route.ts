@@ -1,154 +1,167 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { getCurrentRegionId } from '@/lib/region'
+import {
+  assertConstructionApprovalInCurrentRegion,
+  assertProjectInCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
+
+function toResponse(contract: {
+  id: string
+  code: string
+  name: string
+  projectId: string
+  constructionId: string
+  workerId: string | null
+  vendorId: string | null
+  Project: { name: string }
+  ConstructionApproval: { name: string }
+  LaborWorker: {
+    name: string
+    phone: string | null
+    idNumber: string | null
+    bankAccount: string | null
+    bankName: string | null
+  } | null
+  SubcontractVendor: {
+    name: string
+    phone: string | null
+    bankAccount: string | null
+    bankName: string | null
+  } | null
+  contractAmount: Prisma.Decimal | number
+  payableAmount: Prisma.Decimal | number
+  paidAmount: Prisma.Decimal | number
+  unpaidAmount: Prisma.Decimal | number
+  signDate: Date | null
+  attachmentUrl?: string | null
+  subcontractType?: string | null
+  remark?: string | null
+  approvalStatus: string
+  createdAt: Date
+}) {
+  const workerName = contract.LaborWorker?.name ?? contract.SubcontractVendor?.name ?? ''
+  return {
+    id: contract.id,
+    code: contract.code,
+    name: contract.name,
+    projectId: contract.projectId,
+    constructionId: contract.constructionId,
+    workerId: contract.workerId,
+    vendorId: contract.vendorId,
+    projectName: contract.Project.name,
+    constructionName: contract.ConstructionApproval.name,
+    subcontractWorkerName: workerName,
+    subcontractWorkerPhone: contract.LaborWorker?.phone ?? contract.SubcontractVendor?.phone ?? null,
+    subcontractWorkerIdNumber: contract.LaborWorker?.idNumber ?? null,
+    subcontractWorkerBankAccount: contract.LaborWorker?.bankAccount ?? contract.SubcontractVendor?.bankAccount ?? null,
+    subcontractWorkerBankName: contract.LaborWorker?.bankName ?? contract.SubcontractVendor?.bankName ?? null,
+    contractAmount: contract.contractAmount,
+    payableAmount: contract.payableAmount,
+    paidAmount: contract.paidAmount,
+    unpaidAmount: contract.unpaidAmount,
+    signDate: contract.signDate,
+    attachmentUrl: contract.attachmentUrl ?? null,
+    subcontractType: contract.subcontractType ?? null,
+    remark: contract.remark ?? null,
+    approvalStatus: contract.approvalStatus,
+    createdAt: contract.createdAt,
+  }
+}
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
-  /**
-   * GET /api/subcontract-contracts
-   * 获取分包合同列表
-   * 支持参数：projectId（可选）、constructionId（可选）
-   */
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
     const constructionId = searchParams.get('constructionId')
 
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const where: any = {}
-
-    if (regionId) where.regionId = regionId
-
-    if (projectId) {
-      where.projectId = projectId
-    }
-
-    if (constructionId) {
-      where.constructionId = constructionId
-    }
+    where.regionId = regionId
+    if (projectId) where.projectId = projectId
+    if (constructionId) where.constructionId = constructionId
 
     const contracts = await db.subcontractContract.findMany({
       where,
       select: {
         id: true,
         code: true,
+        name: true,
         projectId: true,
         constructionId: true,
-        project: {
-          select: { name: true },
-        },
-        construction: {
-          select: { name: true },
-        },
-        vendor: {
-          select: { name: true },
-        },
+        workerId: true,
+        vendorId: true,
+        Project: { select: { name: true } },
+        ConstructionApproval: { select: { name: true } },
+        LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         payableAmount: true,
         paidAmount: true,
         unpaidAmount: true,
         signDate: true,
+        subcontractType: true,
+        attachmentUrl: true,
+        remark: true,
         approvalStatus: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    // 转换返回格式
-    type ContractItem = (typeof contracts)[number]
-    const result = contracts.map((contract: ContractItem) => ({
-      id: contract.id,
-      code: contract.code,
-      projectName: contract.project.name,
-      constructionName: contract.construction.name,
-      subcontractVendorName: contract.vendor.name,
-      contractAmount: contract.contractAmount,
-      payableAmount: contract.payableAmount,
-      paidAmount: contract.paidAmount,
-      unpaidAmount: contract.unpaidAmount,
-      signDate: contract.signDate,
-      approvalStatus: contract.approvalStatus,
-      createdAt: contract.createdAt,
-    }))
-
-    return success(result)
+    return success(contracts.map(toResponse))
   },
 
-  /**
-   * POST /api/subcontract-contracts
-   * 创建分包合同
-   * body: { projectId, constructionId, subcontractVendorId, contractAmount, signDate?, remark? }
-   */
   POST: async (req) => {
     const body = await req.json()
 
-    // 验证必填字段
     if (!body.projectId || typeof body.projectId !== 'string') {
       throw new BadRequestError('项目 ID 为必填项')
     }
-
     if (!body.constructionId || typeof body.constructionId !== 'string') {
       throw new BadRequestError('施工立项 ID 为必填项')
     }
-
-    if (!body.subcontractVendorId || typeof body.subcontractVendorId !== 'string') {
-      throw new BadRequestError('分包单位 ID 为必填项')
+    const workerId = String(body.workerId ?? body.subcontractWorkerId ?? '').trim()
+    if (!workerId) {
+      throw new BadRequestError('分包人员 ID 为必填项')
     }
-
+    if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
+      throw new BadRequestError('合同名称为必填项')
+    }
     if (body.contractAmount === undefined || typeof body.contractAmount !== 'number') {
       throw new BadRequestError('合同金额为必填项且必须是数字')
     }
-
     if (body.contractAmount <= 0) {
       throw new BadRequestError('合同金额必须大于 0')
     }
 
-    // 验证项目是否存在
-    const project = await db.project.findUnique({
-      where: { id: body.projectId },
-      select: { id: true },
-    })
+    const project = await assertProjectInCurrentRegion(body.projectId)
+    if (!project) throw new NotFoundError('项目不存在')
 
-    if (!project) {
-      throw new NotFoundError('项目不存在')
-    }
-
-    // 验证施工立项是否存在
-    const construction = await db.constructionApproval.findUnique({
-      where: { id: body.constructionId },
-      select: { id: true, projectId: true },
-    })
-
-    if (!construction) {
-      throw new NotFoundError('施工立项不存在')
-    }
-
-    // 验证施工立项属于该项目
+    const construction = await assertConstructionApprovalInCurrentRegion(body.constructionId)
+    if (!construction) throw new NotFoundError('施工立项不存在')
     if (construction.projectId !== body.projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    // 验证分包单位是否存在
-    const vendor = await db.subcontractVendor.findUnique({
-      where: { id: body.subcontractVendorId },
-      select: { id: true },
+    const worker = await db.laborWorker.findUnique({
+      where: { id: workerId },
+      select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
     })
+    if (!worker) throw new NotFoundError('分包人员不存在')
 
-    if (!vendor) {
-      throw new NotFoundError('分包单位不存在')
-    }
-
-    // 生成合同编码
     const code = `SUB${Date.now()}`
 
-    // 创建分包合同
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const createData: Prisma.SubcontractContractUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       code,
-      name: body.name?.trim() || code,
+      name: body.name.trim(),
       projectId: body.projectId,
       constructionId: body.constructionId,
-      vendorId: body.subcontractVendorId,
+      workerId,
+      vendorId: null,
       contractAmount: body.contractAmount,
       changedAmount: 0,
       payableAmount: body.contractAmount,
@@ -159,53 +172,39 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       subcontractType: body.subcontractType?.trim() || null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
-      regionId: regionId ?? undefined,
+      regionId,
+      updatedAt: new Date(),
     }
     const contract = await db.subcontractContract.create({
       data: createData,
       select: {
         id: true,
         code: true,
+        name: true,
         projectId: true,
         constructionId: true,
-        project: {
-          select: { name: true },
-        },
-        construction: {
-          select: { name: true },
-        },
-        vendor: {
-          select: { name: true },
-        },
+        workerId: true,
+        vendorId: true,
+        Project: { select: { name: true } },
+        ConstructionApproval: { select: { name: true } },
+        LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         payableAmount: true,
         paidAmount: true,
         unpaidAmount: true,
         signDate: true,
+        subcontractType: true,
+        attachmentUrl: true,
         remark: true,
         approvalStatus: true,
         createdAt: true,
       },
     })
 
-    return success({
-      id: contract.id,
-      code: contract.code,
-      projectName: contract.project.name,
-      constructionName: contract.construction.name,
-      subcontractVendorName: contract.vendor.name,
-      contractAmount: contract.contractAmount,
-      payableAmount: contract.payableAmount,
-      paidAmount: contract.paidAmount,
-      unpaidAmount: contract.unpaidAmount,
-      signDate: contract.signDate,
-      remark: contract.remark,
-      approvalStatus: contract.approvalStatus,
-      createdAt: contract.createdAt,
-    })
+    return success(toResponse(contract))
   },
 }, {
   resource: 'subcontract-contracts',
-  resourceIdExtractor: (req, result) => result?.data?.id || null,
+  resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-

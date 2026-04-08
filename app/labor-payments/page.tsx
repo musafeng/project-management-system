@@ -26,11 +26,20 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
  */
 interface LaborPayment {
   id: string
+  contractId: string
+  workerId: string
   contractCode: string
+  contractName: string
+  constructionName?: string
   projectName: string
   laborWorkerName: string
+  laborWorkerPhone?: string | null
+  laborWorkerIdNumber?: string | null
+  laborWorkerBankAccount?: string | null
+  laborWorkerBankName?: string | null
   amount: number
   paymentDate: string
+  attachmentUrl?: string | null
   approvalStatus: string
   remark: string | null
   createdAt: string
@@ -42,9 +51,14 @@ interface LaborPayment {
 interface LaborContract {
   id: string
   code: string
+  name: string
   projectName: string
   constructionName: string
   laborWorkerName: string
+  laborWorkerPhone?: string | null
+  laborWorkerIdNumber?: string | null
+  laborWorkerBankAccount?: string | null
+  laborWorkerBankName?: string | null
   contractAmount: number
   payableAmount: number
   paidAmount: number
@@ -95,6 +109,8 @@ export default function LaborPaymentsPage() {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+  const selectedContractId = Form.useWatch('contractId', form)
+  const selectedContract = contracts.find((item) => item.id === selectedContractId)
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -211,6 +227,7 @@ export default function LaborPaymentsPage() {
         contractId: values.contractId,
         amount: values.amount,
         paymentDate: values.paymentDate ? values.paymentDate.format('YYYY-MM-DD') : null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -248,6 +265,12 @@ export default function LaborPaymentsPage() {
       key: 'contractCode',
       width: 130,
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'contractName',
+      key: 'contractName',
+      width: 180,
     },
     {
       title: '项目名称',
@@ -447,11 +470,25 @@ export default function LaborPaymentsPage() {
               placeholder="请选择合同"
               loading={contractsLoading}
               options={contracts.map((contract) => ({
-                label: `${contract.code} - ${contract.projectName}`,
+                label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}
             />
           </Form.Item>
+
+          {selectedContract && (
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, lineHeight: 1.8, color: '#595959' }}>
+              <div style={{ marginBottom: 6, fontWeight: 500, color: '#1d1d1f' }}>合同联动信息</div>
+              <div>合同名称：{selectedContract.name}</div>
+              <div>施工立项：{selectedContract.constructionName || '-'}</div>
+              <div>项目名称：{selectedContract.projectName}</div>
+              <div>劳务人员：{selectedContract.laborWorkerName}</div>
+              <div>联系电话：{selectedContract.laborWorkerPhone || '-'}</div>
+              <div>身份证号：{selectedContract.laborWorkerIdNumber || '-'}</div>
+              <div>银行卡：{selectedContract.laborWorkerBankAccount || '-'}</div>
+              <div>开户行：{selectedContract.laborWorkerBankName || '-'}</div>
+            </div>
+          )}
 
           <Form.Item
             label="付款金额"
@@ -473,6 +510,10 @@ export default function LaborPaymentsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -481,4 +522,3 @@ export default function LaborPaymentsPage() {
     </ConfigProvider>
   )
 }
-

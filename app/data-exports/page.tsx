@@ -22,6 +22,7 @@ const { Title, Text } = Typography
 const RESOURCE_TYPE_OPTIONS = [
   { label: '施工立项', value: 'construction-approvals' },
   { label: '项目合同', value: 'project-contracts' },
+  { label: '项目合同变更', value: 'project-contract-changes' },
   { label: '合同收款', value: 'contract-receipts' },
   { label: '采购合同', value: 'procurement-contracts' },
   { label: '采购付款', value: 'procurement-payments' },
@@ -269,7 +270,6 @@ export default function DataExportsPage() {
     </div>
   )
 }
-
 
 
 

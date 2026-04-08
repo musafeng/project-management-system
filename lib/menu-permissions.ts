@@ -87,6 +87,12 @@ export const MENU_PERMISSIONS: MenuPermissionConfig[] = [
         roles: ALL_ROLES,
       },
       {
+        key: '/project-contract-changes',
+        label: '项目合同变更',
+        path: '/project-contract-changes',
+        roles: ALL_ROLES,
+      },
+      {
         key: '/contract-receipts',
         label: '合同收款管理',
         path: '/contract-receipts',

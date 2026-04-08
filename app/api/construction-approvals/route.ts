@@ -1,7 +1,11 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { getCurrentRegionId } from '@/lib/region'
+import {
+  assertProjectContractInCurrentRegion,
+  assertProjectInCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
 
 const handlers = apiHandlerWithPermissionAndLog({
   /**
@@ -14,10 +18,9 @@ const handlers = apiHandlerWithPermissionAndLog({
     const projectId = searchParams.get('projectId')
     const contractId = searchParams.get('contractId')
 
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const where: any = {}
-
-    if (regionId) where.regionId = regionId
+    where.regionId = regionId
 
     if (projectId) {
       where.projectId = projectId
@@ -35,10 +38,10 @@ const handlers = apiHandlerWithPermissionAndLog({
         name: true,
         projectId: true,
         contractId: true,
-        project: {
+        Project: {
           select: { name: true },
         },
-        contract: {
+        ProjectContract: {
           select: { code: true },
         },
         budget: true,
@@ -54,8 +57,10 @@ const handlers = apiHandlerWithPermissionAndLog({
     const result = approvals.map((approval: ApprovalItem) => ({
       id: approval.id,
       code: approval.code,
-      projectName: approval.project.name,
-      contractCode: approval.contract.code,
+      projectId: approval.projectId,
+      contractId: approval.contractId,
+      projectName: approval.Project.name,
+      contractCode: approval.ProjectContract.code,
       name: approval.name,
       budgetAmount: approval.budget,
       startDate: approval.startDate,
@@ -88,20 +93,14 @@ const handlers = apiHandlerWithPermissionAndLog({
     }
 
     // 验证项目是否存在
-    const project = await db.project.findUnique({
-      where: { id: body.projectId },
-      select: { id: true },
-    })
+    const project = await assertProjectInCurrentRegion(body.projectId)
 
     if (!project) {
       throw new NotFoundError('项目不存在')
     }
 
     // 验证合同是否存在
-    const contract = await db.projectContract.findUnique({
-      where: { id: body.contractId },
-      select: { id: true, projectId: true },
-    })
+    const contract = await assertProjectContractInCurrentRegion(body.contractId)
 
     if (!contract) {
       throw new NotFoundError('合同不存在')
@@ -116,8 +115,9 @@ const handlers = apiHandlerWithPermissionAndLog({
     const code = `CONST${Date.now()}`
 
     // 创建施工立项
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const createData: Prisma.ConstructionApprovalUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       code,
       name: body.name.trim(),
       projectId: body.projectId,
@@ -126,7 +126,8 @@ const handlers = apiHandlerWithPermissionAndLog({
       startDate: body.startDate ? new Date(body.startDate) : null,
       status: 'active',
       remark: body.remark?.trim() || null,
-      regionId: regionId ?? undefined,
+      regionId,
+      updatedAt: new Date(),
     }
     const approval = await db.constructionApproval.create({
       data: createData,
@@ -136,10 +137,10 @@ const handlers = apiHandlerWithPermissionAndLog({
         name: true,
         projectId: true,
         contractId: true,
-        project: {
+        Project: {
           select: { name: true },
         },
-        contract: {
+        ProjectContract: {
           select: { code: true },
         },
         budget: true,
@@ -152,8 +153,8 @@ const handlers = apiHandlerWithPermissionAndLog({
     return success({
       id: approval.id,
       code: approval.code,
-      projectName: approval.project.name,
-      contractCode: approval.contract.code,
+      projectName: approval.Project.name,
+      contractCode: approval.ProjectContract.code,
       name: approval.name,
       budgetAmount: approval.budget,
       startDate: approval.startDate,
@@ -168,4 +169,3 @@ const handlers = apiHandlerWithPermissionAndLog({
 
 export const GET = handlers.GET!
 export const POST = handlers.POST!
-

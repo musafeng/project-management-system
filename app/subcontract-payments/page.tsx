@@ -26,11 +26,20 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
  */
 interface SubcontractPayment {
   id: string
+  contractId: string
+  workerId?: string | null
   contractCode: string
+  contractName: string
+  constructionName?: string
   projectName: string
-  subcontractVendorName: string
+  subcontractWorkerName: string
+  subcontractWorkerPhone?: string | null
+  subcontractWorkerIdNumber?: string | null
+  subcontractWorkerBankAccount?: string | null
+  subcontractWorkerBankName?: string | null
   amount: number
   paymentDate: string
+  attachmentUrl?: string | null
   approvalStatus: string
   remark: string | null
   createdAt: string
@@ -42,9 +51,14 @@ interface SubcontractPayment {
 interface SubcontractContract {
   id: string
   code: string
+  name: string
   projectName: string
   constructionName: string
-  subcontractVendorName: string
+  subcontractWorkerName: string
+  subcontractWorkerPhone?: string | null
+  subcontractWorkerIdNumber?: string | null
+  subcontractWorkerBankAccount?: string | null
+  subcontractWorkerBankName?: string | null
   contractAmount: number
   payableAmount: number
   paidAmount: number
@@ -95,6 +109,8 @@ export default function SubcontractPaymentsPage() {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+  const selectedContractId = Form.useWatch('contractId', form)
+  const selectedContract = contracts.find((item) => item.id === selectedContractId)
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -211,6 +227,7 @@ export default function SubcontractPaymentsPage() {
         contractId: values.contractId,
         amount: values.amount,
         paymentDate: values.paymentDate ? values.paymentDate.format('YYYY-MM-DD') : null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -250,15 +267,21 @@ export default function SubcontractPaymentsPage() {
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
     },
     {
+      title: '合同名称',
+      dataIndex: 'contractName',
+      key: 'contractName',
+      width: 180,
+    },
+    {
       title: '项目名称',
       dataIndex: 'projectName',
       key: 'projectName',
       width: 150,
     },
     {
-      title: '分包单位',
-      dataIndex: 'subcontractVendorName',
-      key: 'subcontractVendorName',
+      title: '分包人员',
+      dataIndex: 'subcontractWorkerName',
+      key: 'subcontractWorkerName',
       width: 130,
     },
     {
@@ -447,11 +470,25 @@ export default function SubcontractPaymentsPage() {
               placeholder="请选择合同"
               loading={contractsLoading}
               options={contracts.map((contract) => ({
-                label: `${contract.code} - ${contract.projectName}`,
+                label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}
             />
           </Form.Item>
+
+          {selectedContract && (
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, lineHeight: 1.8, color: '#595959' }}>
+              <div style={{ marginBottom: 6, fontWeight: 500, color: '#1d1d1f' }}>合同联动信息</div>
+              <div>合同名称：{selectedContract.name}</div>
+              <div>施工立项：{selectedContract.constructionName || '-'}</div>
+              <div>项目名称：{selectedContract.projectName}</div>
+              <div>分包人员：{selectedContract.subcontractWorkerName}</div>
+              <div>联系电话：{selectedContract.subcontractWorkerPhone || '-'}</div>
+              <div>身份证号：{selectedContract.subcontractWorkerIdNumber || '-'}</div>
+              <div>银行卡：{selectedContract.subcontractWorkerBankAccount || '-'}</div>
+              <div>开户行：{selectedContract.subcontractWorkerBankName || '-'}</div>
+            </div>
+          )}
 
           <Form.Item
             label="付款金额"
@@ -473,6 +510,10 @@ export default function SubcontractPaymentsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -481,4 +522,3 @@ export default function SubcontractPaymentsPage() {
     </ConfigProvider>
   )
 }
-

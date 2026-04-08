@@ -1,11 +1,53 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import {
+  assertDirectRecordInCurrentRegion,
+  assertProjectContractInCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
+
+function toResponse(receipt: {
+  id: string
+  contractId: string
+  ProjectContract: {
+    code: string
+    name: string
+    Project: { name: string }
+  }
+  receiptAmount: any
+  receiptDate: Date
+  receiptMethod: string | null
+  receiptNumber: string | null
+  status: string
+  approvalStatus?: string
+  deductionItems: string | null
+  attachmentUrl: string | null
+  remark: string | null
+  createdAt: Date
+  updatedAt: Date
+}) {
+  return {
+    id: receipt.id,
+    contractId: receipt.contractId,
+    contractCode: receipt.ProjectContract.code,
+    contractName: receipt.ProjectContract.name,
+    projectName: receipt.ProjectContract.Project.name,
+    amount: receipt.receiptAmount,
+    receiptAmount: receipt.receiptAmount,
+    receiptDate: receipt.receiptDate,
+    receiptMethod: receipt.receiptMethod,
+    receiptNumber: receipt.receiptNumber,
+    status: receipt.status,
+    approvalStatus: receipt.approvalStatus,
+    deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
+    attachmentUrl: receipt.attachmentUrl,
+    remark: receipt.remark,
+    createdAt: receipt.createdAt,
+    updatedAt: receipt.updatedAt,
+  }
+}
 
 const handler = apiHandlerWithMethod({
-  /**
-   * GET /api/contract-receipts/{id}
-   * 获取收款详情
-   */
   GET: async (req) => {
     const id = req.url.split('/').pop()
 
@@ -13,15 +55,18 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少收款记录 ID')
     }
 
-    const receipt = await db.contractReceipt.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const receipt = await db.contractReceipt.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         contractId: true,
-        contract: {
+        ProjectContract: {
           select: {
             code: true,
-            project: {
+            name: true,
+            Project: {
               select: { name: true },
             },
           },
@@ -31,6 +76,9 @@ const handler = apiHandlerWithMethod({
         receiptMethod: true,
         receiptNumber: true,
         status: true,
+        approvalStatus: true,
+        deductionItems: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
@@ -41,27 +89,9 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('收款记录不存在')
     }
 
-    return success({
-      id: receipt.id,
-      contractId: receipt.contractId,
-      contractCode: receipt.contract.code,
-      projectName: receipt.contract.project.name,
-      amount: receipt.receiptAmount,
-      receiptDate: receipt.receiptDate,
-      receiptMethod: receipt.receiptMethod,
-      receiptNumber: receipt.receiptNumber,
-      status: receipt.status,
-      remark: receipt.remark,
-      createdAt: receipt.createdAt,
-      updatedAt: receipt.updatedAt,
-    })
+    return success(toResponse(receipt))
   },
 
-  /**
-   * DELETE /api/contract-receipts/{id}
-   * 删除收款记录
-   * 删除规则：回退合同汇总字段
-   */
   DELETE: async (req) => {
     const id = req.url.split('/').pop()
 
@@ -69,44 +99,23 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少收款记录 ID')
     }
 
-    // 获取收款记录
-    const receipt = await db.contractReceipt.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        contractId: true,
-        receiptAmount: true,
-      },
-    })
-
+    const receipt = await assertDirectRecordInCurrentRegion('contractReceipt', id)
     if (!receipt) {
       throw new NotFoundError('收款记录不存在')
     }
 
-    // 获取合同信息
-    const contract = await db.projectContract.findUnique({
-      where: { id: receipt.contractId },
-      select: {
-        id: true,
-        receivableAmount: true,
-        receivedAmount: true,
-      },
-    })
+    const contract = await assertProjectContractInCurrentRegion(receipt.contractId)
 
     if (!contract) {
       throw new NotFoundError('关联的合同不存在')
     }
 
-    // 删除收款记录
     await db.contractReceipt.delete({
       where: { id },
     })
 
-    // 回退合同汇总字段
-    const newReceivedAmount =
-      Number(contract.receivedAmount) - Number(receipt.receiptAmount)
-    const newUnreceivedAmount =
-      Number(contract.receivableAmount) - newReceivedAmount
+    const newReceivedAmount = Number(contract.receivedAmount) - Number(receipt.receiptAmount)
+    const newUnreceivedAmount = Number(contract.receivableAmount) - newReceivedAmount
 
     await db.projectContract.update({
       where: { id: receipt.contractId },
@@ -120,4 +129,5 @@ const handler = apiHandlerWithMethod({
   },
 })
 
-
+export const GET = handler
+export const DELETE = handler

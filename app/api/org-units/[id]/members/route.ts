@@ -25,7 +25,7 @@ export const { POST, DELETE } = apiHandlerWithPermissionAndLog({
     if (exists) throw new ConflictError('用户已在该组织中')
 
     const member = await db.systemUserOrgUnit.create({
-      data: { systemUserId: body.systemUserId, orgUnitId: id },
+      data: { id: crypto.randomUUID(), systemUserId: body.systemUserId, orgUnitId: id },
     })
     return success(member)
   },

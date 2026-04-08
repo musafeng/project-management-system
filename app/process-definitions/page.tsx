@@ -522,6 +522,7 @@ export default function ProcessDefinitionsPage() {
               disabled={!!editingDef}
               options={[
                 { label: '施工立项（construction-approvals）', value: 'construction-approvals' },
+                { label: '项目合同变更（project-contract-changes）', value: 'project-contract-changes' },
                 { label: '采购合同（procurement-contracts）', value: 'procurement-contracts' },
                 { label: '采购付款（procurement-payments）', value: 'procurement-payments' },
                 { label: '劳务合同（labor-contracts）', value: 'labor-contracts' },

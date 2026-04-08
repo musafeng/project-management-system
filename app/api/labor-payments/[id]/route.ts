@@ -1,12 +1,62 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
+import { assertLaborContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+
+function toResponse(payment: {
+  id: string
+  contractId: string
+  projectId: string
+  workerId: string
+  LaborContract: {
+    code: string
+    name: string
+    constructionId: string
+    ConstructionApproval: { name: string }
+    Project: { name: string }
+    LaborWorker: { name: string; phone: string | null; idNumber: string | null; bankAccount: string | null; bankName: string | null }
+  }
+  paymentAmount: any
+  paymentDate: Date
+  paymentMethod: string | null
+  paymentNumber: string | null
+  attachmentUrl: string | null
+  approvalStatus?: string
+  status: string
+  remark: string | null
+  createdAt: Date
+  updatedAt: Date
+}) {
+  return {
+    id: payment.id,
+    contractId: payment.contractId,
+    projectId: payment.projectId,
+    workerId: payment.workerId,
+    constructionId: payment.LaborContract.constructionId,
+    contractCode: payment.LaborContract.code,
+    contractName: payment.LaborContract.name,
+    constructionName: payment.LaborContract.ConstructionApproval.name,
+    projectName: payment.LaborContract.Project.name,
+    laborWorkerName: payment.LaborContract.LaborWorker.name,
+    laborWorkerPhone: payment.LaborContract.LaborWorker.phone,
+    laborWorkerIdNumber: payment.LaborContract.LaborWorker.idNumber,
+    laborWorkerBankAccount: payment.LaborContract.LaborWorker.bankAccount,
+    laborWorkerBankName: payment.LaborContract.LaborWorker.bankName,
+    amount: payment.paymentAmount,
+    paymentAmount: payment.paymentAmount,
+    paymentDate: payment.paymentDate,
+    paymentMethod: payment.paymentMethod,
+    paymentNumber: payment.paymentNumber,
+    attachmentUrl: payment.attachmentUrl,
+    approvalStatus: payment.approvalStatus,
+    status: payment.status,
+    remark: payment.remark,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+  }
+}
 
 const handler = apiHandlerWithMethod({
-  /**
-   * GET /api/labor-payments/{id}
-   * 获取付款详情
-   */
   GET: async (req) => {
     const id = req.url.split('/').pop()
 
@@ -14,28 +64,31 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少付款记录 ID')
     }
 
-    const payment = await db.laborPayment.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const payment = await db.laborPayment.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         contractId: true,
         projectId: true,
         workerId: true,
-        contract: {
+        LaborContract: {
           select: {
             code: true,
-            project: {
-              select: { name: true },
-            },
-            worker: {
-              select: { name: true },
-            },
+            name: true,
+            constructionId: true,
+            ConstructionApproval: { select: { name: true } },
+            Project: { select: { name: true } },
+            LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
           },
         },
         paymentAmount: true,
         paymentDate: true,
         paymentMethod: true,
         paymentNumber: true,
+        attachmentUrl: true,
+        approvalStatus: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -47,30 +100,9 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    return success({
-      id: payment.id,
-      contractId: payment.contractId,
-      projectId: payment.projectId,
-      workerId: payment.workerId,
-      contractCode: payment.contract.code,
-      projectName: payment.contract.project.name,
-      laborWorkerName: payment.contract.worker.name,
-      amount: payment.paymentAmount,
-      paymentDate: payment.paymentDate,
-      paymentMethod: payment.paymentMethod,
-      paymentNumber: payment.paymentNumber,
-      status: payment.status,
-      remark: payment.remark,
-      createdAt: payment.createdAt,
-      updatedAt: payment.updatedAt,
-    })
+    return success(toResponse(payment))
   },
 
-  /**
-   * DELETE /api/labor-payments/{id}
-   * 删除付款记录
-   * 删除规则：回退合同汇总字段
-   */
   DELETE: async (req) => {
     const id = req.url.split('/').pop()
 
@@ -78,9 +110,11 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少付款记录 ID')
     }
 
-    // 获取付款记录
-    const payment = await db.laborPayment.findUnique({
-      where: { id },
+    const payment = await db.laborPayment.findFirst({
+      where: {
+        id,
+        regionId: await requireCurrentRegionId(),
+      },
       select: {
         id: true,
         contractId: true,
@@ -93,37 +127,24 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    // 审批状态锁定校验
     try {
       assertEditable(payment.approvalStatus)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
-    // 获取合同信息
-    const contract = await db.laborContract.findUnique({
-      where: { id: payment.contractId },
-      select: {
-        id: true,
-        payableAmount: true,
-        paidAmount: true,
-      },
-    })
+    const contract = await assertLaborContractInCurrentRegion(payment.contractId)
 
     if (!contract) {
       throw new NotFoundError('关联的劳务合同不存在')
     }
 
-    // 删除付款记录
     await db.laborPayment.delete({
       where: { id },
     })
 
-    // 回退合同汇总字段
-    const newPaidAmount =
-      Number(contract.paidAmount) - Number(payment.paymentAmount)
-    const newUnpaidAmount =
-      Number(contract.payableAmount) - newPaidAmount
+    const newPaidAmount = Number(contract.paidAmount) - Number(payment.paymentAmount)
+    const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount
 
     await db.laborContract.update({
       where: { id: payment.contractId },
@@ -137,4 +158,5 @@ const handler = apiHandlerWithMethod({
   },
 })
 
-
+export const GET = handler
+export const DELETE = handler

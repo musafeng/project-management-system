@@ -9,9 +9,10 @@
 
 import { apiHandler, success, ApiError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { requireCurrentRegionId } from '@/lib/region'
 import { Prisma } from '@prisma/client'
 
-type ProjectWithCustomer = Prisma.ProjectGetPayload<{ include: { customer: { select: { name: true } } } }>
+type ProjectWithCustomer = Prisma.ProjectGetPayload<{ include: { Customer: { select: { name: true } } } }>
 
 /**
  * 项目汇总数据类型
@@ -61,10 +62,10 @@ function toNumber(value: Prisma.Decimal | null | undefined): number {
 /**
  * 计算单个项目的收入统计
  */
-async function calculateIncomeStats(projectId: string) {
+async function calculateIncomeStats(projectId: string, regionId: string) {
   // 1. 项目合同收款统计
   const contracts = await db.projectContract.findMany({
-    where: { projectId },
+    where: { projectId, regionId },
     select: {
       receivableAmount: true,
       receivedAmount: true,
@@ -87,7 +88,7 @@ async function calculateIncomeStats(projectId: string) {
 
   // 2. 其他收款统计
   const otherReceiptsResult = await db.otherReceipt.aggregate({
-    where: { projectId },
+    where: { projectId, regionId },
     _sum: { receiptAmount: true },
   })
   const otherReceiptAmount = toNumber(otherReceiptsResult._sum.receiptAmount)
@@ -107,7 +108,7 @@ async function calculateIncomeStats(projectId: string) {
 /**
  * 计算单个项目的支出统计
  */
-async function calculateExpenseStats(projectId: string) {
+async function calculateExpenseStats(projectId: string, regionId: string) {
   // 并行查询所有支出类型
   const [
     procurementResult,
@@ -120,37 +121,37 @@ async function calculateExpenseStats(projectId: string) {
   ] = await Promise.all([
     // 1. 采购付款
     db.procurementPayment.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { paymentAmount: true },
     }),
     // 2. 劳务付款
     db.laborPayment.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { paymentAmount: true },
     }),
     // 3. 分包付款
     db.subcontractPayment.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { paymentAmount: true },
     }),
     // 4. 项目费用
     db.projectExpense.aggregate({
-      where: { projectId },
+      where: { projectId, Project: { regionId } },
       _sum: { expenseAmount: true },
     }),
     // 5. 其他付款
     db.otherPayment.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { paymentAmount: true },
     }),
     // 6. 管理费用
     db.managementExpense.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { expenseAmount: true },
     }),
     // 7. 销售费用
     db.salesExpense.aggregate({
-      where: { projectId },
+      where: { projectId, regionId },
       _sum: { expenseAmount: true },
     }),
   ])
@@ -192,9 +193,10 @@ export const GET = apiHandler(async (req: Request) => {
   const { searchParams } = new URL(req.url)
   const keyword = searchParams.get('keyword') || undefined
   const status = searchParams.get('status') || undefined
+  const regionId = await requireCurrentRegionId()
 
   // 构建查询条件
-  const where: Prisma.ProjectWhereInput = {}
+  const where: Prisma.ProjectWhereInput = { regionId }
 
   if (keyword) {
     where.name = {
@@ -211,7 +213,7 @@ export const GET = apiHandler(async (req: Request) => {
   const projects = await db.project.findMany({
     where,
     include: {
-      customer: {
+      Customer: {
         select: {
           name: true,
         },
@@ -227,8 +229,8 @@ export const GET = apiHandler(async (req: Request) => {
       projects.map(async (project: ProjectWithCustomer) => {
       // 并行计算收入和支出
       const [incomeStats, expenseStats] = await Promise.all([
-        calculateIncomeStats(project.id),
-        calculateExpenseStats(project.id),
+        calculateIncomeStats(project.id, regionId),
+        calculateExpenseStats(project.id, regionId),
       ])
 
       // 计算利润
@@ -238,7 +240,7 @@ export const GET = apiHandler(async (req: Request) => {
           id: project.id,
         code: project.code,
           name: project.name,
-        customerName: project.customer.name,
+        customerName: project.Customer.name,
           status: project.status,
         startDate: project.startDate ? project.startDate.toISOString().split('T')[0] : null,
         endDate: project.endDate ? project.endDate.toISOString().split('T')[0] : null,

@@ -14,6 +14,7 @@ import type { WorkbenchData, PendingTask, RecentSubmission, BusinessAlert } from
 
 const RESOURCE_ROUTE: Record<string, string> = {
   'construction-approvals': '/construction-approvals',
+  'project-contract-changes': '/project-contract-changes',
   'procurement-contracts': '/procurement-contracts',
   'procurement-payments': '/procurement-payments',
   'labor-contracts': '/labor-contracts',
@@ -24,6 +25,7 @@ const RESOURCE_ROUTE: Record<string, string> = {
 
 const RESOURCE_COLOR: Record<string, string> = {
   'construction-approvals': '#1677ff',
+  'project-contract-changes': '#2f54eb',
   'procurement-contracts': '#faad14',
   'procurement-payments': '#eb2f96',
   'labor-contracts': '#52c41a',

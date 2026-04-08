@@ -22,6 +22,7 @@ export async function POST(
 
     const field = await prisma.formField.create({
       data: {
+        id: crypto.randomUUID(),
         formId,
         label,
         fieldKey,

@@ -1,7 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { getCurrentRegionId } from '@/lib/region'
+import { requireCurrentRegionId } from '@/lib/region'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
@@ -14,10 +14,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const keyword = searchParams.get('keyword')
     const status = searchParams.get('status')
 
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const where: any = {}
-
-    if (regionId) where.regionId = regionId
+    where.regionId = regionId
 
     if (keyword) {
       where.OR = [
@@ -37,7 +36,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         code: true,
         name: true,
         customerId: true,
-        customer: {
+        Customer: {
           select: { name: true },
         },
         status: true,
@@ -59,7 +58,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       code: project.code,
       name: project.name,
       customerId: project.customerId,
-      customerName: project.customer.name,
+      customerName: project.Customer.name,
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -102,8 +101,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const code = `PRJ${Date.now()}`
 
     // 创建项目
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const createData: Prisma.ProjectUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       code,
       name: body.name.trim(),
       customerId: body.customerId,
@@ -116,7 +116,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       bidMethod: body.bidMethod?.trim() || null,
       area: body.area ?? null,
       remark: body.remark?.trim() || null,
-      regionId: regionId ?? undefined,
+      regionId,
+      updatedAt: new Date(),
     }
     const project = await db.project.create({
       data: createData,
@@ -125,7 +126,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         code: true,
         name: true,
         customerId: true,
-        customer: {
+        Customer: {
           select: { name: true },
         },
         status: true,
@@ -143,10 +144,12 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     // 创建项目状态变更记录
     const statusChangeData: Prisma.ProjectStatusChangeUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       projectId: project.id,
       fromStatus: 'PLANNING',
       toStatus: 'PLANNING',
       changeReason: '项目创建',
+      updatedAt: new Date(),
     }
     await db.projectStatusChange.create({
       data: statusChangeData,
@@ -157,7 +160,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       code: project.code,
       name: project.name,
       customerId: project.customerId,
-      customerName: project.customer.name,
+      customerName: project.Customer.name,
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -174,4 +177,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'projects',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

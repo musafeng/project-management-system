@@ -1,5 +1,6 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -13,17 +14,19 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少项目 ID')
     }
 
-    const project = await db.project.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const project = await db.project.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         code: true,
         name: true,
         customerId: true,
-        customer: {
+        Customer: {
           select: { id: true, name: true },
         },
-        region: {
+        Region: {
           select: { name: true },
         },
         status: true,
@@ -45,8 +48,8 @@ const handler = apiHandlerWithMethod({
       code: project.code,
       name: project.name,
       customerId: project.customerId,
-      customer: project.customer,
-      regionName: project.region?.name ?? null,
+      customer: project.Customer,
+      regionName: project.Region?.name ?? null,
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -71,9 +74,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 检查项目是否存在
-    const existingProject = await db.project.findUnique({
-      where: { id },
-    })
+    const existingProject = await assertDirectRecordInCurrentRegion('project', id)
 
     if (!existingProject) {
       throw new NotFoundError('项目不存在')
@@ -129,7 +130,7 @@ const handler = apiHandlerWithMethod({
         code: true,
         name: true,
         customerId: true,
-        customer: {
+        Customer: {
           select: { id: true, name: true },
         },
         status: true,
@@ -147,7 +148,7 @@ const handler = apiHandlerWithMethod({
       code: project.code,
       name: project.name,
       customerId: project.customerId,
-      customer: project.customer,
+      customer: project.Customer,
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -171,9 +172,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 检查项目是否存在
-    const project = await db.project.findUnique({
-      where: { id },
-    })
+    const project = await assertDirectRecordInCurrentRegion('project', id)
 
     if (!project) {
       throw new NotFoundError('项目不存在')
@@ -229,4 +228,3 @@ const handler = apiHandlerWithMethod({
 export const GET = handler
 export const PUT = handler
 export const DELETE = handler
-

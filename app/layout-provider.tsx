@@ -52,6 +52,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { key: '/projects', label: '项目新增' },
       { key: '/project-contracts', label: '项目合同' },
+      { key: '/project-contract-changes', label: '项目合同变更' },
       { key: '/contract-receipts', label: '项目合同收款' },
       { key: '/other-receipts', label: '其他收款' },
     ],
@@ -247,12 +248,10 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
         if (!user && isDingTalkEnvironment()) {
           try {
             console.log('[Auth] 未登录，尝试钉钉自动免登录...')
-            await getDingTalkUser() // 内部：获取 authCode -> POST /api/auth/dingtalk -> 写入 cookie
-            // 3. 免登录成功后再次获取用户信息
+            await getDingTalkUser()
             user = await getCurrentAuthUser()
             console.log('[Auth] 钉钉自动免登录成功:', user?.name)
           } catch (dtError) {
-            // 免登录失败不影响页面正常展示，保持浏览器模式
             console.warn('[Auth] 钉钉自动免登录失败:', dtError)
           }
         }
@@ -328,7 +327,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
 
   const menuContent = (
     <>
-      {/* Logo */}
       <div
         style={{
           height: 64,
@@ -343,7 +341,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
           {collapsed && !isMobile ? '' : '工程管理'}
         </div>
       </div>
-      {/* 菜单 */}
       <Menu
         mode="inline"
         selectedKeys={selectedKey}
@@ -365,7 +362,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
       }}
     >
       <Layout style={{ minHeight: '100vh' }}>
-        {/* 桌面端左侧固定 Sider */}
         {!isMobile && (
           <Sider
             collapsible
@@ -388,7 +384,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
           </Sider>
         )}
 
-        {/* 移动端抽屉菜单 */}
         {isMobile && (
           <Drawer
             placement="left"
@@ -409,14 +404,12 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
           </Drawer>
         )}
 
-        {/* 右侧内容区 */}
         <Layout
           style={{
             marginLeft: isMobile ? 0 : collapsed ? 80 : 220,
             transition: isMobile ? 'none' : 'margin-left 0.2s',
           }}
         >
-          {/* 顶部 Header */}
           <Header
             style={{
               background: '#fff',
@@ -433,7 +426,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {/* 移动端汉堡按钮 */}
               {isMobile && (
                 <Button
                   type="text"
@@ -442,7 +434,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
                   style={{ fontSize: 18 }}
                 />
               )}
-              {/* 桌面端折叠按钮 */}
               {!isMobile && (
                 <Button
                   type="text"
@@ -455,9 +446,7 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
               </span>
             </div>
 
-            {/* 右侧用户信息 */}
             <Space>
-            {/* 区域切换 */}
               {regions.length > 0 && (
                 <Dropdown
                   menu={{
@@ -512,18 +501,15 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
             </Space>
           </Header>
 
-          {/* 内容区 */}
           <Content
             style={{
               background: '#f5f5f5',
               padding: isMobile ? '12px' : '16px 24px',
               minHeight: 'calc(100vh - 56px)',
               overflow: 'auto',
-              // 移动端不限制最小宽度，让内容自然适应屏幕
               minWidth: 0,
             }}
           >
-            {/* 隐藏版本号，便于确认钉钉打开的是否最新版本 */}
             <span style={{ display: 'none' }} data-version={APP_VERSION} />
             {children}
           </Content>

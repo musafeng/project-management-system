@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 export type ResourceType =
   | 'construction-approvals'
   | 'project-contracts'
+  | 'project-contract-changes'
   | 'contract-receipts'
   | 'procurement-contracts'
   | 'procurement-payments'
@@ -25,6 +26,25 @@ export interface ExportFilter {
   approvalStatus?: string
   startDate?: string
   endDate?: string
+}
+
+function applyCreatedAtRange(where: Record<string, any>, filter: ExportFilter) {
+  if (filter.startDate || filter.endDate) {
+    where.createdAt = {}
+    if (filter.startDate) where.createdAt.gte = new Date(filter.startDate)
+    if (filter.endDate) where.createdAt.lte = new Date(filter.endDate + 'T23:59:59Z')
+  }
+}
+
+function buildDirectRegionWhere(filter: ExportFilter) {
+  const where: Record<string, any> = {}
+  if (filter.regionId) where.regionId = filter.regionId
+  if (filter.projectId) where.projectId = filter.projectId
+  if (filter.approvalStatus && filter.approvalStatus !== 'ALL') {
+    where.approvalStatus = filter.approvalStatus
+  }
+  applyCreatedAtRange(where, filter)
+  return where
 }
 
 /** 将任意值转为 CSV 安全字符串 */
@@ -67,21 +87,13 @@ function fmtDecimal(v: unknown): string {
 // ============================================================
 
 async function exportConstructionApprovals(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.constructionApproval.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      contract: { select: { code: true, name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      ProjectContract: { select: { code: true, name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -94,11 +106,11 @@ async function exportConstructionApprovals(f: ExportFilter) {
       id: r.id,
       编号: r.code,
       立项名称: r.name,
-      区域: r.region?.name ?? '',
-      项目编号: r.project.code,
-      项目名称: r.project.name,
-      合同编号: r.contract.code,
-      合同名称: r.contract.name,
+      区域: r.Region?.name ?? '',
+      项目编号: r.Project.code,
+      项目名称: r.Project.name,
+      合同编号: r.ProjectContract.code,
+      合同名称: r.ProjectContract.name,
       预算金额: fmtDecimal(r.budget),
       审批状态: r.approvalStatus,
       开始日期: fmtDate(r.startDate),
@@ -114,20 +126,13 @@ async function exportConstructionApprovals(f: ExportFilter) {
 }
 
 async function exportProjectContracts(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.projectContract.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      customer: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      Customer: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -135,10 +140,10 @@ async function exportProjectContracts(f: ExportFilter) {
     id: r.id,
     合同编号: r.code,
     合同名称: r.name,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    客户名称: r.customer.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    客户名称: r.Customer.name,
     合同金额: fmtDecimal(r.contractAmount),
     变更后金额: fmtDecimal(r.changedAmount),
     应收金额: fmtDecimal(r.receivableAmount),
@@ -151,29 +156,71 @@ async function exportProjectContracts(f: ExportFilter) {
   }))
 }
 
-async function exportContractReceipts(f: ExportFilter) {
-  const where: any = {}
+async function exportProjectContractChanges(f: ExportFilter) {
+  const where: Record<string, any> = {}
   if (f.regionId) where.regionId = f.regionId
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
+  if (f.projectId) {
+    where.ProjectContract = { projectId: f.projectId }
+  }
+  applyCreatedAtRange(where, f)
+
+  const rows = await db.projectContractChange.findMany({
+    where,
+    include: {
+      ProjectContract: {
+        select: {
+          code: true,
+          name: true,
+          Project: { select: { code: true, name: true } },
+        },
+      },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ changeDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    区域: r.Region?.name ?? '',
+    合同编号: r.ProjectContract.code,
+    合同名称: r.ProjectContract.name,
+    项目编号: r.ProjectContract.Project.code,
+    项目名称: r.ProjectContract.Project.name,
+    变更日期: fmtDate(r.changeDate),
+    增项金额: fmtDecimal(r.increaseAmount ?? r.changeAmount),
+    合同原金额: fmtDecimal(r.originalAmount),
+    合同总金额: fmtDecimal(r.totalAmount),
+    审批状态: r.approvalStatus,
+    备注: r.remark ?? '',
+    附件: r.attachmentUrl ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
+async function exportContractReceipts(f: ExportFilter) {
+  const where = buildDirectRegionWhere(f)
+  if (f.projectId) {
+    where.ProjectContract = { projectId: f.projectId }
   }
   const rows = await db.contractReceipt.findMany({
     where,
     include: {
-      contract: { select: { code: true, name: true, project: { select: { name: true, code: true } } } },
-      region: { select: { name: true } },
+      ProjectContract: { select: { code: true, name: true, Project: { select: { name: true, code: true } } } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
   return rows.map((r) => ({
     id: r.id,
-    区域: r.region?.name ?? '',
-    合同编号: r.contract.code,
-    合同名称: r.contract.name,
-    项目编号: r.contract.project.code,
-    项目名称: r.contract.project.name,
+    区域: r.Region?.name ?? '',
+    合同编号: r.ProjectContract.code,
+    合同名称: r.ProjectContract.name,
+    项目编号: r.ProjectContract.Project.code,
+    项目名称: r.ProjectContract.Project.name,
     收款金额: fmtDecimal(r.receiptAmount),
     收款日期: fmtDate(r.receiptDate),
     收款方式: r.receiptMethod ?? '',
@@ -185,21 +232,13 @@ async function exportContractReceipts(f: ExportFilter) {
 }
 
 async function exportProcurementContracts(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.procurementContract.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      supplier: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      Supplier: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -207,10 +246,10 @@ async function exportProcurementContracts(f: ExportFilter) {
     id: r.id,
     合同编号: r.code,
     合同名称: r.name,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    供应商: r.supplier.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    供应商: r.Supplier.name,
     合同金额: fmtDecimal(r.contractAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
@@ -224,31 +263,23 @@ async function exportProcurementContracts(f: ExportFilter) {
 }
 
 async function exportProcurementPayments(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.procurementPayment.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      contract: { select: { code: true, name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      ProcurementContract: { select: { code: true, name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
   return rows.map((r) => ({
     id: r.id,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    合同编号: r.contract.code,
-    合同名称: r.contract.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    合同编号: r.ProcurementContract.code,
+    合同名称: r.ProcurementContract.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     付款方式: r.paymentMethod ?? '',
@@ -261,21 +292,13 @@ async function exportProcurementPayments(f: ExportFilter) {
 }
 
 async function exportLaborContracts(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.laborContract.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      worker: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      LaborWorker: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -283,10 +306,10 @@ async function exportLaborContracts(f: ExportFilter) {
     id: r.id,
     合同编号: r.code,
     合同名称: r.name,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    劳务人员: r.worker.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    劳务人员: r.LaborWorker.name,
     合同金额: fmtDecimal(r.contractAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
@@ -300,33 +323,25 @@ async function exportLaborContracts(f: ExportFilter) {
 }
 
 async function exportLaborPayments(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.laborPayment.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      contract: { select: { code: true, name: true } },
-      worker: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      LaborContract: { select: { code: true, name: true } },
+      LaborWorker: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
   return rows.map((r) => ({
     id: r.id,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    合同编号: r.contract.code,
-    合同名称: r.contract.name,
-    劳务人员: r.worker.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    合同编号: r.LaborContract.code,
+    合同名称: r.LaborContract.name,
+    劳务人员: r.LaborWorker.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     状态: r.status,
@@ -338,21 +353,14 @@ async function exportLaborPayments(f: ExportFilter) {
 }
 
 async function exportSubcontractContracts(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.subcontractContract.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      vendor: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      SubcontractVendor: { select: { name: true } },
+      LaborWorker: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -360,10 +368,10 @@ async function exportSubcontractContracts(f: ExportFilter) {
     id: r.id,
     合同编号: r.code,
     合同名称: r.name,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    分包单位: r.vendor.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    分包对象: r.LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
     合同金额: fmtDecimal(r.contractAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
@@ -377,33 +385,26 @@ async function exportSubcontractContracts(f: ExportFilter) {
 }
 
 async function exportSubcontractPayments(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.projectId) where.projectId = f.projectId
-  if (f.approvalStatus && f.approvalStatus !== 'ALL') where.approvalStatus = f.approvalStatus
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
-  }
+  const where = buildDirectRegionWhere(f)
   const rows = await db.subcontractPayment.findMany({
     where,
     include: {
-      project: { select: { name: true, code: true } },
-      contract: { select: { code: true, name: true } },
-      vendor: { select: { name: true } },
-      region: { select: { name: true } },
+      Project: { select: { name: true, code: true } },
+      SubcontractContract: { select: { code: true, name: true } },
+      SubcontractVendor: { select: { name: true } },
+      LaborWorker: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
   return rows.map((r) => ({
     id: r.id,
-    区域: r.region?.name ?? '',
-    项目编号: r.project.code,
-    项目名称: r.project.name,
-    合同编号: r.contract.code,
-    合同名称: r.contract.name,
-    分包单位: r.vendor.name,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    合同编号: r.SubcontractContract.code,
+    合同名称: r.SubcontractContract.name,
+    分包对象: r.LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     状态: r.status,
@@ -415,18 +416,15 @@ async function exportSubcontractPayments(f: ExportFilter) {
 }
 
 async function exportProjects(f: ExportFilter) {
-  const where: any = {}
-  if (f.regionId) where.regionId = f.regionId
-  if (f.startDate || f.endDate) {
-    where.createdAt = {}
-    if (f.startDate) where.createdAt.gte = new Date(f.startDate)
-    if (f.endDate) where.createdAt.lte = new Date(f.endDate + 'T23:59:59Z')
+  const where = buildDirectRegionWhere(f)
+  if (f.projectId) {
+    where.id = f.projectId
   }
   const rows = await db.project.findMany({
     where,
     include: {
-      customer: { select: { name: true } },
-      region: { select: { name: true } },
+      Customer: { select: { name: true } },
+      Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -434,8 +432,8 @@ async function exportProjects(f: ExportFilter) {
     id: r.id,
     项目编号: r.code,
     项目名称: r.name,
-    区域: r.region?.name ?? '',
-    客户名称: r.customer.name,
+    区域: r.Region?.name ?? '',
+    客户名称: r.Customer.name,
     状态: r.status,
     预算: fmtDecimal(r.budget),
     开始日期: fmtDate(r.startDate),
@@ -454,6 +452,7 @@ export async function previewExportData(filter: ExportFilter): Promise<Record<st
   switch (filter.resourceType) {
     case 'construction-approvals': return exportConstructionApprovals(filter)
     case 'project-contracts': return exportProjectContracts(filter)
+    case 'project-contract-changes': return exportProjectContractChanges(filter)
     case 'contract-receipts': return exportContractReceipts(filter)
     case 'procurement-contracts': return exportProcurementContracts(filter)
     case 'procurement-payments': return exportProcurementPayments(filter)
@@ -470,7 +469,4 @@ export async function exportToCsv(filter: ExportFilter): Promise<string> {
   const rows = await previewExportData(filter)
   return toCsv(rows)
 }
-
-
-
 

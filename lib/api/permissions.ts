@@ -85,7 +85,14 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
 
   // 项目合同变更 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/project-contracts\/\[id\]\/changes$/,
+    pattern: /^\/api\/project-contract-changes(?:\/[^/]+)?(?:\/[^/]+)?$/,
+    methods: ['POST', 'PUT', 'DELETE'],
+    roles: FINANCE_ROLES,
+  },
+
+  // 旧项目合同变更兼容接口 - FINANCE 专属写权限
+  {
+    pattern: /^\/api\/project-contracts\/[^/]+\/changes$/,
     methods: ['POST', 'DELETE'],
     roles: FINANCE_ROLES,
   },

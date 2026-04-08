@@ -87,6 +87,7 @@ export async function createActionLog(params: CreateActionLogParams): Promise<vo
 
     await db.actionLog.create({
       data: {
+        id: crypto.randomUUID(),
         userId: userInfo.userId,
         userName: userInfo.userName,
         userRole: userInfo.userRole,
@@ -116,6 +117,7 @@ export async function createActionLogs(
 
     await db.actionLog.createMany({
       data: paramsList.map((params) => ({
+        id: crypto.randomUUID(),
         userId: userInfo.userId,
         userName: userInfo.userName,
         userRole: userInfo.userRole,
@@ -215,4 +217,3 @@ export async function getActionLogsCount(options?: {
 
   return await db.actionLog.count({ where })
 }
-

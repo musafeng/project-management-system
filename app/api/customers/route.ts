@@ -57,6 +57,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     // 创建客户
     const customer = await db.customer.create({
       data: {
+        id: crypto.randomUUID(),
         code,
         name: body.name.trim(),
         contact: body.contact?.trim() || null,
@@ -68,6 +69,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         bankName: body.bankName?.trim() || null,
         remark: body.remark?.trim() || null,
         status: 'active',
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -92,4 +94,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'customers',
   resourceIdExtractor: (req, result) => result?.data?.id || null,
 })
-

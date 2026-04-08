@@ -5,6 +5,7 @@
 import { apiHandler, success } from '@/lib/api'
 import { checkAuth } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertResourceInCurrentRegion } from '@/lib/region'
 import { findSystemUserByDingUserId } from '@/lib/system-user'
 
 export const GET = apiHandler(async (req) => {
@@ -22,11 +23,17 @@ export const GET = apiHandler(async (req) => {
     return success({ canApprove: false, task: null })
   }
 
+  try {
+    await assertResourceInCurrentRegion(resource, resourceId)
+  } catch {
+    return success({ canApprove: false, task: null })
+  }
+
   // 查询当前单据最新 PENDING 流程实例的第一个 PENDING task
   const instance = await db.processInstance.findFirst({
     where: { resourceType: resource, resourceId, status: 'PENDING' },
     include: {
-      tasks: {
+      ProcessTask: {
         where: { status: 'PENDING' },
         orderBy: { nodeOrder: 'asc' },
         take: 1,
@@ -35,7 +42,7 @@ export const GET = apiHandler(async (req) => {
     orderBy: { startedAt: 'desc' },
   })
 
-  const task = instance?.tasks[0] ?? null
+  const task = instance?.ProcessTask[0] ?? null
 
   if (!task) {
     return success({ canApprove: false, task: null })

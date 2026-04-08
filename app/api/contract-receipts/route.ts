@@ -1,31 +1,71 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { getCurrentRegionId } from '@/lib/region'
+import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+
+function normalizeDeductionItems(items: unknown) {
+  if (!Array.isArray(items)) return []
+
+  return items
+    .map((item: any) => {
+      const type = String(item?.type ?? '').trim()
+      const amount = Number(item?.amount ?? 0)
+      if (!type || amount <= 0) return null
+      return { type, amount }
+    })
+    .filter((item): item is { type: string; amount: number } => item !== null)
+}
+
+function toResponse(receipt: {
+  id: string
+  contractId: string
+  ProjectContract: {
+    code: string
+    name: string
+    Project: { name: string }
+  }
+  receiptAmount: Prisma.Decimal | number
+  receiptDate: Date
+  receiptMethod: string | null
+  deductionItems: string | null
+  attachmentUrl: string | null
+  approvalStatus: string
+  remark: string | null
+  createdAt: Date
+}) {
+  return {
+    id: receipt.id,
+    contractId: receipt.contractId,
+    contractCode: receipt.ProjectContract.code,
+    contractName: receipt.ProjectContract.name,
+    projectName: receipt.ProjectContract.Project.name,
+    amount: receipt.receiptAmount,
+    receiptAmount: receipt.receiptAmount,
+    receiptDate: receipt.receiptDate,
+    receiptMethod: receipt.receiptMethod,
+    deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
+    attachmentUrl: receipt.attachmentUrl,
+    approvalStatus: receipt.approvalStatus,
+    remark: receipt.remark,
+    createdAt: receipt.createdAt,
+  }
+}
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
-  /**
-   * GET /api/contract-receipts
-   * 获取收款记录列表
-   * 支持参数：contractId（可选）、projectId（可选）
-   */
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const contractId = searchParams.get('contractId')
     const projectId = searchParams.get('projectId')
 
-    const regionId = await getCurrentRegionId()
+    const regionId = await requireCurrentRegionId()
     const where: any = {}
-
-    if (regionId) where.regionId = regionId
-
+    where.regionId = regionId
     if (contractId) {
       where.contractId = contractId
     }
-
     if (projectId) {
-      where.contract = {
-        projectId: projectId,
+      where.ProjectContract = {
+        projectId,
       }
     }
 
@@ -34,10 +74,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       select: {
         id: true,
         contractId: true,
-        contract: {
+        ProjectContract: {
           select: {
             code: true,
-            project: {
+            name: true,
+            Project: {
               select: { name: true },
             },
           },
@@ -54,85 +95,60 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       orderBy: { receiptDate: 'desc' },
     })
 
-    // 转换返回格式
-    type ReceiptItem = (typeof receipts)[number]
-    const result = receipts.map((receipt: ReceiptItem) => ({
-      id: receipt.id,
-      contractId: receipt.contractId,
-      contractCode: receipt.contract.code,
-      projectName: receipt.contract.project.name,
-      amount: receipt.receiptAmount,
-      receiptDate: receipt.receiptDate,
-      receiptMethod: receipt.receiptMethod,
-      deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
-      attachmentUrl: receipt.attachmentUrl,
-      approvalStatus: receipt.approvalStatus,
-      remark: receipt.remark,
-      createdAt: receipt.createdAt,
-    }))
-
-    return success(result)
+    return success(receipts.map(toResponse))
   },
 
-  /**
-   * POST /api/contract-receipts
-   * 创建收款记录
-   * body: { contractId, amount, receiptDate?, remark? }
-   */
   POST: async (req) => {
     const body = await req.json()
 
-    // 验证必填字段
     if (!body.contractId || typeof body.contractId !== 'string') {
       throw new BadRequestError('合同 ID 为必填项')
     }
 
-    if (body.amount === undefined || typeof body.amount !== 'number') {
+    const amount =
+      typeof body.amount === 'number'
+        ? body.amount
+        : typeof body.receiptAmount === 'number'
+          ? body.receiptAmount
+          : NaN
+    if (!Number.isFinite(amount)) {
       throw new BadRequestError('收款金额为必填项且必须是数字')
     }
-
-    if (body.amount <= 0) {
+    if (amount <= 0) {
       throw new BadRequestError('收款金额必须大于 0')
     }
 
-    // 验证合同是否存在
-    const contract = await db.projectContract.findUnique({
-      where: { id: body.contractId },
-      select: {
-        id: true,
-        receivableAmount: true,
-        receivedAmount: true,
-        unreceivedAmount: true,
-      },
-    })
-
+    const contract = await assertProjectContractInCurrentRegion(body.contractId)
     if (!contract) {
       throw new NotFoundError('合同不存在')
     }
 
-    // 创建收款记录
-    const regionId = await getCurrentRegionId()
+    const deductionItems = normalizeDeductionItems(body.deductionItems)
+    const regionId = await requireCurrentRegionId()
     const createData: Prisma.ContractReceiptUncheckedCreateInput = {
+      id: crypto.randomUUID(),
       contractId: body.contractId,
-      receiptAmount: body.amount,
+      receiptAmount: amount,
       receiptDate: body.receiptDate ? new Date(body.receiptDate) : new Date(),
       receiptMethod: body.receiptMethod?.trim() || null,
-      deductionItems: body.deductionItems ? JSON.stringify(body.deductionItems) : null,
+      deductionItems: deductionItems.length > 0 ? JSON.stringify(deductionItems) : null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
       status: 'RECEIVED',
       approvalStatus: 'PENDING',
-      regionId: regionId ?? undefined,
+      regionId,
+      updatedAt: new Date(),
     }
     const receipt = await db.contractReceipt.create({
       data: createData,
       select: {
         id: true,
         contractId: true,
-        contract: {
+        ProjectContract: {
           select: {
             code: true,
-            project: {
+            name: true,
+            Project: {
               select: { name: true },
             },
           },
@@ -148,11 +164,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    // 更新合同汇总字段
-    const newReceivedAmount =
-      Number(contract.receivedAmount) + Number(body.amount)
-    const newUnreceivedAmount =
-      Number(contract.receivableAmount) - newReceivedAmount
+    const newReceivedAmount = Number(contract.receivedAmount) + amount
+    const newUnreceivedAmount = Number(contract.receivableAmount) - newReceivedAmount
 
     await db.projectContract.update({
       where: { id: body.contractId },
@@ -162,23 +175,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    return success({
-      id: receipt.id,
-      contractId: receipt.contractId,
-      contractCode: receipt.contract.code,
-      projectName: receipt.contract.project.name,
-      amount: receipt.receiptAmount,
-      receiptDate: receipt.receiptDate,
-      receiptMethod: receipt.receiptMethod,
-      deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
-      attachmentUrl: receipt.attachmentUrl,
-      approvalStatus: receipt.approvalStatus,
-      remark: receipt.remark,
-      createdAt: receipt.createdAt,
-    })
+    return success(toResponse(receipt))
   },
 }, {
   resource: 'contract-receipts',
-  resourceIdExtractor: (req, result) => result?.data?.id || null,
+  resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-

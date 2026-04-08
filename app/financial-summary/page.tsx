@@ -13,11 +13,9 @@ interface ProjectSummary {
   projectName: string
   projectCode: string
   status: string
-  // 收入
   contractReceiptAmount: number
   otherReceiptAmount: number
   totalReceiptAmount: number
-  // 支出
   procurementPaymentAmount: number
   laborPaymentAmount: number
   subcontractPaymentAmount: number
@@ -27,9 +25,7 @@ interface ProjectSummary {
   otherPaymentAmount: number
   pettyCashAmount: number
   totalPaymentAmount: number
-  // 利润
   profit: number
-  // 合同
   contractAmount: number
   receivedAmount: number
   unreceivedAmount: number
@@ -74,7 +70,6 @@ export default function FinancialSummaryPage() {
   const [data, setData] = useState<ProjectSummary[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [loading, setLoading] = useState(false)
-  const [expandedRows, setExpandedRows] = useState<string[]>([])
 
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then(j => { if (j.success) setProjects(j.data) })
@@ -94,7 +89,9 @@ export default function FinancialSummaryPage() {
         setData(json.data.projects)
         setTotals(json.data.totals)
       }
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSearch = () => {
@@ -124,20 +121,13 @@ export default function FinancialSummaryPage() {
       ),
     },
     { title: '合同金额', dataIndex: 'contractAmount', width: 120, align: 'right', render: fmt },
-    { title: '总收入', dataIndex: 'totalReceiptAmount', width: 120, align: 'right',
-      render: v => <span style={{ color: '#52c41a', fontWeight: 600 }}>{fmt(v)}</span> },
-    { title: '已收', dataIndex: 'receivedAmount', width: 110, align: 'right',
-      render: v => <span style={{ color: '#52c41a' }}>{fmt(v)}</span> },
-    { title: '未收', dataIndex: 'unreceivedAmount', width: 110, align: 'right',
-      render: v => <span style={{ color: v > 0 ? '#fa8c16' : '#8c8c8c' }}>{fmt(v)}</span> },
-    { title: '总支出', dataIndex: 'totalPaymentAmount', width: 120, align: 'right',
-      render: v => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(v)}</span> },
-    { title: '采购已付', dataIndex: 'procurementPaidAmount', width: 110, align: 'right',
-      render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
-    { title: '劳务已付', dataIndex: 'laborPaidAmount', width: 110, align: 'right',
-      render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
-    { title: '分包已付', dataIndex: 'subcontractPaidAmount', width: 110, align: 'right',
-      render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
+    { title: '总收入', dataIndex: 'totalReceiptAmount', width: 120, align: 'right', render: v => <span style={{ color: '#52c41a', fontWeight: 600 }}>{fmt(v)}</span> },
+    { title: '已收', dataIndex: 'receivedAmount', width: 110, align: 'right', render: v => <span style={{ color: '#52c41a' }}>{fmt(v)}</span> },
+    { title: '未收', dataIndex: 'unreceivedAmount', width: 110, align: 'right', render: v => <span style={{ color: v > 0 ? '#fa8c16' : '#8c8c8c' }}>{fmt(v)}</span> },
+    { title: '总支出', dataIndex: 'totalPaymentAmount', width: 120, align: 'right', render: v => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(v)}</span> },
+    { title: '采购已付', dataIndex: 'procurementPaidAmount', width: 110, align: 'right', render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
+    { title: '劳务已付', dataIndex: 'laborPaidAmount', width: 110, align: 'right', render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
+    { title: '分包已付', dataIndex: 'subcontractPaidAmount', width: 110, align: 'right', render: v => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
     {
       title: '利润', dataIndex: 'profit', width: 130, align: 'right', fixed: 'right',
       render: v => (
@@ -150,15 +140,14 @@ export default function FinancialSummaryPage() {
 
   return (
     <div style={{ padding: '0 0 24px' }}>
-      {/* 顶部汇总卡片 */}
       <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
         {[
-          { title: '总收入', value: totals?.totalReceiptAmount || 0, color: '#52c41a', prefix: '¥' },
-          { title: '总支出', value: totals?.totalPaymentAmount || 0, color: '#ff4d4f', prefix: '¥' },
-          { title: '利润', value: totals?.profit || 0, color: (totals?.profit || 0) >= 0 ? '#52c41a' : '#ff4d4f', prefix: '¥' },
-          { title: '合同总额', value: totals?.contractAmount || 0, color: '#1677ff', prefix: '¥' },
-          { title: '已收款', value: totals?.receivedAmount || 0, color: '#13c2c2', prefix: '¥' },
-          { title: '未收款', value: totals?.unreceivedAmount || 0, color: '#fa8c16', prefix: '¥' },
+          { title: '总收入', value: totals?.totalReceiptAmount || 0, color: '#52c41a' },
+          { title: '总支出', value: totals?.totalPaymentAmount || 0, color: '#ff4d4f' },
+          { title: '利润', value: totals?.profit || 0, color: (totals?.profit || 0) >= 0 ? '#52c41a' : '#ff4d4f' },
+          { title: '合同总额', value: totals?.contractAmount || 0, color: '#1677ff' },
+          { title: '已收款', value: totals?.receivedAmount || 0, color: '#13c2c2' },
+          { title: '未收款', value: totals?.unreceivedAmount || 0, color: '#fa8c16' },
         ].map((item) => (
           <Col xs={12} sm={8} md={4} key={item.title}>
             <Card size="small" bordered style={{ borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
@@ -175,7 +164,6 @@ export default function FinancialSummaryPage() {
         ))}
       </Row>
 
-      {/* 筛选栏 */}
       <Card size="small" style={{ marginBottom: 16, borderRadius: 8 }}>
         <Space wrap>
           <Select
@@ -198,10 +186,9 @@ export default function FinancialSummaryPage() {
         </Space>
       </Card>
 
-      {/* 明细表格 */}
       <Card size="small" style={{ borderRadius: 8 }} title={`项目明细（共 ${data.length} 个项目）`}>
         <Spin spinning={loading}>
-          <Table< ProjectSummary >
+          <Table<ProjectSummary>
             rowKey="projectId"
             columns={columns}
             dataSource={data}
@@ -220,9 +207,7 @@ export default function FinancialSummaryPage() {
                   <Table.Summary.Cell index={6} align="right"><span style={{ color: '#ff4d4f' }}>{fmt(totals.procurementPaidAmount)}</span></Table.Summary.Cell>
                   <Table.Summary.Cell index={7} align="right"><span style={{ color: '#ff4d4f' }}>{fmt(totals.laborPaidAmount)}</span></Table.Summary.Cell>
                   <Table.Summary.Cell index={8} align="right"><span style={{ color: '#ff4d4f' }}>{fmt(totals.subcontractPaidAmount)}</span></Table.Summary.Cell>
-                  <Table.Summary.Cell index={9} align="right">
-                    <span style={{ color: totals.profit >= 0 ? '#52c41a' : '#ff4d4f', fontSize: 15 }}>{fmt(totals.profit)}</span>
-                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={9} align="right"><span style={{ color: totals.profit >= 0 ? '#52c41a' : '#ff4d4f', fontSize: 15 }}>{fmt(totals.profit)}</span></Table.Summary.Cell>
                 </Table.Summary.Row>
               </Table.Summary>
             ) : undefined}
@@ -232,4 +217,6 @@ export default function FinancialSummaryPage() {
     </div>
   )
 }
+
+
 

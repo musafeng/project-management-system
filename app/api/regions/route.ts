@@ -32,7 +32,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     const region = await db.region.create({
-      data: { name, code, isActive: true },
+      data: { id: crypto.randomUUID(), name, code, isActive: true, updatedAt: new Date() },
       select: { id: true, name: true, code: true, isActive: true, createdAt: true },
     })
 
@@ -42,5 +42,4 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'regions',
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-
 

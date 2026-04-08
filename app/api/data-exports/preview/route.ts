@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSystemManager } from '@/lib/api'
 import { previewExportData } from '@/lib/data-export'
 import type { ExportFilter, ResourceType } from '@/lib/data-export'
+import { resolveRequestedRegionId } from '@/lib/region'
 
 /**
  * GET /api/data-exports/preview
@@ -10,7 +11,7 @@ import type { ExportFilter, ResourceType } from '@/lib/data-export'
  */
 export async function GET(req: NextRequest) {
   try {
-    await requireSystemManager()
+    const user = await requireSystemManager()
 
     const p = req.nextUrl.searchParams
     const resourceType = p.get('resourceType') as ResourceType | null
@@ -19,9 +20,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: '请选择业务模块（resourceType）' }, { status: 400 })
     }
 
+    const regionId = await resolveRequestedRegionId(p.get('regionId'), user)
+
     const filter: ExportFilter = {
       resourceType,
-      regionId: p.get('regionId') || undefined,
+      regionId,
       projectId: p.get('projectId') || undefined,
       approvalStatus: p.get('approvalStatus') || undefined,
       startDate: p.get('startDate') || undefined,
@@ -41,7 +44,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: '查询失败' }, { status: 500 })
   }
 }
-
-
 
 

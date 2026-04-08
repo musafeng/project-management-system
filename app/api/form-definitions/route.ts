@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       const form = await prisma.formDefinition.findUnique({
         where: { code },
         include: {
-          fields: { orderBy: { sortOrder: 'asc' } },
+          FormField: { orderBy: { sortOrder: 'asc' } },
         },
       })
       if (!form) return NextResponse.json({ success: true, data: null })
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const forms = await prisma.formDefinition.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
-        fields: { orderBy: { sortOrder: 'asc' } },
+        FormField: { orderBy: { sortOrder: 'asc' } },
       },
     })
     return NextResponse.json({ success: true, data: forms })
@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     }
 
     const form = await prisma.formDefinition.create({
-      data: { name, code, isActive: isActive !== false },
-      include: { fields: true },
+      data: { id: crypto.randomUUID(), name, code, isActive: isActive !== false, updatedAt: new Date() },
+      include: { FormField: true },
     })
     return NextResponse.json({ success: true, data: form }, { status: 201 })
   } catch (err: any) {

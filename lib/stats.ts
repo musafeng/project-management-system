@@ -1,36 +1,44 @@
 import { db } from './db'
+import { assertProjectInCurrentRegion } from './region'
 
 export async function getProjectStats(projectId: string) {
   try {
+    const project = await assertProjectInCurrentRegion(projectId)
+    const regionId = project.regionId
+
+    if (!regionId) {
+      throw new Error('项目缺少区域信息')
+    }
+
     const incomeResult = await db.contractReceipt.aggregate({
-      where: { contract: { projectId } },
+      where: { regionId, ProjectContract: { projectId } },
       _sum: { receiptAmount: true }
     })
     const income = Number(incomeResult._sum.receiptAmount || 0)
 
     const [procurement, labor, subcontract, projectExpense, management, sales] = await Promise.all([
       db.procurementPayment.aggregate({
-        where: { projectId },
+        where: { projectId, regionId },
         _sum: { paymentAmount: true }
       }),
       db.laborPayment.aggregate({
-        where: { projectId },
+        where: { projectId, regionId },
         _sum: { paymentAmount: true }
       }),
       db.subcontractPayment.aggregate({
-        where: { projectId },
+        where: { projectId, regionId },
         _sum: { paymentAmount: true }
       }),
       db.projectExpense.aggregate({
-        where: { projectId },
+        where: { projectId, Project: { regionId } },
         _sum: { expenseAmount: true }
       }),
       db.managementExpense.aggregate({
-        where: { projectId },
+        where: { projectId, regionId },
         _sum: { expenseAmount: true }
       }),
       db.salesExpense.aggregate({
-        where: { projectId },
+        where: { projectId, regionId },
         _sum: { expenseAmount: true }
       })
     ])

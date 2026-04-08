@@ -12,6 +12,7 @@
  * 劳务付款/分包付款/其他收付款/报销/备用金：马玉杰 → 牟晓山（抄送卢海霞）
  */
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 
 const db = new PrismaClient()
 
@@ -211,12 +212,12 @@ async function main() {
     // 检查是否已存在
     const existing = await db.processDefinition.findUnique({
       where: { resourceType: def.resourceType },
-      include: { nodes: true },
+      include: { ProcessNode: true },
     })
 
     if (existing) {
       // 先删除关联的 ProcessTask，再删除节点
-      const nodeIds = existing.nodes.map((n: any) => n.id)
+      const nodeIds = existing.ProcessNode.map((n: any) => n.id)
       if (nodeIds.length > 0) {
         await db.processTask.deleteMany({ where: { nodeId: { in: nodeIds } } })
         await db.processNode.deleteMany({ where: { definitionId: existing.id } })
@@ -234,6 +235,7 @@ async function main() {
       const ccUserId = isLastNode && def.ccName ? (userMap.get(def.ccName) ?? null) : null
 
       return {
+        id: randomUUID(),
         order: node.order,
         name: node.name,
         approverType: approverId ? ('USER' as const) : ('ROLE' as const),
@@ -241,6 +243,7 @@ async function main() {
         approverRole: approverId ? null : 'ADMIN',
         ccMode: ccUserId ? ('USER' as const) : ('NONE' as const),
         ccUserId: ccUserId,
+        updatedAt: new Date(),
       }
     })
 
@@ -249,16 +252,19 @@ async function main() {
         where: { resourceType: def.resourceType },
         data: {
           name: def.name,
-          nodes: { create: nodeData },
+          updatedAt: new Date(),
+          ProcessNode: { create: nodeData },
         },
       })
     } else {
       await db.processDefinition.create({
         data: {
+          id: randomUUID(),
           resourceType: def.resourceType,
           name: def.name,
           isActive: true,
-          nodes: { create: nodeData },
+          updatedAt: new Date(),
+          ProcessNode: { create: nodeData },
         },
       })
     }

@@ -3,6 +3,7 @@
  * 运行: npx tsx scripts/seed-all-forms.ts
  */
 import { PrismaClient } from "@prisma/client"
+import { randomUUID } from "crypto"
 const prisma = new PrismaClient()
 
 type FieldDef = {
@@ -14,6 +15,21 @@ type FieldDef = {
   placeholder?: string; isReadonly?: boolean; tableColumnsJson?: string;
 }
 type FormDef = { code: string; name: string; fields: FieldDef[] }
+
+function buildFormFieldCreateManyInput(formId: string, field: FieldDef) {
+  return {
+    id: randomUUID(),
+    formId,
+    ...field,
+  }
+}
+
+function buildFormFieldCreateInput(field: FieldDef) {
+  return {
+    id: randomUUID(),
+    ...field,
+  }
+}
 
 const FORMS: FormDef[] = [
   // 1. 项目新增
@@ -255,18 +271,23 @@ async function seedForms() {
       // 删除旧字段重建
       await prisma.formField.deleteMany({ where: { formId: existing.id } })
       await prisma.formField.createMany({
-        data: formDef.fields.map(f => ({ ...f, formId: existing.id })),
+        data: formDef.fields.map((f) => buildFormFieldCreateManyInput(existing.id, f)),
       })
-      await prisma.formDefinition.update({ where: { id: existing.id }, data: { name: formDef.name } })
+      await prisma.formDefinition.update({
+        where: { id: existing.id },
+        data: { name: formDef.name, updatedAt: new Date() },
+      })
       console.log(`  ♻️  更新表单: ${formDef.name} (${formDef.code}) - ${formDef.fields.length} 个字段`)
       updated++
     } else {
       await prisma.formDefinition.create({
         data: {
+          id: randomUUID(),
           code: formDef.code,
           name: formDef.name,
           isActive: true,
-          fields: { create: formDef.fields },
+          updatedAt: new Date(),
+          FormField: { create: formDef.fields.map((f) => buildFormFieldCreateInput(f)) },
         },
       })
       console.log(`  ✅ 创建表单: ${formDef.name} (${formDef.code}) - ${formDef.fields.length} 个字段`)

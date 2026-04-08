@@ -1,5 +1,6 @@
 import { apiHandler, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertDirectRecordInCurrentRegion } from '@/lib/region'
 
 /**
  * POST /api/projects/{id}/status
@@ -26,9 +27,7 @@ export const POST = apiHandler(async (req) => {
   }
 
   // 检查项目是否存在
-  const project = await db.project.findUnique({
-    where: { id },
-  })
+  const project = await assertDirectRecordInCurrentRegion('project', id)
 
   if (!project) {
     throw new NotFoundError('项目不存在')
@@ -48,10 +47,12 @@ export const POST = apiHandler(async (req) => {
   // 创建状态变更记录
   const statusChange = await db.projectStatusChange.create({
     data: {
+      id: crypto.randomUUID(),
       projectId: id,
       fromStatus: project.status as any,
       toStatus: body.status as any,
       changeReason: body.remark || null,
+      updatedAt: new Date(),
     },
     select: {
       id: true,
@@ -81,4 +82,3 @@ export const POST = apiHandler(async (req) => {
     statusChange,
   })
 })
-

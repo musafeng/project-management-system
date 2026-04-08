@@ -12,6 +12,11 @@ import { apiHandler, success, checkAuth } from '@/lib/api'
 import { db } from '@/lib/db'
 import { findSystemUserByDingUserId } from '@/lib/system-user'
 import {
+  assertProjectInCurrentRegion,
+  filterResourceItemsByCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
+import {
   ProcessTaskStatus,
   ProcessInstanceStatus,
   ProcessNodeApproverType,
@@ -21,6 +26,7 @@ export const dynamic = 'force-dynamic'
 
 const RESOURCE_LABELS: Record<string, string> = {
   'construction-approvals': '施工立项',
+  'project-contract-changes': '项目合同变更',
   'procurement-contracts': '采购合同',
   'procurement-payments': '采购付款',
   'labor-contracts': '劳务合同',
@@ -33,18 +39,25 @@ const RESOURCE_LABELS: Record<string, string> = {
  * 根据 projectId 查出所有相关业务单据的 ID 集合
  * 用于在审批记录里做 resourceId 过滤
  */
-async function getResourceIdsByProject(projectId: string): Promise<Set<string>> {
-  const [ca, pc, pp, lc, lp, sc, sp] = await Promise.all([
-    db.constructionApproval.findMany({ where: { projectId }, select: { id: true } }),
-    db.procurementContract.findMany({ where: { projectId }, select: { id: true } }),
-    db.procurementPayment.findMany({ where: { projectId }, select: { id: true } }),
-    db.laborContract.findMany({ where: { projectId }, select: { id: true } }),
-    db.laborPayment.findMany({ where: { projectId }, select: { id: true } }),
-    db.subcontractContract.findMany({ where: { projectId }, select: { id: true } }),
-    db.subcontractPayment.findMany({ where: { projectId }, select: { id: true } }),
+async function getResourceIdsByProject(projectId: string, regionId: string): Promise<Set<string>> {
+  const [ca, pcc, pc, pp, lc, lp, sc, sp] = await Promise.all([
+    db.constructionApproval.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.projectContractChange.findMany({
+      where: {
+        regionId,
+        ProjectContract: { projectId },
+      },
+      select: { id: true },
+    }),
+    db.procurementContract.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.procurementPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.laborContract.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.laborPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.subcontractContract.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.subcontractPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
   ])
   const ids = new Set<string>()
-  for (const row of [...ca, ...pc, ...pp, ...lc, ...lp, ...sc, ...sp]) {
+  for (const row of [...ca, ...pcc, ...pc, ...pp, ...lc, ...lp, ...sc, ...sp]) {
     ids.add(row.id)
   }
   return ids
@@ -59,13 +72,18 @@ export const GET = apiHandler(async (req: Request) => {
   const resourceType = searchParams.get('resourceType') || ''
   const keyword = searchParams.get('keyword') || ''
   const projectId = searchParams.get('projectId') || ''
+  const regionId = await requireCurrentRegionId()
 
   const sysUser = await findSystemUserByDingUserId(authUser.userid)
   const systemUserId = sysUser?.id ?? ''
 
   // 若指定 projectId，预先查出该项目下所有业务单据 ID
+  if (projectId) {
+    await assertProjectInCurrentRegion(projectId)
+  }
+
   const projectResourceIds = projectId
-    ? await getResourceIdsByProject(projectId)
+    ? await getResourceIdsByProject(projectId, regionId)
     : null
 
   let instances: any[] = []
@@ -79,33 +97,33 @@ export const GET = apiHandler(async (req: Request) => {
           { approverType: ProcessNodeApproverType.ROLE, approverRole: authUser.systemRole },
           { approverType: ProcessNodeApproverType.USER, approverUserId: systemUserId },
         ],
-        instance: {
+        ProcessInstance: {
           status: ProcessInstanceStatus.PENDING,
           ...(resourceType ? { resourceType } : {}),
         },
       },
       include: {
-        instance: {
-          include: { definition: true },
+        ProcessInstance: {
+          include: { ProcessDefinition: true },
         },
-        node: true,
+        ProcessNode: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
     })
     instances = tasks.map((t) => ({
-      id: t.instance.id,
+      id: t.ProcessInstance.id,
       taskId: t.id,
-      resourceType: t.instance.resourceType,
-      resourceLabel: RESOURCE_LABELS[t.instance.resourceType] || t.instance.resourceType,
-      resourceId: t.instance.resourceId,
-      submitterName: t.instance.submitterName,
-      submitterUserId: t.instance.submitterUserId,
-      status: t.instance.status,
+      resourceType: t.ProcessInstance.resourceType,
+      resourceLabel: RESOURCE_LABELS[t.ProcessInstance.resourceType] || t.ProcessInstance.resourceType,
+      resourceId: t.ProcessInstance.resourceId,
+      submitterName: t.ProcessInstance.submitterName,
+      submitterUserId: t.ProcessInstance.submitterUserId,
+      status: t.ProcessInstance.status,
       taskStatus: t.status,
-      nodeName: t.node.name,
+      nodeName: t.ProcessNode.name,
       nodeOrder: t.nodeOrder,
-      startedAt: t.instance.startedAt.toISOString(),
+      startedAt: t.ProcessInstance.startedAt.toISOString(),
       taskCreatedAt: t.createdAt.toISOString(),
       canApprove: true,
     }))
@@ -115,28 +133,28 @@ export const GET = apiHandler(async (req: Request) => {
       where: {
         status: { in: [ProcessTaskStatus.APPROVED, ProcessTaskStatus.REJECTED] },
         handledBy: authUser.userid,
-        instance: resourceType ? { resourceType } : undefined,
+        ProcessInstance: resourceType ? { resourceType } : undefined,
       },
       include: {
-        instance: { include: { definition: true } },
-        node: true,
+        ProcessInstance: { include: { ProcessDefinition: true } },
+        ProcessNode: true,
       },
       orderBy: { handledAt: 'desc' },
       take: 100,
     })
     instances = tasks.map((t) => ({
-      id: t.instance.id,
+      id: t.ProcessInstance.id,
       taskId: t.id,
-      resourceType: t.instance.resourceType,
-      resourceLabel: RESOURCE_LABELS[t.instance.resourceType] || t.instance.resourceType,
-      resourceId: t.instance.resourceId,
-      submitterName: t.instance.submitterName,
-      submitterUserId: t.instance.submitterUserId,
-      status: t.instance.status,
+      resourceType: t.ProcessInstance.resourceType,
+      resourceLabel: RESOURCE_LABELS[t.ProcessInstance.resourceType] || t.ProcessInstance.resourceType,
+      resourceId: t.ProcessInstance.resourceId,
+      submitterName: t.ProcessInstance.submitterName,
+      submitterUserId: t.ProcessInstance.submitterUserId,
+      status: t.ProcessInstance.status,
       taskStatus: t.status,
-      nodeName: t.node.name,
+      nodeName: t.ProcessNode.name,
       nodeOrder: t.nodeOrder,
-      startedAt: t.instance.startedAt.toISOString(),
+      startedAt: t.ProcessInstance.startedAt.toISOString(),
       taskCreatedAt: t.handledAt?.toISOString() || t.createdAt.toISOString(),
       canApprove: false,
     }))
@@ -148,8 +166,12 @@ export const GET = apiHandler(async (req: Request) => {
         ...(resourceType ? { resourceType } : {}),
       },
       include: {
-        definition: true,
-        tasks: { where: { status: ProcessTaskStatus.PENDING }, orderBy: { nodeOrder: 'asc' }, take: 1 },
+        ProcessDefinition: true,
+        ProcessTask: {
+          where: { status: ProcessTaskStatus.PENDING },
+          orderBy: { nodeOrder: 'asc' },
+          take: 1,
+        },
       },
       orderBy: { startedAt: 'desc' },
       take: 100,
@@ -163,9 +185,9 @@ export const GET = apiHandler(async (req: Request) => {
       submitterName: inst.submitterName,
       submitterUserId: inst.submitterUserId,
       status: inst.status,
-      taskStatus: inst.tasks[0]?.status || 'NONE',
-      nodeName: inst.tasks[0] ? `节点${inst.tasks[0].nodeOrder}` : '已结束',
-      nodeOrder: inst.tasks[0]?.nodeOrder || 0,
+      taskStatus: inst.ProcessTask[0]?.status || 'NONE',
+      nodeName: inst.ProcessTask[0] ? `节点${inst.ProcessTask[0].nodeOrder}` : '已结束',
+      nodeOrder: inst.ProcessTask[0]?.nodeOrder || 0,
       startedAt: inst.startedAt.toISOString(),
       taskCreatedAt: inst.startedAt.toISOString(),
       canApprove: false,
@@ -175,6 +197,8 @@ export const GET = apiHandler(async (req: Request) => {
     // cc: 暂时返回空（抄送功能后续扩展）
     instances = []
   }
+
+  instances = await filterResourceItemsByCurrentRegion(instances)
 
   // projectId 过滤（按 resourceId 集合匹配）
   if (projectResourceIds !== null) {

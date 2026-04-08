@@ -10,9 +10,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     await requireSystemManager()
     const units = await db.organizationUnit.findMany({
       include: {
-        members: {
+        SystemUserOrgUnit: {
           include: {
-            systemUser: { select: { id: true, name: true, role: true } },
+            SystemUser: { select: { id: true, name: true, role: true } },
           },
         },
       },
@@ -33,11 +33,13 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
     const unit = await db.organizationUnit.create({
       data: {
+        id: crypto.randomUUID(),
         name: body.name.trim(),
         code,
         parentId: body.parentId || null,
         remark: body.remark?.trim() || null,
         isActive: true,
+        updatedAt: new Date(),
       },
     })
     return success(unit)
@@ -46,5 +48,3 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   resource: 'org-units',
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-
-

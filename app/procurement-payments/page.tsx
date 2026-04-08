@@ -26,11 +26,18 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
  */
 interface ProcurementPayment {
   id: string
+  contractId: string
   contractCode: string
+  contractName: string
+  constructionName?: string
   projectName: string
   supplierName: string
+  supplierPhone?: string | null
+  supplierBankAccount?: string | null
+  supplierBankName?: string | null
   amount: number
   paymentDate: string
+  attachmentUrl?: string | null
   approvalStatus: string
   remark: string | null
   createdAt: string
@@ -44,8 +51,14 @@ interface ProcurementContract {
   code: string
   name: string
   projectId: string
+  constructionId?: string
+  constructionName?: string
   projectName: string
-  customerName: string
+  supplierId?: string
+  supplierName?: string
+  supplierPhone?: string | null
+  supplierBankAccount?: string | null
+  supplierBankName?: string | null
   contractAmount: number
   payableAmount: number
   paidAmount: number
@@ -96,6 +109,8 @@ export default function ProcurementPaymentsPage() {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+  const selectedContractId = Form.useWatch('contractId', form)
+  const selectedContract = contracts.find((item) => item.id === selectedContractId)
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -212,6 +227,7 @@ export default function ProcurementPaymentsPage() {
         contractId: values.contractId,
         amount: values.amount,
         paymentDate: values.paymentDate ? values.paymentDate.format('YYYY-MM-DD') : null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -249,6 +265,12 @@ export default function ProcurementPaymentsPage() {
       key: 'contractCode',
       width: 130,
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'contractName',
+      key: 'contractName',
+      width: 180,
     },
     {
       title: '项目名称',
@@ -465,6 +487,19 @@ export default function ProcurementPaymentsPage() {
             />
           </Form.Item>
 
+          {selectedContract && (
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, lineHeight: 1.8, color: '#595959' }}>
+              <div style={{ marginBottom: 6, fontWeight: 500, color: '#1d1d1f' }}>合同联动信息</div>
+              <div>合同名称：{selectedContract.name}</div>
+              <div>施工立项：{selectedContract.constructionName || '-'}</div>
+              <div>项目名称：{selectedContract.projectName}</div>
+              <div>供应商：{selectedContract.supplierName || '-'}</div>
+              <div>联系电话：{selectedContract.supplierPhone || '-'}</div>
+              <div>银行卡：{selectedContract.supplierBankAccount || '-'}</div>
+              <div>开户行：{selectedContract.supplierBankName || '-'}</div>
+            </div>
+          )}
+
           <Form.Item
             label="付款金额"
             name="amount"
@@ -485,6 +520,10 @@ export default function ProcurementPaymentsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -493,4 +532,3 @@ export default function ProcurementPaymentsPage() {
     </ConfigProvider>
   )
 }
-

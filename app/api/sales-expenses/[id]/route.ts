@@ -1,45 +1,132 @@
-import { apiHandlerWithMethod, success, NotFoundError } from '@/lib/api'
+import {
+  apiHandlerWithPermissionAndLog,
+  BadRequestError,
+  NotFoundError,
+  success,
+} from '@/lib/api'
 import { db } from '@/lib/db'
+import {
+  assertDirectRecordInCurrentRegion,
+  assertProjectInCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
 
-const handler = apiHandlerWithMethod({
-  GET: async (req) => {
-    const id = req.url.split('/').pop()!
-    const record = await db.salesExpense.findUnique({
-      where: { id },
-      include: { project: { select: { name: true } } },
+function getIdFromRequest(req: Request) {
+  return new URL(req.url).pathname.split('/').pop() ?? ''
+}
+
+function normalizeExpenseItems(items: unknown) {
+  if (!Array.isArray(items)) return []
+
+  return items
+    .map((item: any) => {
+      const type = String(item?.type ?? '').trim()
+      const amount = Number(item?.amount ?? 0)
+      if (!type || amount <= 0) return null
+      return { type, amount }
     })
-    if (!record) throw new NotFoundError('记录不存在')
-    return success({ ...record, expenseItems: record.expenseItems ? JSON.parse(record.expenseItems) : [] })
-  },
+    .filter(
+      (
+        item: { type: string; amount: number } | null
+      ): item is { type: string; amount: number } => item !== null
+    )
+}
 
-  PUT: async (req) => {
-    const id = req.url.split('/').pop()!
-    const body = await req.json()
-    const existing = await db.salesExpense.findUnique({ where: { id } })
-    if (!existing) throw new NotFoundError('记录不存在')
-    const items = body.expenseItems || []
-    const totalAmount = items.length > 0
-      ? items.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0)
-      : Number(existing.totalAmount ?? existing.expenseAmount)
-    const updated = await db.salesExpense.update({
-      where: { id },
-      data: {
-        submitter: body.submitter?.trim() ?? existing.submitter,
-        expenseDate: body.expenseDate ? new Date(body.expenseDate) : existing.expenseDate,
-        totalAmount, expenseAmount: totalAmount,
-        expenseItems: items.length > 0 ? JSON.stringify(items) : existing.expenseItems,
-        attachmentUrl: body.attachmentUrl?.trim() ?? existing.attachmentUrl,
-        remark: body.remark?.trim() ?? existing.remark,
-      },
-    })
-    return success(updated)
-  },
+export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
+  {
+    GET: async (req) => {
+      const id = getIdFromRequest(req)
+      const regionId = await requireCurrentRegionId()
+      const record = await db.salesExpense.findFirst({
+        where: { id, regionId },
+        include: { Project: { select: { name: true } } },
+      })
 
-  DELETE: async (req) => {
-    const id = req.url.split('/').pop()!
-    const existing = await db.salesExpense.findUnique({ where: { id } })
-    if (!existing) throw new NotFoundError('记录不存在')
-    await db.salesExpense.delete({ where: { id } })
-    return success({ id })
+      if (!record) throw new NotFoundError('记录不存在')
+
+      return success({
+        ...record,
+        projectName: record.Project?.name ?? null,
+        expenseItems: record.expenseItems ? JSON.parse(record.expenseItems) : [],
+      })
+    },
+
+    PUT: async (req) => {
+      const id = getIdFromRequest(req)
+      const body = await req.json()
+      const existing = await assertDirectRecordInCurrentRegion('salesExpense', id)
+
+      if (!existing) throw new NotFoundError('记录不存在')
+
+      const projectId =
+        body.projectId === undefined
+          ? existing.projectId
+          : String(body.projectId ?? '').trim() || null
+      const submitter =
+        body.submitter === undefined
+          ? existing.submitter
+          : String(body.submitter ?? '').trim()
+
+      if (!submitter) throw new BadRequestError('报销人为必填项')
+      if (projectId) {
+        await assertProjectInCurrentRegion(projectId)
+      }
+
+      let expenseItems = existing.expenseItems ? JSON.parse(existing.expenseItems) : []
+      let totalAmount = Number(existing.totalAmount ?? existing.expenseAmount ?? 0)
+
+      if (body.expenseItems !== undefined) {
+        expenseItems = normalizeExpenseItems(body.expenseItems)
+        totalAmount = expenseItems.reduce(
+          (sum: number, item: { type: string; amount: number }) => sum + item.amount,
+          0
+        )
+
+        if (expenseItems.length === 0 || totalAmount <= 0) {
+          throw new BadRequestError('请至少填写一条有效费用明细')
+        }
+      }
+
+      const updated = await db.salesExpense.update({
+        where: { id },
+        data: {
+          projectId,
+          submitter,
+          category:
+            String(body.category ?? '').trim() || expenseItems[0]?.type || existing.category,
+          expenseDate: body.expenseDate
+            ? new Date(String(body.expenseDate))
+            : existing.expenseDate,
+          totalAmount,
+          expenseAmount: totalAmount,
+          expenseItems: JSON.stringify(expenseItems),
+          attachmentUrl:
+            body.attachmentUrl === undefined
+              ? existing.attachmentUrl
+              : String(body.attachmentUrl ?? '').trim() || null,
+          remark:
+            body.remark === undefined
+              ? existing.remark
+              : String(body.remark ?? '').trim() || null,
+          updatedAt: new Date(),
+        },
+      })
+
+      return success(updated)
+    },
+
+    DELETE: async (req) => {
+      const id = getIdFromRequest(req)
+      const existing = await assertDirectRecordInCurrentRegion('salesExpense', id)
+
+      if (!existing) throw new NotFoundError('记录不存在')
+
+      await db.salesExpense.delete({ where: { id } })
+      return success({ id })
+    },
   },
-})
+  {
+    resource: 'sales-expenses',
+    resourceIdExtractor: (_, result) => result?.data?.id ?? null,
+  }
+)

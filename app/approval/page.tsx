@@ -43,6 +43,7 @@ type TabKey = 'pending' | 'done' | 'cc' | 'mine'
 const RESOURCE_TYPES = [
   { label: '全部类型', value: '' },
   { label: '施工立项', value: 'construction-approvals' },
+  { label: '项目合同变更', value: 'project-contract-changes' },
   { label: '采购合同', value: 'procurement-contracts' },
   { label: '采购付款', value: 'procurement-payments' },
   { label: '劳务合同', value: 'labor-contracts' },
@@ -53,6 +54,7 @@ const RESOURCE_TYPES = [
 
 const RESOURCE_ROUTE: Record<string, string> = {
   'construction-approvals': '/construction-approvals',
+  'project-contract-changes': '/project-contract-changes',
   'procurement-contracts': '/procurement-contracts',
   'procurement-payments': '/procurement-payments',
   'labor-contracts': '/labor-contracts',
@@ -63,6 +65,7 @@ const RESOURCE_ROUTE: Record<string, string> = {
 
 const RESOURCE_COLOR: Record<string, string> = {
   'construction-approvals': '#1677ff',
+  'project-contract-changes': '#2f54eb',
   'procurement-contracts': '#faad14',
   'procurement-payments': '#eb2f96',
   'labor-contracts': '#52c41a',
@@ -403,4 +406,3 @@ export default function ApprovalCenterPage() {
     </div>
   )
 }
-

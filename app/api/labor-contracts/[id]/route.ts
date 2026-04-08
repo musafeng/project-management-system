@@ -1,36 +1,94 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
+import {
+  assertConstructionApprovalInCurrentRegion,
+  assertDirectRecordInCurrentRegion,
+  assertProjectInCurrentRegion,
+  requireCurrentRegionId,
+} from '@/lib/region'
+
+function toResponse(contract: {
+  id: string
+  code: string
+  name: string
+  projectId: string
+  constructionId: string
+  workerId: string
+  Project: { id: string; name: string }
+  ConstructionApproval: { id: string; name: string }
+  LaborWorker: {
+    id: string
+    name: string
+    phone: string | null
+    idNumber: string | null
+    bankAccount: string | null
+    bankName: string | null
+  }
+  contractAmount: any
+  changedAmount: any
+  payableAmount: any
+  paidAmount: any
+  unpaidAmount: any
+  status: string
+  signDate: Date | null
+  startDate: Date | null
+  endDate: Date | null
+  attachmentUrl: string | null
+  laborType: string | null
+  remark: string | null
+  createdAt: Date
+  updatedAt: Date
+}) {
+  return {
+    id: contract.id,
+    code: contract.code,
+    name: contract.name,
+    projectId: contract.projectId,
+    projectName: contract.Project.name,
+    constructionId: contract.constructionId,
+    constructionName: contract.ConstructionApproval.name,
+    workerId: contract.workerId,
+    laborWorkerName: contract.LaborWorker.name,
+    laborWorkerPhone: contract.LaborWorker.phone,
+    laborWorkerIdNumber: contract.LaborWorker.idNumber,
+    laborWorkerBankAccount: contract.LaborWorker.bankAccount,
+    laborWorkerBankName: contract.LaborWorker.bankName,
+    contractAmount: contract.contractAmount,
+    changedAmount: contract.changedAmount,
+    payableAmount: contract.payableAmount,
+    paidAmount: contract.paidAmount,
+    unpaidAmount: contract.unpaidAmount,
+    status: contract.status,
+    signDate: contract.signDate,
+    startDate: contract.startDate,
+    endDate: contract.endDate,
+    attachmentUrl: contract.attachmentUrl,
+    laborType: contract.laborType,
+    remark: contract.remark,
+    createdAt: contract.createdAt,
+    updatedAt: contract.updatedAt,
+  }
+}
 
 const handler = apiHandlerWithMethod({
-  /**
-   * GET /api/labor-contracts/{id}
-   * 获取劳务合同详情
-   */
   GET: async (req) => {
     const id = req.url.split('/').pop()
+    if (!id) throw new BadRequestError('缺少合同 ID')
 
-    if (!id) {
-      throw new BadRequestError('缺少合同 ID')
-    }
-
-    const contract = await db.laborContract.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+    const contract = await db.laborContract.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         code: true,
+        name: true,
         projectId: true,
         constructionId: true,
         workerId: true,
-        project: {
-          select: { id: true, name: true },
-        },
-        construction: {
-          select: { id: true, name: true },
-        },
-        worker: {
-          select: { id: true, name: true },
-        },
+        Project: { select: { id: true, name: true } },
+        ConstructionApproval: { select: { id: true, name: true } },
+        LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         changedAmount: true,
         payableAmount: true,
@@ -40,120 +98,123 @@ const handler = apiHandlerWithMethod({
         signDate: true,
         startDate: true,
         endDate: true,
+        attachmentUrl: true,
+        laborType: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
       },
     })
 
-    if (!contract) {
-      throw new NotFoundError('劳务合同不存在')
-    }
+    if (!contract) throw new NotFoundError('劳务合同不存在')
 
-    return success({
-      id: contract.id,
-      code: contract.code,
-      projectId: contract.projectId,
-      projectName: contract.project.name,
-      constructionId: contract.constructionId,
-      constructionName: contract.construction.name,
-      workerId: contract.workerId,
-      laborWorkerName: contract.worker.name,
-      contractAmount: contract.contractAmount,
-      changedAmount: contract.changedAmount,
-      payableAmount: contract.payableAmount,
-      paidAmount: contract.paidAmount,
-      unpaidAmount: contract.unpaidAmount,
-      status: contract.status,
-      signDate: contract.signDate,
-      startDate: contract.startDate,
-      endDate: contract.endDate,
-      remark: contract.remark,
-      createdAt: contract.createdAt,
-      updatedAt: contract.updatedAt,
-    })
+    return success(toResponse(contract))
   },
 
-  /**
-   * PUT /api/labor-contracts/{id}
-   * 更新劳务合同
-   */
   PUT: async (req) => {
     const id = req.url.split('/').pop()
-
-    if (!id) {
-      throw new BadRequestError('缺少合同 ID')
-    }
+    if (!id) throw new BadRequestError('缺少合同 ID')
 
     const body = await req.json()
+    const existingContract = await assertDirectRecordInCurrentRegion('laborContract', id)
+    if (!existingContract) throw new NotFoundError('劳务合同不存在')
 
-    // 检查合同是否存在
-    const existingContract = await db.laborContract.findUnique({
-      where: { id },
-    })
-
-    if (!existingContract) {
-      throw new NotFoundError('劳务合同不存在')
-    }
-
-    // 审批状态锁定校验
     try {
       assertEditable(existingContract.approvalStatus)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
-    // 构建更新数据
-    const updateData: any = {}
+    const projectId =
+      body.projectId === undefined ? existingContract.projectId : String(body.projectId ?? '').trim()
+    const constructionId =
+      body.constructionId === undefined ? existingContract.constructionId : String(body.constructionId ?? '').trim()
+    const workerId =
+      body.laborWorkerId === undefined && body.workerId === undefined
+        ? existingContract.workerId
+        : String(body.laborWorkerId ?? body.workerId ?? '').trim()
 
-    if (body.changedAmount !== undefined) {
-      if (typeof body.changedAmount !== 'number') {
-        throw new BadRequestError('变更金额必须是数字')
-      }
-      updateData.changedAmount = body.changedAmount
-      // 更新应付金额
-      updateData.payableAmount = Number(existingContract.contractAmount) + Number(body.changedAmount)
+    if (!projectId) throw new BadRequestError('项目为必填项')
+    if (!constructionId) throw new BadRequestError('施工立项为必填项')
+    if (!workerId) throw new BadRequestError('劳务人员为必填项')
+
+    await assertProjectInCurrentRegion(projectId)
+    const construction = await assertConstructionApprovalInCurrentRegion(constructionId)
+    if (construction.projectId !== projectId) {
+      throw new BadRequestError('施工立项不属于该项目')
+    }
+    const worker = await db.laborWorker.findUnique({
+      where: { id: workerId },
+      select: { id: true },
+    })
+    if (!worker) throw new NotFoundError('劳务人员不存在')
+
+    const contractAmount =
+      body.contractAmount === undefined
+        ? Number(existingContract.contractAmount)
+        : Number(body.contractAmount)
+    if (contractAmount <= 0) {
+      throw new BadRequestError('合同金额必须大于 0')
     }
 
+    const changedAmount =
+      body.changedAmount === undefined
+        ? Number(existingContract.changedAmount)
+        : Number(body.changedAmount)
+    const payableAmount = contractAmount + changedAmount
+    const unpaidAmount = payableAmount - Number(existingContract.paidAmount)
+
+    const updateData: any = {
+      projectId,
+      constructionId,
+      workerId,
+      contractAmount,
+      changedAmount,
+      payableAmount,
+      unpaidAmount,
+      updatedAt: new Date(),
+    }
+
+    if (body.name !== undefined) {
+      const name = String(body.name ?? '').trim()
+      if (!name) throw new BadRequestError('合同名称不能为空')
+      updateData.name = name
+    }
     if (body.signDate !== undefined) {
       updateData.signDate = body.signDate ? new Date(body.signDate) : null
     }
-
     if (body.startDate !== undefined) {
       updateData.startDate = body.startDate ? new Date(body.startDate) : null
     }
-
     if (body.endDate !== undefined) {
       updateData.endDate = body.endDate ? new Date(body.endDate) : null
     }
-
     if (body.status !== undefined) {
       updateData.status = body.status
     }
-
+    if (body.laborType !== undefined) {
+      updateData.laborType = String(body.laborType ?? '').trim() || null
+    }
+    if (body.attachmentUrl !== undefined) {
+      updateData.attachmentUrl = String(body.attachmentUrl ?? '').trim() || null
+    }
     if (body.remark !== undefined) {
-      updateData.remark = body.remark?.trim() || null
+      updateData.remark = String(body.remark ?? '').trim() || null
     }
 
-    // 更新合同
     const contract = await db.laborContract.update({
       where: { id },
       data: updateData,
       select: {
         id: true,
         code: true,
+        name: true,
         projectId: true,
         constructionId: true,
         workerId: true,
-        project: {
-          select: { id: true, name: true },
-        },
-        construction: {
-          select: { id: true, name: true },
-        },
-        worker: {
-          select: { id: true, name: true },
-        },
+        Project: { select: { id: true, name: true } },
+        ConstructionApproval: { select: { id: true, name: true } },
+        LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         changedAmount: true,
         payableAmount: true,
@@ -163,74 +224,37 @@ const handler = apiHandlerWithMethod({
         signDate: true,
         startDate: true,
         endDate: true,
+        attachmentUrl: true,
+        laborType: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
       },
     })
 
-    return success({
-      id: contract.id,
-      code: contract.code,
-      projectId: contract.projectId,
-      projectName: contract.project.name,
-      constructionId: contract.constructionId,
-      constructionName: contract.construction.name,
-      workerId: contract.workerId,
-      laborWorkerName: contract.worker.name,
-      contractAmount: contract.contractAmount,
-      changedAmount: contract.changedAmount,
-      payableAmount: contract.payableAmount,
-      paidAmount: contract.paidAmount,
-      unpaidAmount: contract.unpaidAmount,
-      status: contract.status,
-      signDate: contract.signDate,
-      startDate: contract.startDate,
-      endDate: contract.endDate,
-      remark: contract.remark,
-      createdAt: contract.createdAt,
-      updatedAt: contract.updatedAt,
-    })
+    return success(toResponse(contract))
   },
 
-  /**
-   * DELETE /api/labor-contracts/{id}
-   * 删除劳务合同
-   * 删除规则：如果存在劳务付款记录，禁止删除
-   */
   DELETE: async (req) => {
     const id = req.url.split('/').pop()
+    if (!id) throw new BadRequestError('缺少合同 ID')
 
-    if (!id) {
-      throw new BadRequestError('缺少合同 ID')
-    }
+    const contract = await assertDirectRecordInCurrentRegion('laborContract', id)
+    if (!contract) throw new NotFoundError('劳务合同不存在')
 
-    // 检查合同是否存在
-    const contract = await db.laborContract.findUnique({
-      where: { id },
-    })
-
-    if (!contract) {
-      throw new NotFoundError('劳务合同不存在')
-    }
-
-    // 审批状态锁定校验
     try {
       assertEditable(contract.approvalStatus)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
-    // 检查是否存在劳务付款记录
     const paymentCount = await db.laborPayment.count({
       where: { contractId: id },
     })
-
     if (paymentCount > 0) {
       throw new ConflictError('该劳务合同已产生付款记录，无法删除')
     }
 
-    // 删除合同
     await db.laborContract.delete({
       where: { id },
     })
@@ -239,4 +263,6 @@ const handler = apiHandlerWithMethod({
   },
 })
 
-
+export const GET = handler
+export const PUT = handler
+export const DELETE = handler

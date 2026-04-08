@@ -1,40 +1,89 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
+import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+
+function toResponse(payment: {
+  id: string
+  contractId: string
+  projectId: string
+  ProcurementContract: {
+    code: string
+    name: string
+    constructionId: string
+    ConstructionApproval: { name: string }
+    Project: { name: string }
+    Supplier: { name: string; phone: string | null; bankAccount: string | null; bankName: string | null }
+  }
+  paymentAmount: any
+  paymentDate: Date
+  paymentMethod: string | null
+  paymentNumber: string | null
+  attachmentUrl: string | null
+  approvalStatus?: string
+  status: string
+  remark: string | null
+  createdAt: Date
+  updatedAt: Date
+}) {
+  return {
+    id: payment.id,
+    contractId: payment.contractId,
+    projectId: payment.projectId,
+    constructionId: payment.ProcurementContract.constructionId,
+    contractCode: payment.ProcurementContract.code,
+    contractName: payment.ProcurementContract.name,
+    constructionName: payment.ProcurementContract.ConstructionApproval.name,
+    projectName: payment.ProcurementContract.Project.name,
+    supplierName: payment.ProcurementContract.Supplier.name,
+    supplierPhone: payment.ProcurementContract.Supplier.phone,
+    supplierBankAccount: payment.ProcurementContract.Supplier.bankAccount,
+    supplierBankName: payment.ProcurementContract.Supplier.bankName,
+    amount: payment.paymentAmount,
+    paymentAmount: payment.paymentAmount,
+    paymentDate: payment.paymentDate,
+    paymentMethod: payment.paymentMethod,
+    paymentNumber: payment.paymentNumber,
+    attachmentUrl: payment.attachmentUrl,
+    approvalStatus: payment.approvalStatus,
+    status: payment.status,
+    remark: payment.remark,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+  }
+}
 
 const handler = apiHandlerWithMethod({
-  /**
-   * GET /api/procurement-payments/{id}
-   * 获取付款详情
-   */
   GET: async (req) => {
     const id = req.url.split('/').pop()
-
     if (!id) {
       throw new BadRequestError('缺少付款记录 ID')
     }
 
-    const payment = await db.procurementPayment.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const payment = await db.procurementPayment.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         contractId: true,
         projectId: true,
-        contract: {
+        ProcurementContract: {
           select: {
             code: true,
-            project: {
-              select: { name: true },
-            },
-            supplier: {
-              select: { name: true },
-            },
+            name: true,
+            constructionId: true,
+            ConstructionApproval: { select: { name: true } },
+            Project: { select: { name: true } },
+            Supplier: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
           },
         },
         paymentAmount: true,
         paymentDate: true,
         paymentMethod: true,
         paymentNumber: true,
+        attachmentUrl: true,
+        approvalStatus: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -46,29 +95,9 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    return success({
-      id: payment.id,
-      contractId: payment.contractId,
-      projectId: payment.projectId,
-      contractCode: payment.contract.code,
-      projectName: payment.contract.project.name,
-      supplierName: payment.contract.supplier.name,
-      amount: payment.paymentAmount,
-      paymentDate: payment.paymentDate,
-      paymentMethod: payment.paymentMethod,
-      paymentNumber: payment.paymentNumber,
-      status: payment.status,
-      remark: payment.remark,
-      createdAt: payment.createdAt,
-      updatedAt: payment.updatedAt,
-    })
+    return success(toResponse(payment))
   },
 
-  /**
-   * DELETE /api/procurement-payments/{id}
-   * 删除付款记录
-   * 删除规则：回退合同汇总字段
-   */
   DELETE: async (req) => {
     const id = req.url.split('/').pop()
 
@@ -76,9 +105,11 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少付款记录 ID')
     }
 
-    // 获取付款记录
-    const payment = await db.procurementPayment.findUnique({
-      where: { id },
+    const payment = await db.procurementPayment.findFirst({
+      where: {
+        id,
+        regionId: await requireCurrentRegionId(),
+      },
       select: {
         id: true,
         contractId: true,
@@ -91,37 +122,24 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    // 审批状态锁定校验
     try {
       assertEditable(payment.approvalStatus)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
-    // 获取合同信息
-    const contract = await db.procurementContract.findUnique({
-      where: { id: payment.contractId },
-      select: {
-        id: true,
-        payableAmount: true,
-        paidAmount: true,
-      },
-    })
+    const contract = await assertProcurementContractInCurrentRegion(payment.contractId)
 
     if (!contract) {
       throw new NotFoundError('关联的采购合同不存在')
     }
 
-    // 删除付款记录
     await db.procurementPayment.delete({
       where: { id },
     })
 
-    // 回退合同汇总字段
-    const newPaidAmount =
-      Number(contract.paidAmount) - Number(payment.paymentAmount)
-    const newUnpaidAmount =
-      Number(contract.payableAmount) - newPaidAmount
+    const newPaidAmount = Number(contract.paidAmount) - Number(payment.paymentAmount)
+    const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount
 
     await db.procurementContract.update({
       where: { id: payment.contractId },
@@ -135,4 +153,5 @@ const handler = apiHandlerWithMethod({
   },
 })
 
-
+export const GET = handler
+export const DELETE = handler

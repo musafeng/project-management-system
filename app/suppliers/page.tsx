@@ -25,6 +25,9 @@ interface Supplier {
   contact: string | null
   phone: string | null
   address: string | null
+  bankAccount?: string | null
+  bankName?: string | null
+  attachmentUrl?: string | null
   createdAt: string
 }
 
@@ -144,6 +147,9 @@ export default function SuppliersPage() {
           contact: result.data.contact || undefined,
           phone: result.data.phone || undefined,
           address: result.data.address || undefined,
+          bankAccount: result.data.bankAccount || undefined,
+          bankName: result.data.bankName || undefined,
+          attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
         })
         setIsModalVisible(true)
@@ -241,6 +247,20 @@ export default function SuppliersPage() {
       key: 'address',
       width: 200,
       render: (text: string | null) => text || '-',
+    },
+    {
+      title: '银行卡号',
+      dataIndex: 'bankAccount',
+      key: 'bankAccount',
+      width: 180,
+      render: (text: string | null | undefined) => text || '-',
+    },
+    {
+      title: '开户行',
+      dataIndex: 'bankName',
+      key: 'bankName',
+      width: 160,
+      render: (text: string | null | undefined) => text || '-',
     },
     {
       title: '创建时间',
@@ -390,7 +410,7 @@ export default function SuppliersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={500}
+        width={560}
         okText="确定"
         cancelText="取消"
       >
@@ -423,6 +443,26 @@ export default function SuppliersPage() {
             <Input placeholder="请输入地址" />
           </Form.Item>
 
+          <Form.Item
+            label="银行卡号"
+            name="bankAccount"
+            rules={[{ required: true, message: '请输入银行卡号' }]}
+          >
+            <Input placeholder="请输入银行卡号" />
+          </Form.Item>
+
+          <Form.Item
+            label="开户行"
+            name="bankName"
+            rules={[{ required: true, message: '请输入开户行' }]}
+          >
+            <Input placeholder="请输入开户行" />
+          </Form.Item>
+
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -431,4 +471,3 @@ export default function SuppliersPage() {
     </ConfigProvider>
   )
 }
-

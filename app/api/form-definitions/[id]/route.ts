@@ -20,7 +20,7 @@ export async function PUT(
         ...(isActive !== undefined && { isActive }),
       },
       include: {
-        fields: { orderBy: { sortOrder: 'asc' } },
+        FormField: { orderBy: { sortOrder: 'asc' } },
       },
     })
     return NextResponse.json({ success: true, data: form })

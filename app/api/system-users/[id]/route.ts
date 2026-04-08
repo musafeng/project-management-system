@@ -27,7 +27,7 @@ export async function PUT(
       return NextResponse.json({ success: false, error: '用户不存在' }, { status: 404 })
     }
 
-    const updateData: { role?: SystemUserRole; isActive?: boolean } = {}
+    const updateData: { role?: SystemUserRole; isActive?: boolean; updatedAt?: Date } = {}
 
     // 更新角色
     if (body.role !== undefined) {
@@ -45,6 +45,8 @@ export async function PUT(
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ success: false, error: '没有可更新的字段' }, { status: 400 })
     }
+
+    updateData.updatedAt = new Date()
 
     const updated = await db.systemUser.update({
       where: { id },
@@ -85,6 +87,5 @@ export async function PUT(
     return NextResponse.json({ success: false, error: '未知错误' }, { status: 500 })
   }
 }
-
 
 

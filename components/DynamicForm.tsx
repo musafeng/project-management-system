@@ -168,18 +168,15 @@ function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boo
   const [uploading, setUploading] = useState(false)
   const [fileName, setFileName] = useState<string>('')
 
-  // 初始化时读取已有值显示文件名
   const currentUrl: string = form.getFieldValue(['formData', field.fieldKey]) || ''
   useEffect(() => {
     if (currentUrl && !fileName) {
-      // 从 URL 中提取文件名
       const parts = currentUrl.split('/')
       const raw = parts[parts.length - 1] || ''
-      // 去掉时间戳前缀（格式：timestamp-原文件名）
       const name = raw.replace(/^\d+-/, '')
       setFileName(decodeURIComponent(name))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUrl])
 
   const handleUpload = useCallback(async (file: File) => {
@@ -204,7 +201,7 @@ function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boo
     } finally {
       setUploading(false)
     }
-    return false // 阻止 antd Upload 默认行为
+    return false
   }, [field.fieldKey, form])
 
   const handleClear = useCallback(() => {
@@ -304,7 +301,6 @@ export default function DynamicForm({
   onLoadOptions,
   onCascadeSelect,
 }: DynamicFormProps) {
-  // 获取当前表单值，用于显隐联动（必须在所有 return 之前调用）
   const formValues = Form.useWatch([], _form) || {}
   const allValues = (formValues as any)?.formData || formValues
 
@@ -317,13 +313,11 @@ export default function DynamicForm({
   return (
     <>
       {sorted.map((field) => {
-        // 显隐联动
         if (field.dependsOn && field.dependsValue) {
           const watchVal = allValues[field.dependsOn]
           if (watchVal !== field.dependsValue) return null
         }
 
-        // table 字段用 Form.List，不用 Form.Item 包裹 name
         if (field.componentType === 'table') {
           return (
             <Form.Item key={field.id} label={field.label}>

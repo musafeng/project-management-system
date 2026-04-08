@@ -41,6 +41,7 @@ const handler = apiHandlerWithMethod({
         taxId: true,
         bankAccount: true,
         bankName: true,
+        attachmentUrl: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -138,11 +139,23 @@ const handler = apiHandlerWithMethod({
     }
 
     if (body.bankAccount !== undefined) {
-      updateData.bankAccount = body.bankAccount?.trim() || null
+      const bankAccount = String(body.bankAccount ?? '').trim()
+      if (!bankAccount) {
+        throw new BadRequestError('银行卡号不能为空')
+      }
+      updateData.bankAccount = bankAccount
     }
 
     if (body.bankName !== undefined) {
-      updateData.bankName = body.bankName?.trim() || null
+      const bankName = String(body.bankName ?? '').trim()
+      if (!bankName) {
+        throw new BadRequestError('开户行不能为空')
+      }
+      updateData.bankName = bankName
+    }
+
+    if (body.attachmentUrl !== undefined) {
+      updateData.attachmentUrl = body.attachmentUrl?.trim() || null
     }
 
     if (body.remark !== undefined) {
@@ -169,6 +182,7 @@ const handler = apiHandlerWithMethod({
         taxId: true,
         bankAccount: true,
         bankName: true,
+        attachmentUrl: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -236,4 +250,3 @@ const handler = apiHandlerWithMethod({
 export const GET = handler
 export const PUT = handler
 export const DELETE = handler
-

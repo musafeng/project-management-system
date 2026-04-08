@@ -27,6 +27,7 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 interface LaborContract {
   id: string
   code: string
+  name: string
   projectName: string
   constructionName: string
   laborWorkerName: string
@@ -50,6 +51,8 @@ interface LaborContractDetail extends LaborContract {
   status?: string
   startDate?: string | null
   endDate?: string | null
+  attachmentUrl?: string | null
+  laborType?: string | null
   remark?: string | null
   updatedAt?: string
 }
@@ -87,8 +90,10 @@ interface LaborWorker {
   id: string
   code: string
   name: string
-  contact: string | null
   phone: string | null
+  idNumber?: string | null
+  bankAccount?: string | null
+  bankName?: string | null
   createdAt: string
 }
 
@@ -140,6 +145,7 @@ export default function LaborContractsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
+  const selectedProjectId = Form.useWatch('projectId', form)
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -228,6 +234,8 @@ export default function LaborContractsPage() {
           filtered = result.data.filter(
             (contract) =>
               contract.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+              contract.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+              contract.laborWorkerName.toLowerCase().includes(searchKeyword.toLowerCase()) ||
               contract.projectName.toLowerCase().includes(searchKeyword.toLowerCase())
           )
         }
@@ -291,11 +299,13 @@ export default function LaborContractsPage() {
       if (result.success && result.data) {
         setEditingId(id)
         form.setFieldsValue({
+          name: result.data.name,
           projectId: result.data.projectId,
           constructionId: result.data.constructionId,
           laborWorkerId: result.data.workerId,
           contractAmount: result.data.contractAmount,
           signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
+          attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
         })
         setIsModalVisible(true)
@@ -339,11 +349,13 @@ export default function LaborContractsPage() {
       const method = editingId ? 'PUT' : 'POST'
 
       const payload = {
+        name: values.name,
         projectId: values.projectId,
         constructionId: values.constructionId,
         laborWorkerId: values.laborWorkerId,
         contractAmount: values.contractAmount,
         signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -381,6 +393,12 @@ export default function LaborContractsPage() {
       key: 'code',
       width: 130,
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
     },
     {
       title: '项目名称',
@@ -610,6 +628,14 @@ export default function LaborContractsPage() {
           style={{ marginTop: 20 }}
         >
           <Form.Item
+            label="合同名称"
+            name="name"
+            rules={[{ required: true, message: '请输入合同名称' }]}
+          >
+            <Input placeholder="请输入合同名称" />
+          </Form.Item>
+
+          <Form.Item
             label="项目"
             name="projectId"
             rules={[{ required: true, message: '请选择项目' }]}
@@ -632,10 +658,12 @@ export default function LaborContractsPage() {
             <Select
               placeholder="请选择施工立项"
               loading={constructionsLoading}
-              options={constructions.map((construction) => ({
-                label: construction.name,
-                value: construction.id,
-              }))}
+              options={constructions
+                .filter((construction) => !selectedProjectId || construction.projectId === selectedProjectId)
+                .map((construction) => ({
+                  label: construction.name,
+                  value: construction.id,
+                }))}
             />
           </Form.Item>
 
@@ -674,6 +702,10 @@ export default function LaborContractsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
+          </Form.Item>
+
           <Form.Item label="备注" name="remark">
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
@@ -682,4 +714,3 @@ export default function LaborContractsPage() {
     </ConfigProvider>
   )
 }
-

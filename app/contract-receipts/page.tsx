@@ -14,35 +14,38 @@ import {
   DatePicker,
   InputNumber,
   Input,
+  Tag,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 
-/**
- * 合同收款数据类型
- */
+interface DeductionItem {
+  type: string
+  amount: number
+}
+
 interface ContractReceipt {
   id: string
   contractId: string
   contractCode: string
+  contractName: string
   projectName: string
   amount: number
   receiptDate: string
+  deductionItems: DeductionItem[]
+  attachmentUrl?: string | null
+  approvalStatus?: string
   remark: string | null
   createdAt: string
 }
 
-/**
- * 项目合同数据类型
- */
 interface ProjectContract {
   id: string
   code: string
   name: string
   projectId: string
   projectName: string
-  customerName: string
   contractAmount: number
   changedAmount: number
   receivableAmount: number
@@ -53,18 +56,20 @@ interface ProjectContract {
   createdAt: string
 }
 
-/**
- * API 响应类型
- */
 interface ApiResponse<T> {
   success: boolean
   data?: T
   error?: string
 }
 
-/**
- * 格式化日期
- */
+const DEDUCTION_TYPES = ['税金', '手续费', '管理费', '其他']
+
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  PENDING: { label: '待审批', color: 'orange' },
+  APPROVED: { label: '已通过', color: 'green' },
+  REJECTED: { label: '已拒绝', color: 'red' },
+}
+
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -74,9 +79,6 @@ function formatDate(dateString: string): string {
   }
 }
 
-/**
- * 格式化金额
- */
 function formatCurrency(value: number | undefined): string {
   if (value === undefined || value === null) return '-'
   return `¥${value.toLocaleString('zh-CN', {
@@ -92,11 +94,11 @@ export default function ContractReceiptsPage() {
   const [contractsLoading, setContractsLoading] = useState(true)
   const [contractId, setContractId] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
+  const [deductionItems, setDeductionItems] = useState<DeductionItem[]>([])
   const [form] = Form.useForm()
+  const selectedContractId = Form.useWatch('contractId', form)
+  const selectedContract = contracts.find((item) => item.id === selectedContractId)
 
-  /**
-   * 加载合同列表
-   */
   const loadContracts = async () => {
     try {
       setContractsLoading(true)
@@ -115,9 +117,6 @@ export default function ContractReceiptsPage() {
     }
   }
 
-  /**
-   * 加载收款记录列表
-   */
   const loadReceipts = async (searchContractId?: string) => {
     try {
       setLoading(true)
@@ -143,40 +142,26 @@ export default function ContractReceiptsPage() {
     }
   }
 
-  /**
-   * 初次加载数据
-   */
   useEffect(() => {
     loadContracts()
     loadReceipts()
   }, [])
 
-  /**
-   * 查询处理
-   */
   const handleSearch = () => {
     loadReceipts(contractId)
   }
 
-  /**
-   * 重置处理
-   */
   const handleReset = () => {
     setContractId(undefined)
     loadReceipts('')
   }
 
-  /**
-   * 打开新增弹窗
-   */
   const handleAddClick = () => {
     form.resetFields()
+    setDeductionItems([])
     setIsModalVisible(true)
   }
 
-  /**
-   * 删除收款记录
-   */
   const handleDelete = async (id: string) => {
     try {
       const response = await fetch(`/api/contract-receipts/${id}`, {
@@ -196,15 +181,14 @@ export default function ContractReceiptsPage() {
     }
   }
 
-  /**
-   * 提交表单
-   */
   const handleSubmit = async (values: any) => {
     try {
       const payload = {
         contractId: values.contractId,
         amount: values.amount,
         receiptDate: values.receiptDate ? values.receiptDate.format('YYYY-MM-DD') : null,
+        deductionItems,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -222,6 +206,7 @@ export default function ContractReceiptsPage() {
         message.success('收款记录已创建')
         setIsModalVisible(false)
         form.resetFields()
+        setDeductionItems([])
         loadReceipts(contractId)
       } else {
         message.error(result.error || '操作失败')
@@ -232,9 +217,6 @@ export default function ContractReceiptsPage() {
     }
   }
 
-  /**
-   * 表格列定义
-   */
   const columns: ColumnsType<ContractReceipt> = [
     {
       title: '合同编号',
@@ -242,6 +224,12 @@ export default function ContractReceiptsPage() {
       key: 'contractCode',
       width: 130,
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'contractName',
+      key: 'contractName',
+      width: 180,
     },
     {
       title: '项目名称',
@@ -258,11 +246,29 @@ export default function ContractReceiptsPage() {
       render: (value: number) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatCurrency(value)}</span>,
     },
     {
+      title: '扣款明细',
+      dataIndex: 'deductionItems',
+      key: 'deductionItems',
+      width: 220,
+      render: (items: DeductionItem[]) =>
+        items?.length
+          ? items.map((item) => `${item.type}:${formatCurrency(item.amount)}`).join(' / ')
+          : '-',
+    },
+    {
       title: '收款日期',
       dataIndex: 'receiptDate',
       key: 'receiptDate',
       width: 120,
       render: (text: string) => formatDate(text),
+    },
+    {
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      key: 'approvalStatus',
+      width: 100,
+      render: (status: string) =>
+        status ? <Tag color={STATUS_MAP[status]?.color}>{STATUS_MAP[status]?.label || status}</Tag> : '-',
     },
     {
       title: '备注',
@@ -326,7 +332,6 @@ export default function ContractReceiptsPage() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
-          {/* 标题 */}
           <div style={{ marginBottom: 24 }}>
             <h1
               style={{
@@ -340,7 +345,6 @@ export default function ContractReceiptsPage() {
             </h1>
           </div>
 
-          {/* 查询区 */}
           <div
             style={{
               marginBottom: 20,
@@ -364,11 +368,7 @@ export default function ContractReceiptsPage() {
                 }))}
               />
 
-              <Button
-                type="primary"
-                onClick={handleSearch}
-                loading={loading}
-              >
+              <Button type="primary" onClick={handleSearch} loading={loading}>
                 查询
               </Button>
 
@@ -387,14 +387,13 @@ export default function ContractReceiptsPage() {
             </Space>
           </div>
 
-          {/* 表格 */}
           <Table<ContractReceipt>
             rowKey="id"
             columns={columns}
             dataSource={receipts}
             loading={loading}
             pagination={false}
-            scroll={{ x: 1000 }}
+            scroll={{ x: 1400 }}
             size="small"
             locale={{
               emptyText: '暂无收款记录',
@@ -403,7 +402,6 @@ export default function ContractReceiptsPage() {
         </div>
       </div>
 
-      {/* 新增收款弹窗 */}
       <Modal
         title="新增收款"
         open={isModalVisible}
@@ -411,8 +409,9 @@ export default function ContractReceiptsPage() {
         onCancel={() => {
           setIsModalVisible(false)
           form.resetFields()
+          setDeductionItems([])
         }}
-        width={600}
+        width={640}
         okText="确定"
         cancelText="取消"
       >
@@ -437,6 +436,17 @@ export default function ContractReceiptsPage() {
             />
           </Form.Item>
 
+          {selectedContract && (
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, lineHeight: 1.8, color: '#595959' }}>
+              <div style={{ marginBottom: 6, fontWeight: 500, color: '#1d1d1f' }}>合同信息</div>
+              <div>合同名称：{selectedContract.name}</div>
+              <div>项目名称：{selectedContract.projectName}</div>
+              <div>应收金额：{formatCurrency(selectedContract.receivableAmount)}</div>
+              <div>已收金额：{formatCurrency(selectedContract.receivedAmount)}</div>
+              <div>未收金额：{formatCurrency(selectedContract.unreceivedAmount)}</div>
+            </div>
+          )}
+
           <Form.Item
             label="收款金额"
             name="amount"
@@ -453,8 +463,60 @@ export default function ContractReceiptsPage() {
             />
           </Form.Item>
 
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>扣款明细</div>
+            {deductionItems.map((item, index) => (
+              <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <Select
+                  value={item.type}
+                  onChange={(value) =>
+                    setDeductionItems((current) =>
+                      current.map((currentItem, currentIndex) =>
+                        currentIndex === index ? { ...currentItem, type: value } : currentItem
+                      )
+                    )
+                  }
+                  options={DEDUCTION_TYPES.map((type) => ({ label: type, value: type }))}
+                  style={{ width: 140 }}
+                />
+                <InputNumber
+                  value={item.amount}
+                  onChange={(value) =>
+                    setDeductionItems((current) =>
+                      current.map((currentItem, currentIndex) =>
+                        currentIndex === index ? { ...currentItem, amount: Number(value) || 0 } : currentItem
+                      )
+                    )
+                  }
+                  placeholder="金额"
+                  precision={2}
+                  min={0}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => setDeductionItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                />
+              </div>
+            ))}
+            <Button
+              type="dashed"
+              icon={<PlusOutlined />}
+              size="small"
+              onClick={() => setDeductionItems((current) => [...current, { type: '税金', amount: 0 }])}
+            >
+              添加扣款明细
+            </Button>
+          </div>
+
           <Form.Item label="收款日期" name="receiptDate">
             <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">
@@ -465,4 +527,3 @@ export default function ContractReceiptsPage() {
     </ConfigProvider>
   )
 }
-

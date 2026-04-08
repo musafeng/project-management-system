@@ -31,6 +31,7 @@ export const { POST } = apiHandlerWithPermissionAndLog({
 
     const node = await db.processNode.create({
       data: {
+        id: crypto.randomUUID(),
         definitionId: id,
         order,
         name: body.name || '审批',
@@ -40,6 +41,7 @@ export const { POST } = apiHandlerWithPermissionAndLog({
         ccMode: body.ccMode ?? 'NONE',
         ccRole: body.ccRole ?? null,
         ccUserId: body.ccUserId ?? null,
+        updatedAt: new Date(),
       },
     })
     return success(node)

@@ -21,8 +21,11 @@ interface LaborWorker {
   id: string
   code: string
   name: string
-  contact: string | null
   phone: string | null
+  idNumber?: string | null
+  bankAccount?: string | null
+  bankName?: string | null
+  attachmentUrl?: string | null
   createdAt: string
 }
 
@@ -140,9 +143,12 @@ export default function LaborWorkersPage() {
         setEditingId(id)
         form.setFieldsValue({
           name: result.data.name,
-          contact: result.data.contact || undefined,
           phone: result.data.phone || undefined,
+          idNumber: result.data.idNumber || undefined,
           address: result.data.address || undefined,
+          bankAccount: result.data.bankAccount || undefined,
+          bankName: result.data.bankName || undefined,
+          attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
         })
         setIsModalVisible(true)
@@ -187,9 +193,12 @@ export default function LaborWorkersPage() {
 
       const payload = {
         name: values.name,
-        contact: values.contact || null,
         phone: values.phone || null,
+        idNumber: values.idNumber || null,
         address: values.address || null,
+        bankAccount: values.bankAccount || null,
+        bankName: values.bankName || null,
+        attachmentUrl: values.attachmentUrl || null,
         remark: values.remark || null,
       }
 
@@ -229,18 +238,32 @@ export default function LaborWorkersPage() {
       render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
     },
     {
-      title: '联系人',
-      dataIndex: 'contact',
-      key: 'contact',
-      width: 120,
-      render: (text: string | null) => text || '-',
-    },
-    {
       title: '联系电话',
       dataIndex: 'phone',
       key: 'phone',
       width: 130,
       render: (text: string | null) => text || '-',
+    },
+    {
+      title: '身份证号',
+      dataIndex: 'idNumber',
+      key: 'idNumber',
+      width: 180,
+      render: (text: string | null | undefined) => text || '-',
+    },
+    {
+      title: '银行卡号',
+      dataIndex: 'bankAccount',
+      key: 'bankAccount',
+      width: 180,
+      render: (text: string | null | undefined) => text || '-',
+    },
+    {
+      title: '开户行',
+      dataIndex: 'bankName',
+      key: 'bankName',
+      width: 160,
+      render: (text: string | null | undefined) => text || '-',
     },
     {
       title: '创建时间',
@@ -354,7 +377,7 @@ export default function LaborWorkersPage() {
         dataSource={workers}
         loading={loading}
         pagination={false}
-        scroll={{ x: 800 }}
+        scroll={{ x: 1100 }}
         size="small"
         locale={{
           emptyText: '暂无劳务人员数据',
@@ -370,7 +393,7 @@ export default function LaborWorkersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={600}
+        width={620}
         okText="确定"
         cancelText="取消"
       >
@@ -388,16 +411,40 @@ export default function LaborWorkersPage() {
             <Input placeholder="请输入劳务人员名称" />
           </Form.Item>
 
-          <Form.Item label="联系人" name="contact">
-            <Input placeholder="请输入联系人" />
-          </Form.Item>
-
           <Form.Item label="联系电话" name="phone">
             <Input placeholder="请输入联系电话" />
           </Form.Item>
 
+          <Form.Item
+            label="身份证号"
+            name="idNumber"
+            rules={[{ required: true, message: '请输入身份证号' }]}
+          >
+            <Input placeholder="请输入身份证号" />
+          </Form.Item>
+
+          <Form.Item
+            label="银行卡号"
+            name="bankAccount"
+            rules={[{ required: true, message: '请输入银行卡号' }]}
+          >
+            <Input placeholder="请输入银行卡号" />
+          </Form.Item>
+
+          <Form.Item
+            label="开户行"
+            name="bankName"
+            rules={[{ required: true, message: '请输入开户行' }]}
+          >
+            <Input placeholder="请输入开户行" />
+          </Form.Item>
+
           <Form.Item label="地址" name="address">
             <Input placeholder="请输入地址" />
+          </Form.Item>
+
+          <Form.Item label="附件URL" name="attachmentUrl">
+            <Input placeholder="请输入附件链接" />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">
@@ -408,4 +455,3 @@ export default function LaborWorkersPage() {
     </div>
   )
 }
-

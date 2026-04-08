@@ -9,6 +9,7 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 
 const prisma = new PrismaClient()
 
@@ -26,12 +27,15 @@ async function main() {
 
   const form = await prisma.formDefinition.create({
     data: {
+      id: randomUUID(),
       name: '施工立项',
       code: CODE,
       isActive: true,
-      fields: {
+      updatedAt: new Date(),
+      FormField: {
         create: [
           {
+            id: randomUUID(),
             label: '项目名称',
             fieldKey: 'projectName',
             componentType: 'input',
@@ -39,6 +43,7 @@ async function main() {
             sortOrder: 1,
           },
           {
+            id: randomUUID(),
             label: '预算金额',
             fieldKey: 'amount',
             componentType: 'number',
@@ -46,6 +51,7 @@ async function main() {
             sortOrder: 2,
           },
           {
+            id: randomUUID(),
             label: '立项日期',
             fieldKey: 'date',
             componentType: 'date',
@@ -53,6 +59,7 @@ async function main() {
             sortOrder: 3,
           },
           {
+            id: randomUUID(),
             label: '备注说明',
             fieldKey: 'remark',
             componentType: 'textarea',
@@ -62,12 +69,12 @@ async function main() {
         ],
       },
     },
-    include: { fields: { orderBy: { sortOrder: 'asc' } } },
+    include: { FormField: { orderBy: { sortOrder: 'asc' } } },
   })
 
   console.log(`[seed-form] 表单 "${form.name}" 创建成功（id: ${form.id}）`)
-  console.log(`[seed-form] 已创建 ${form.fields.length} 个字段：`)
-  form.fields.forEach((f) => {
+  console.log(`[seed-form] 已创建 ${form.FormField.length} 个字段：`)
+  form.FormField.forEach((f) => {
     console.log(`  - [${f.sortOrder}] ${f.label} (${f.fieldKey}) → ${f.componentType}`)
   })
 
@@ -79,7 +86,6 @@ main().catch((err) => {
   prisma.$disconnect()
   process.exit(1)
 })
-
 
 
 

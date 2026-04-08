@@ -1,6 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
+import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 const handler = apiHandlerWithMethod({
   /**
@@ -14,18 +15,20 @@ const handler = apiHandlerWithMethod({
       throw new BadRequestError('缺少立项 ID')
     }
 
-    const approval = await db.constructionApproval.findUnique({
-      where: { id },
+    const regionId = await requireCurrentRegionId()
+
+    const approval = await db.constructionApproval.findFirst({
+      where: { id, regionId },
       select: {
         id: true,
         code: true,
         name: true,
         projectId: true,
         contractId: true,
-        project: {
+        Project: {
           select: { id: true, name: true },
         },
-        contract: {
+        ProjectContract: {
           select: { id: true, code: true, name: true },
         },
         budget: true,
@@ -47,10 +50,10 @@ const handler = apiHandlerWithMethod({
       code: approval.code,
       name: approval.name,
       projectId: approval.projectId,
-      projectName: approval.project.name,
+      projectName: approval.Project.name,
       contractId: approval.contractId,
-      contractCode: approval.contract.code,
-      contractName: approval.contract.name,
+      contractCode: approval.ProjectContract.code,
+      contractName: approval.ProjectContract.name,
       budgetAmount: approval.budget,
       status: approval.status,
       startDate: approval.startDate,
@@ -75,9 +78,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 检查立项是否存在
-    const existingApproval = await db.constructionApproval.findUnique({
-      where: { id },
-    })
+    const existingApproval = await assertDirectRecordInCurrentRegion('constructionApproval', id)
 
     if (!existingApproval) {
       throw new NotFoundError('施工立项不存在')
@@ -133,10 +134,10 @@ const handler = apiHandlerWithMethod({
         name: true,
         projectId: true,
         contractId: true,
-        project: {
+        Project: {
           select: { id: true, name: true },
         },
-        contract: {
+        ProjectContract: {
           select: { id: true, code: true, name: true },
         },
         budget: true,
@@ -154,10 +155,10 @@ const handler = apiHandlerWithMethod({
       code: approval.code,
       name: approval.name,
       projectId: approval.projectId,
-      projectName: approval.project.name,
+      projectName: approval.Project.name,
       contractId: approval.contractId,
-      contractCode: approval.contract.code,
-      contractName: approval.contract.name,
+      contractCode: approval.ProjectContract.code,
+      contractName: approval.ProjectContract.name,
       budgetAmount: approval.budget,
       status: approval.status,
       startDate: approval.startDate,
@@ -181,9 +182,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 检查立项是否存在
-    const approval = await db.constructionApproval.findUnique({
-      where: { id },
-    })
+    const approval = await assertDirectRecordInCurrentRegion('constructionApproval', id)
 
     if (!approval) {
       throw new NotFoundError('施工立项不存在')
@@ -235,4 +234,3 @@ const handler = apiHandlerWithMethod({
 export const GET = handler
 export const PUT = handler
 export const DELETE = handler
-

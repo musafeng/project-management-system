@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import OSS from 'ali-oss'
 import { serverEnv } from '@/lib/env'
 
-// 允许最大 100MB 请求体，防止大文件上传超时
 export const maxDuration = 60
 
-// 文件大小限制：100MB
 const MAX_FILE_SIZE = 100 * 1024 * 1024
 
-// 允许的文件类型
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
@@ -45,7 +42,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `不支持的文件类型：${file.type}` }, { status: 400 })
     }
 
-    // 构造 OSS 对象路径：attachments/年月/时间戳-原文件名
     const now = new Date()
     const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_')
@@ -58,8 +54,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Disposition': `inline; filename="${encodeURIComponent(file.name)}"` },
     })
 
-    // 优先使用自定义域名
-    const { customDomain, bucket, region } = serverEnv.oss
+    const { customDomain } = serverEnv.oss
     const url = customDomain
       ? `https://${customDomain}/${ossKey}`
       : result.url
@@ -70,4 +65,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || '上传失败，请稍后重试' }, { status: 500 })
   }
 }
-

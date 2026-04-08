@@ -52,6 +52,7 @@ export async function createSystemUserFromDingTalkUser(userInfo: DingTalkUser) {
 
     const systemUser = await db.systemUser.create({
       data: {
+        id: crypto.randomUUID(),
         dingUserId: userInfo.userid,
         name: userInfo.name,
         mobile: userInfo.mobile || null,
@@ -61,6 +62,7 @@ export async function createSystemUserFromDingTalkUser(userInfo: DingTalkUser) {
         role,
         isActive: true,
         lastLoginAt: new Date(),
+        updatedAt: new Date(),
       },
     })
 
@@ -108,6 +110,7 @@ export async function upsertSystemUserFromDingTalkUser(userInfo: DingTalkUser) {
           deptIdsJson,
           deptNamesJson,
           lastLoginAt: new Date(),
+          updatedAt: new Date(),
           ...(roleUpdate ? { role: roleUpdate } : {}),
         },
       })
@@ -133,6 +136,7 @@ export async function updateSystemUserLastLogin(dingUserId: string) {
       where: { dingUserId },
       data: {
         lastLoginAt: new Date(),
+        updatedAt: new Date(),
       },
     })
 
@@ -225,4 +229,3 @@ export async function getSystemUserDeptInfo(dingUserId: string): Promise<{ deptI
     return { deptIds: [], deptNames: [] }
   }
 }
-
