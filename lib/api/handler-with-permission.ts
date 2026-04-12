@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser, checkAuth } from './auth'
 import { canAccessApi } from './permissions'
 import { ApiError } from './errors'
+import { toChineseErrorMessage } from './error-message'
 import { error as errorResponse, success as successResponse } from './response'
 
 export type ApiHandlerFn = (req: Request) => Promise<any>
@@ -68,7 +69,7 @@ export function apiHandlerWithPermission(
 
         if (!handler) {
           return NextResponse.json(
-            errorResponse(`Method ${method} not allowed`),
+            errorResponse(toChineseErrorMessage(`Method ${method} not allowed`)),
             { status: 405 }
           )
         }
@@ -134,7 +135,7 @@ export function apiHandlerWithPermission(
           // Prisma 唯一性约束错误
           if (message.includes('Unique constraint failed')) {
             return NextResponse.json(
-              errorResponse('数据已存在，请检查唯一字段'),
+              errorResponse(toChineseErrorMessage(message)),
               { status: 409 }
             )
           }
@@ -142,21 +143,21 @@ export function apiHandlerWithPermission(
           // Prisma 外键约束错误
           if (message.includes('Foreign key constraint failed')) {
             return NextResponse.json(
-              errorResponse('关联数据不存在或已被删除'),
+              errorResponse(toChineseErrorMessage(message)),
               { status: 400 }
             )
           }
 
           // 其他错误
           return NextResponse.json(
-            errorResponse(message),
+            errorResponse(toChineseErrorMessage(message)),
             { status: 500 }
           )
         }
 
         // 未知错误
         return NextResponse.json(
-          errorResponse('Unknown error occurred'),
+          errorResponse(toChineseErrorMessage('Unknown error occurred')),
           { status: 500 }
         )
       }
@@ -209,4 +210,3 @@ export function apiHandlerWithoutPermission(
     checkWritePermission: false,
   })
 }
-

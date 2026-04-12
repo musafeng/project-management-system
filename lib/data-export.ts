@@ -17,6 +17,9 @@ export type ResourceType =
   | 'labor-payments'
   | 'subcontract-contracts'
   | 'subcontract-payments'
+  | 'project-expenses'
+  | 'management-expenses'
+  | 'sales-expenses'
   | 'projects'
 
 export interface ExportFilter {
@@ -28,12 +31,16 @@ export interface ExportFilter {
   endDate?: string
 }
 
-function applyCreatedAtRange(where: Record<string, any>, filter: ExportFilter) {
+function applyDateRange(where: Record<string, any>, filter: ExportFilter, field: string) {
   if (filter.startDate || filter.endDate) {
-    where.createdAt = {}
-    if (filter.startDate) where.createdAt.gte = new Date(filter.startDate)
-    if (filter.endDate) where.createdAt.lte = new Date(filter.endDate + 'T23:59:59Z')
+    where[field] = {}
+    if (filter.startDate) where[field].gte = new Date(filter.startDate)
+    if (filter.endDate) where[field].lte = new Date(filter.endDate + 'T23:59:59Z')
   }
+}
+
+function applyCreatedAtRange(where: Record<string, any>, filter: ExportFilter) {
+  applyDateRange(where, filter, 'createdAt')
 }
 
 function buildDirectRegionWhere(filter: ExportFilter) {
@@ -82,6 +89,60 @@ function fmtDecimal(v: unknown): string {
   return String(v)
 }
 
+function parseJsonArray<T>(value: string | null | undefined): T[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function summarizeExpenseItems(value: string | null | undefined): string {
+  const items = parseJsonArray<{
+    type?: string
+    amount?: number | string
+    remark?: string | null
+    attachmentUrl?: string | null
+  }>(value)
+
+  return items
+    .map((item) => {
+      const parts = [`${item.type ?? ''}:${fmtDecimal(item.amount ?? '')}`]
+      if (item.remark) parts.push(`备注:${item.remark}`)
+      if (item.attachmentUrl) parts.push('有附件')
+      return parts.join(' ')
+    })
+    .filter(Boolean)
+    .join(' / ')
+}
+
+function summarizeDeductionItems(value: string | null | undefined): {
+  summary: string
+  total: number
+} {
+  const items = parseJsonArray<{
+    type?: string
+    amount?: number | string
+    remark?: string | null
+    attachmentUrl?: string | null
+  }>(value)
+
+  const total = items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const summary = items
+    .map((item) => {
+      const parts = [`${item.type ?? ''}:${fmtDecimal(item.amount ?? '')}`]
+      if (item.remark) parts.push(`备注:${item.remark}`)
+      if (item.attachmentUrl) parts.push('有附件')
+      return parts.join(' ')
+    })
+    .filter(Boolean)
+    .join(' / ')
+
+  return { summary, total }
+}
+
 // ============================================================
 // 各模块查询实现
 // ============================================================
@@ -126,7 +187,14 @@ async function exportConstructionApprovals(f: ExportFilter) {
 }
 
 async function exportProjectContracts(f: ExportFilter) {
-  const where = buildDirectRegionWhere(f)
+  const where: Record<string, any> = {}
+  if (f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
+  applyDateRange(where, f, 'signDate')
+
   const rows = await db.projectContract.findMany({
     where,
     include: {
@@ -134,7 +202,7 @@ async function exportProjectContracts(f: ExportFilter) {
       Customer: { select: { name: true } },
       Region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ signDate: 'desc' }, { createdAt: 'desc' }],
   })
   return rows.map((r) => ({
     id: r.id,
@@ -149,8 +217,17 @@ async function exportProjectContracts(f: ExportFilter) {
     应收金额: fmtDecimal(r.receivableAmount),
     已收金额: fmtDecimal(r.receivedAmount),
     未收金额: fmtDecimal(r.unreceivedAmount),
+    合同类型: r.contractType ?? '',
+    付款方式: r.paymentMethod ?? '',
+    有无质保金: r.hasRetention ? '有' : '无',
+    质保金比例: fmtDecimal(r.retentionRate),
+    质保金金额: fmtDecimal(r.retentionAmount),
     状态: r.status,
     签订日期: fmtDate(r.signDate),
+    开工日期: fmtDate(r.startDate),
+    竣工日期: fmtDate(r.endDate),
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -202,29 +279,156 @@ async function exportProjectContractChanges(f: ExportFilter) {
 }
 
 async function exportContractReceipts(f: ExportFilter) {
-  const where = buildDirectRegionWhere(f)
+  const where: Record<string, any> = {}
+  if (f.regionId) where.regionId = f.regionId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
   if (f.projectId) {
     where.ProjectContract = { projectId: f.projectId }
   }
+  applyDateRange(where, f, 'receiptDate')
+
   const rows = await db.contractReceipt.findMany({
     where,
     include: {
       ProjectContract: { select: { code: true, name: true, Project: { select: { name: true, code: true } } } },
       Region: { select: { name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
   })
+  return rows.map((r) => {
+    const { summary, total } = summarizeDeductionItems(r.deductionItems)
+    const actualReceivedAmount = Number(r.receiptAmount) - total
+
+    return {
+      id: r.id,
+      区域: r.Region?.name ?? '',
+      合同编号: r.ProjectContract.code,
+      合同名称: r.ProjectContract.name,
+      项目编号: r.ProjectContract.Project.code,
+      项目名称: r.ProjectContract.Project.name,
+      收款金额: fmtDecimal(r.receiptAmount),
+      扣款明细: summary,
+      扣款合计: fmtDecimal(total),
+      到账金额: fmtDecimal(actualReceivedAmount),
+      收款日期: fmtDate(r.receiptDate),
+      收款方式: r.receiptMethod ?? '',
+      收款状态: r.status,
+      审批状态: r.approvalStatus,
+      附件: r.attachmentUrl ?? '',
+      备注: r.remark ?? '',
+      创建时间: fmtDate(r.createdAt),
+      更新时间: fmtDate(r.updatedAt),
+    }
+  })
+}
+
+async function exportProjectExpenses(f: ExportFilter) {
+  const where: Record<string, any> = {
+    Project: {
+      ...(f.regionId ? { regionId: f.regionId } : {}),
+      ...(f.projectId ? { id: f.projectId } : {}),
+    },
+  }
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
+  applyDateRange(where, f, 'expenseDate')
+
+  const rows = await db.projectExpense.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      ConstructionApproval: { select: { name: true, code: true } },
+    },
+    orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    项目编号: r.Project.code,
+    项目名称: r.Project.name,
+    施工立项编号: r.ConstructionApproval?.code ?? '',
+    施工立项名称: r.ConstructionApproval?.name ?? '',
+    报销人: r.submitter ?? '',
+    总金额: fmtDecimal(r.totalAmount ?? r.expenseAmount),
+    费用明细: summarizeExpenseItems(r.expenseItems),
+    日期: fmtDate(r.expenseDate),
+    审批状态: r.approvalStatus,
+    整单附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
+async function exportManagementExpenses(f: ExportFilter) {
+  const where: Record<string, any> = {}
+  if (f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
+  applyDateRange(where, f, 'expenseDate')
+
+  const rows = await db.managementExpense.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
   return rows.map((r) => ({
     id: r.id,
     区域: r.Region?.name ?? '',
-    合同编号: r.ProjectContract.code,
-    合同名称: r.ProjectContract.name,
-    项目编号: r.ProjectContract.Project.code,
-    项目名称: r.ProjectContract.Project.name,
-    收款金额: fmtDecimal(r.receiptAmount),
-    收款日期: fmtDate(r.receiptDate),
-    收款方式: r.receiptMethod ?? '',
-    收款状态: r.status,
+    项目编号: r.Project?.code ?? '',
+    项目名称: r.Project?.name ?? '',
+    报销人: r.submitter ?? '',
+    费用类别: r.category,
+    总金额: fmtDecimal(r.totalAmount ?? r.expenseAmount),
+    费用明细: summarizeExpenseItems(r.expenseItems),
+    日期: fmtDate(r.expenseDate),
+    审批状态: r.approvalStatus,
+    整单附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
+async function exportSalesExpenses(f: ExportFilter) {
+  const where: Record<string, any> = {}
+  if (f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
+  applyDateRange(where, f, 'expenseDate')
+
+  const rows = await db.salesExpense.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project?.code ?? '',
+    项目名称: r.Project?.name ?? '',
+    报销人: r.submitter ?? '',
+    费用类别: r.category,
+    总金额: fmtDecimal(r.totalAmount ?? r.expenseAmount),
+    费用明细: summarizeExpenseItems(r.expenseItems),
+    日期: fmtDate(r.expenseDate),
+    审批状态: r.approvalStatus,
+    整单附件: r.attachmentUrl ?? '',
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -460,6 +664,9 @@ export async function previewExportData(filter: ExportFilter): Promise<Record<st
     case 'labor-payments': return exportLaborPayments(filter)
     case 'subcontract-contracts': return exportSubcontractContracts(filter)
     case 'subcontract-payments': return exportSubcontractPayments(filter)
+    case 'project-expenses': return exportProjectExpenses(filter)
+    case 'management-expenses': return exportManagementExpenses(filter)
+    case 'sales-expenses': return exportSalesExpenses(filter)
     case 'projects': return exportProjects(filter)
     default: return []
   }
@@ -469,4 +676,3 @@ export async function exportToCsv(filter: ExportFilter): Promise<string> {
   const rows = await previewExportData(filter)
   return toCsv(rows)
 }
-

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Table, Modal, Form, message, Popconfirm,
   DatePicker, InputNumber, Input, Select, Button, Space, Tooltip, Typography,
@@ -17,6 +17,7 @@ import {
 } from '@/components/ledger'
 import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 
 const { Text } = Typography
@@ -38,17 +39,24 @@ interface ProjectContract {
   receivedAmount: number
   unreceivedAmount: number
   signDate: string | null
+  startDate?: string | null
+  endDate?: string | null
   status: string
-  approvalStatus: string
+  contractType?: string | null
+  paymentMethod?: string | null
+  hasRetention?: boolean
+  retentionRate?: number | null
+  retentionAmount?: number | null
+  attachmentUrl?: string | null
+  remark?: string | null
   createdAt: string
+  updatedAt?: string
+  approvalStatus?: string
 }
 
 interface ProjectContractDetail extends ProjectContract {
   project?: { id: string; name: string; customer: { id: string; name: string } }
   customerId?: string
-  startDate?: string | null
-  endDate?: string | null
-  remark?: string | null
 }
 
 interface Project {
@@ -75,6 +83,9 @@ export default function ProjectContractsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form] = Form.useForm()
   const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const watchedContractAmount = Form.useWatch('contractAmount', form)
+  const watchedHasRetention = Form.useWatch('hasRetention', form)
+  const watchedRetentionRate = Form.useWatch('retentionRate', form)
 
   const loadProjects = async () => {
     const res = await fetch('/api/projects', { credentials: 'include' })
@@ -99,6 +110,21 @@ export default function ProjectContractsPage() {
 
   useEffect(() => { loadProjects(); loadContracts() }, [])
 
+  useEffect(() => {
+    const contractAmount = Number(watchedContractAmount || 0)
+    const retentionRate = Number(watchedRetentionRate || 0)
+    if (!watchedHasRetention) {
+      form.setFieldValue('retentionRate', null)
+      form.setFieldValue('retentionAmount', null)
+      return
+    }
+    if (contractAmount > 0 && retentionRate > 0) {
+      form.setFieldValue('retentionAmount', Number((contractAmount * retentionRate / 100).toFixed(2)))
+    } else {
+      form.setFieldValue('retentionAmount', null)
+    }
+  }, [watchedContractAmount, watchedHasRetention, watchedRetentionRate, form])
+
   const handleSearch = (filters: FilterValues) => {
     setLastFilter(filters)
     loadContracts(filters)
@@ -115,6 +141,14 @@ export default function ProjectContractsPage() {
           projectId: j.data.projectId,
           contractAmount: j.data.contractAmount,
           signDate: j.data.signDate ? dayjs(j.data.signDate) : undefined,
+          startDate: j.data.startDate ? dayjs(j.data.startDate) : undefined,
+          endDate: j.data.endDate ? dayjs(j.data.endDate) : undefined,
+          contractType: j.data.contractType || undefined,
+          paymentMethod: j.data.paymentMethod || undefined,
+          hasRetention: Boolean(j.data.hasRetention),
+          retentionRate: j.data.retentionRate ?? undefined,
+          retentionAmount: j.data.retentionAmount ?? undefined,
+          attachmentUrl: j.data.attachmentUrl || null,
           remark: j.data.remark || undefined,
         })
         setModalOpen(true)
@@ -141,6 +175,8 @@ export default function ProjectContractsPage() {
         body: JSON.stringify({
           ...values,
           signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+          startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
+          endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
         }),
       })
       const j: ApiResponse<any> = await res.json()
@@ -249,7 +285,7 @@ export default function ProjectContractsPage() {
           >编辑</Button>
           <ApprovalActions
             id={row.id}
-            approvalStatus={row.approvalStatus}
+            approvalStatus={row.approvalStatus || 'PENDING'}
             resource="project-contracts"
             onSuccess={() => loadContracts(lastFilter)}
           />
@@ -287,12 +323,40 @@ export default function ProjectContractsPage() {
       onReset={() => { setLastFilter({}); loadContracts({}) }}
       loading={loading}
       extra={
-        <Button size="small" icon={<DownloadOutlined />} type="text" style={{ color: '#8c8c8c' }}>
+        <Button
+          size="small"
+          icon={<DownloadOutlined />}
+          type="text"
+          style={{ color: '#8c8c8c' }}
+          onClick={() => {
+            const params = new URLSearchParams({ resourceType: 'project-contracts' })
+            if (lastFilter.projectId) params.set('projectId', String(lastFilter.projectId))
+            if (lastFilter.dateRange && Array.isArray(lastFilter.dateRange)) {
+              const [start, end] = lastFilter.dateRange as any[]
+              if (start?.format) params.set('startDate', start.format('YYYY-MM-DD'))
+              if (end?.format) params.set('endDate', end.format('YYYY-MM-DD'))
+            }
+            window.open(`/data-exports?${params.toString()}`, '_blank')
+          }}
+        >
           导出
         </Button>
       }
     />
   )
+
+  const summary = useMemo(() => {
+    return contracts.reduce(
+      (acc, item) => {
+        acc.contractAmount += Number(item.contractAmount || 0)
+        acc.receivableAmount += Number(item.receivableAmount || 0)
+        acc.receivedAmount += Number(item.receivedAmount || 0)
+        acc.unreceivedAmount += Number(item.unreceivedAmount || 0)
+        return acc
+      },
+      { contractAmount: 0, receivableAmount: 0, receivedAmount: 0, unreceivedAmount: 0 }
+    )
+  }, [contracts])
 
   const table = (
     <Table<ProjectContract>
@@ -333,7 +397,33 @@ export default function ProjectContractsPage() {
         onCreate={() => { setEditingId(null); form.resetFields(); setModalOpen(true) }}
         total={contracts.length}
         filterBar={filterBar}
-        table={table}
+        table={
+          <>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[
+                { label: '合同总金额', value: summary.contractAmount, color: '#1677ff' },
+                { label: '应收金额', value: summary.receivableAmount, color: '#722ed1' },
+                { label: '已收金额', value: summary.receivedAmount, color: '#52c41a' },
+                { label: '未收金额', value: summary.unreceivedAmount, color: '#fa8c16' },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    minWidth: 160,
+                    background: '#fafafa',
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                  }}
+                >
+                  <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ color: item.color, fontWeight: 700 }}>{fmtMoney(item.value)}</div>
+                </div>
+              ))}
+            </div>
+            {table}
+          </>
+        }
       />
 
       <Modal
@@ -362,8 +452,48 @@ export default function ProjectContractsPage() {
               parser={(v) => v?.replace(/,/g, '') as any}
             />
           </Form.Item>
+          <Form.Item name="contractType" label="合同类型" rules={[{ required: true, message: '请选择合同类型' }]}>
+            <Select
+              placeholder="请选择合同类型"
+              options={['固定总价', '固定单价', '可变总价', '可变单价'].map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
           <Form.Item name="signDate" label="签订日期">
             <DatePicker style={{ width: '100%' }} format="YYYY年MM月DD日" />
+          </Form.Item>
+          <Form.Item name="startDate" label="开工日期" rules={[{ required: true, message: '请选择开工日期' }]}>
+            <DatePicker style={{ width: '100%' }} format="YYYY年MM月DD日" />
+          </Form.Item>
+          <Form.Item name="endDate" label="竣工日期">
+            <DatePicker style={{ width: '100%' }} format="YYYY年MM月DD日" />
+          </Form.Item>
+          <Form.Item name="paymentMethod" label="付款方式" rules={[{ required: true, message: '请选择付款方式' }]}>
+            <Select
+              placeholder="请选择付款方式"
+              options={['按进度', '按合同', '其他'].map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
+          <Form.Item name="hasRetention" label="有无质保金" initialValue={false} rules={[{ required: true, message: '请选择是否有质保金' }]}>
+            <Select
+              placeholder="请选择"
+              options={[
+                { label: '有', value: true },
+                { label: '无', value: false },
+              ]}
+            />
+          </Form.Item>
+          {watchedHasRetention ? (
+            <>
+              <Form.Item name="retentionRate" label="质保金比例(%)" rules={[{ required: true, message: '请输入质保金比例' }]}>
+                <InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} />
+              </Form.Item>
+              <Form.Item name="retentionAmount" label="质保金金额">
+                <InputNumber style={{ width: '100%' }} precision={2} disabled />
+              </Form.Item>
+            </>
+          ) : null}
+          <Form.Item name="attachmentUrl" label="合同附件">
+            <AttachmentUploadField />
           </Form.Item>
           <Form.Item name="remark" label="备注">
             <Input.TextArea rows={3} placeholder="选填" />

@@ -11,9 +11,38 @@ function normalizeDeductionItems(items: unknown) {
       const type = String(item?.type ?? '').trim()
       const amount = Number(item?.amount ?? 0)
       if (!type || amount <= 0) return null
-      return { type, amount }
+      return {
+        type,
+        amount,
+        remark: String(item?.remark ?? '').trim() || null,
+        attachmentUrl: String(item?.attachmentUrl ?? '').trim() || null,
+      }
     })
-    .filter((item): item is { type: string; amount: number } => item !== null)
+    .filter(
+      (
+        item: {
+          type: string
+          amount: number
+          remark: string | null
+          attachmentUrl: string | null
+        } | null
+      ): item is {
+        type: string
+        amount: number
+        remark: string | null
+        attachmentUrl: string | null
+      } => item !== null
+    )
+}
+
+function calcActualReceivedAmount(receiptAmount: Prisma.Decimal | number, deductionItems: string | null) {
+  const deductionTotal = deductionItems
+    ? (JSON.parse(deductionItems) as Array<{ amount?: number }>).reduce(
+        (sum, item) => sum + Number(item?.amount ?? 0),
+        0
+      )
+    : 0
+  return Number(receiptAmount) - deductionTotal
 }
 
 function toResponse(receipt: {
@@ -41,6 +70,7 @@ function toResponse(receipt: {
     projectName: receipt.ProjectContract.Project.name,
     amount: receipt.receiptAmount,
     receiptAmount: receipt.receiptAmount,
+    actualReceivedAmount: calcActualReceivedAmount(receipt.receiptAmount, receipt.deductionItems),
     receiptDate: receipt.receiptDate,
     receiptMethod: receipt.receiptMethod,
     deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],

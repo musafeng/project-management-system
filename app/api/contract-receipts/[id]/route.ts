@@ -26,6 +26,13 @@ function toResponse(receipt: {
   createdAt: Date
   updatedAt: Date
 }) {
+  const deductionTotal = receipt.deductionItems
+    ? (JSON.parse(receipt.deductionItems) as Array<{ amount?: number }>).reduce(
+        (sum, item) => sum + Number(item?.amount ?? 0),
+        0
+      )
+    : 0
+
   return {
     id: receipt.id,
     contractId: receipt.contractId,
@@ -34,6 +41,7 @@ function toResponse(receipt: {
     projectName: receipt.ProjectContract.Project.name,
     amount: receipt.receiptAmount,
     receiptAmount: receipt.receiptAmount,
+    actualReceivedAmount: Number(receipt.receiptAmount) - deductionTotal,
     receiptDate: receipt.receiptDate,
     receiptMethod: receipt.receiptMethod,
     receiptNumber: receipt.receiptNumber,

@@ -28,12 +28,27 @@ function normalizeExpenseItems(items: unknown) {
       const type = String(item?.type ?? '').trim()
       const amount = Number(item?.amount ?? 0)
       if (!ALLOWED_EXPENSE_TYPES.has(type) || amount <= 0) return null
-      return { type, amount }
+      return {
+        type,
+        amount,
+        remark: String(item?.remark ?? '').trim() || null,
+        attachmentUrl: String(item?.attachmentUrl ?? '').trim() || null,
+      }
     })
     .filter(
       (
-        item: { type: string; amount: number } | null
-      ): item is { type: string; amount: number } => item !== null
+        item: {
+          type: string
+          amount: number
+          remark: string | null
+          attachmentUrl: string | null
+        } | null
+      ): item is {
+        type: string
+        amount: number
+        remark: string | null
+        attachmentUrl: string | null
+      } => item !== null
     )
 }
 

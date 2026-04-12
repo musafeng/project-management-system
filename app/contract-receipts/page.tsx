@@ -17,12 +17,15 @@ import {
   Tag,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 interface DeductionItem {
   type: string
   amount: number
+  remark?: string | null
+  attachmentUrl?: string | null
 }
 
 interface ContractReceipt {
@@ -32,6 +35,7 @@ interface ContractReceipt {
   contractName: string
   projectName: string
   amount: number
+  actualReceivedAmount?: number
   receiptDate: string
   deductionItems: DeductionItem[]
   attachmentUrl?: string | null
@@ -97,7 +101,11 @@ export default function ContractReceiptsPage() {
   const [deductionItems, setDeductionItems] = useState<DeductionItem[]>([])
   const [form] = Form.useForm()
   const selectedContractId = Form.useWatch('contractId', form)
+  const watchedAmount = Form.useWatch('amount', form)
   const selectedContract = contracts.find((item) => item.id === selectedContractId)
+  const selectedContractForFilter = contracts.find((item) => item.id === contractId)
+  const deductionTotal = deductionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const actualReceivedAmount = Number(watchedAmount || 0) - deductionTotal
 
   const loadContracts = async () => {
     try {
@@ -159,6 +167,7 @@ export default function ContractReceiptsPage() {
   const handleAddClick = () => {
     form.resetFields()
     setDeductionItems([])
+    form.setFieldValue('attachmentUrl', null)
     setIsModalVisible(true)
   }
 
@@ -249,11 +258,28 @@ export default function ContractReceiptsPage() {
       title: '扣款明细',
       dataIndex: 'deductionItems',
       key: 'deductionItems',
-      width: 220,
+      width: 260,
       render: (items: DeductionItem[]) =>
         items?.length
-          ? items.map((item) => `${item.type}:${formatCurrency(item.amount)}`).join(' / ')
+          ? items.map((item) => {
+            const parts = [`${item.type}:${formatCurrency(item.amount)}`]
+            if (item.remark) parts.push(`备注:${item.remark}`)
+            if (item.attachmentUrl) parts.push('有附件')
+            return parts.join(' ')
+          }).join(' / ')
           : '-',
+    },
+    {
+      title: '到账金额',
+      dataIndex: 'actualReceivedAmount',
+      key: 'actualReceivedAmount',
+      width: 130,
+      align: 'right',
+      render: (_: number, record) => (
+        <span style={{ color: '#1677ff', fontWeight: 600 }}>
+          {formatCurrency(record.actualReceivedAmount ?? (record.amount - record.deductionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)))}
+        </span>
+      ),
     },
     {
       title: '收款日期',
@@ -377,6 +403,19 @@ export default function ContractReceiptsPage() {
               </Button>
 
               <Button
+                icon={<DownloadOutlined />}
+                onClick={() => {
+                  const params = new URLSearchParams({ resourceType: 'contract-receipts' })
+                  if (selectedContractForFilter?.projectId) {
+                    params.set('projectId', selectedContractForFilter.projectId)
+                  }
+                  window.open(`/data-exports?${params.toString()}`, '_blank')
+                }}
+              >
+                导出数据
+              </Button>
+
+              <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleAddClick}
@@ -385,6 +424,28 @@ export default function ContractReceiptsPage() {
                 新增收款
               </Button>
             </Space>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+            {[
+              { label: '收款总额', value: receipts.reduce((sum, item) => sum + Number(item.amount || 0), 0), color: '#52c41a' },
+              { label: '扣款总额', value: receipts.reduce((sum, item) => sum + item.deductionItems.reduce((deductSum, deduction) => deductSum + Number(deduction.amount || 0), 0), 0), color: '#fa8c16' },
+              { label: '到账总额', value: receipts.reduce((sum, item) => sum + Number(item.actualReceivedAmount ?? (item.amount - item.deductionItems.reduce((deductSum, deduction) => deductSum + Number(deduction.amount || 0), 0))), 0), color: '#1677ff' },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  minWidth: 160,
+                  background: '#fafafa',
+                  border: '1px solid #f0f0f0',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
+                <div style={{ color: item.color, fontWeight: 700 }}>{formatCurrency(item.value)}</div>
+              </div>
+            ))}
           </div>
 
           <Table<ContractReceipt>
@@ -464,9 +525,14 @@ export default function ContractReceiptsPage() {
           </Form.Item>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>扣款明细</div>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>
+              扣款明细
+              <span style={{ marginLeft: 12, color: '#fa8c16' }}>扣款合计：{formatCurrency(deductionTotal)}</span>
+              <span style={{ marginLeft: 12, color: '#1677ff' }}>到账金额：{formatCurrency(actualReceivedAmount)}</span>
+            </div>
             {deductionItems.map((item, index) => (
-              <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <div key={index} style={{ marginBottom: 12, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                 <Select
                   value={item.type}
                   onChange={(value) =>
@@ -499,13 +565,36 @@ export default function ContractReceiptsPage() {
                   icon={<DeleteOutlined />}
                   onClick={() => setDeductionItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}
                 />
+                </div>
+                <Input
+                  value={item.remark || ''}
+                  onChange={(e) =>
+                    setDeductionItems((current) =>
+                      current.map((currentItem, currentIndex) =>
+                        currentIndex === index ? { ...currentItem, remark: e.target.value } : currentItem
+                      )
+                    )
+                  }
+                  placeholder="扣款备注"
+                  style={{ marginBottom: 8 }}
+                />
+                <AttachmentUploadField
+                  value={item.attachmentUrl || null}
+                  onChange={(value) =>
+                    setDeductionItems((current) =>
+                      current.map((currentItem, currentIndex) =>
+                        currentIndex === index ? { ...currentItem, attachmentUrl: value } : currentItem
+                      )
+                    )
+                  }
+                />
               </div>
             ))}
             <Button
               type="dashed"
               icon={<PlusOutlined />}
               size="small"
-              onClick={() => setDeductionItems((current) => [...current, { type: '税金', amount: 0 }])}
+              onClick={() => setDeductionItems((current) => [...current, { type: '税金', amount: 0, remark: '', attachmentUrl: null }])}
             >
               添加扣款明细
             </Button>
@@ -515,8 +604,8 @@ export default function ContractReceiptsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="收款附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

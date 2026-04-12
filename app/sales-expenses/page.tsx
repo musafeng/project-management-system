@@ -18,10 +18,13 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 interface ExpenseItem {
   type: string
   amount: number
+  remark?: string | null
+  attachmentUrl?: string | null
 }
 
 interface Expense {
@@ -184,9 +187,24 @@ export default function SalesExpensesPage() {
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>销售费用报销</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
-          新增
-        </Button>
+        <Space>
+          <Button onClick={() => window.open('/data-exports?resourceType=sales-expenses', '_blank')}>导出数据</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
+            新增
+          </Button>
+        </Space>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        {[
+          { label: '报销单数', value: data.length, color: '#8c8c8c', formatter: (v: number) => `${v} 单` },
+          { label: '报销总金额', value: data.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0), color: '#ff4d4f', formatter: fmt },
+        ].map((item) => (
+          <div key={item.label} style={{ minWidth: 160, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
+            <div style={{ color: item.color, fontWeight: 700 }}>{item.formatter(item.value)}</div>
+          </div>
+        ))}
       </div>
 
       <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 700 }} size="small" />
@@ -210,38 +228,62 @@ export default function SalesExpensesPage() {
               费用明细 <span style={{ color: '#1677ff' }}>合计：{fmt(totalAmount)}</span>
             </div>
             {items.map((item, index) => (
-              <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <Select
-                  value={item.type}
-                  onChange={(value) =>
+              <div key={index} style={{ marginBottom: 12, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <Select
+                    value={item.type}
+                    onChange={(value) =>
+                      setItems((current) =>
+                        current.map((currentItem, currentIndex) =>
+                          currentIndex === index ? { ...currentItem, type: value } : currentItem
+                        )
+                      )
+                    }
+                    options={EXPENSE_TYPES.map((type) => ({ label: type, value: type }))}
+                    style={{ width: 120 }}
+                  />
+                  <InputNumber
+                    value={item.amount}
+                    onChange={(value) =>
+                      setItems((current) =>
+                        current.map((currentItem, currentIndex) =>
+                          currentIndex === index ? { ...currentItem, amount: Number(value) || 0 } : currentItem
+                        )
+                      )
+                    }
+                    placeholder="金额"
+                    precision={2}
+                    min={0}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => setItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                  />
+                </div>
+                <Input
+                  value={item.remark || ''}
+                  onChange={(e) =>
                     setItems((current) =>
                       current.map((currentItem, currentIndex) =>
-                        currentIndex === index ? { ...currentItem, type: value } : currentItem
+                        currentIndex === index ? { ...currentItem, remark: e.target.value } : currentItem
                       )
                     )
                   }
-                  options={EXPENSE_TYPES.map((type) => ({ label: type, value: type }))}
-                  style={{ width: 120 }}
+                  placeholder="明细备注"
+                  style={{ marginBottom: 8 }}
                 />
-                <InputNumber
-                  value={item.amount}
+                <AttachmentUploadField
+                  value={item.attachmentUrl || null}
                   onChange={(value) =>
                     setItems((current) =>
                       current.map((currentItem, currentIndex) =>
-                        currentIndex === index ? { ...currentItem, amount: Number(value) || 0 } : currentItem
+                        currentIndex === index ? { ...currentItem, attachmentUrl: value } : currentItem
                       )
                     )
                   }
-                  placeholder="金额"
-                  precision={2}
-                  min={0}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => setItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}
                 />
               </div>
             ))}
@@ -249,7 +291,7 @@ export default function SalesExpensesPage() {
               type="dashed"
               icon={<PlusOutlined />}
               size="small"
-              onClick={() => setItems((current) => [...current, { type: '餐费', amount: 0 }])}
+              onClick={() => setItems((current) => [...current, { type: '餐费', amount: 0, remark: '', attachmentUrl: null }])}
             >
               添加明细
             </Button>
@@ -259,8 +301,8 @@ export default function SalesExpensesPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="整单附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

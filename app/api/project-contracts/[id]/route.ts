@@ -36,6 +36,12 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        contractType: true,
+        paymentMethod: true,
+        hasRetention: true,
+        retentionRate: true,
+        retentionAmount: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
@@ -62,6 +68,12 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      contractType: contract.contractType,
+      paymentMethod: contract.paymentMethod,
+      hasRetention: contract.hasRetention,
+      retentionRate: contract.retentionRate,
+      retentionAmount: contract.retentionAmount,
+      attachmentUrl: contract.attachmentUrl,
       remark: contract.remark,
       createdAt: contract.createdAt,
       updatedAt: contract.updatedAt,
@@ -114,9 +126,36 @@ const handler = apiHandlerWithMethod({
       updateData.status = body.status
     }
 
+    if (body.contractType !== undefined) {
+      updateData.contractType = body.contractType?.trim() || null
+    }
+
+    if (body.paymentMethod !== undefined) {
+      updateData.paymentMethod = body.paymentMethod?.trim() || null
+    }
+
+    if (body.hasRetention !== undefined) {
+      updateData.hasRetention = Boolean(body.hasRetention)
+    }
+
+    if (body.retentionRate !== undefined) {
+      updateData.retentionRate = body.retentionRate === null || body.retentionRate === '' ? null : body.retentionRate
+    }
+
+    if (body.retentionAmount !== undefined) {
+      updateData.retentionAmount =
+        body.retentionAmount === null || body.retentionAmount === '' ? null : body.retentionAmount
+    }
+
+    if (body.attachmentUrl !== undefined) {
+      updateData.attachmentUrl = body.attachmentUrl?.trim() || null
+    }
+
     if (body.remark !== undefined) {
       updateData.remark = body.remark?.trim() || null
     }
+
+    updateData.updatedAt = new Date()
 
     // 更新合同
     const contract = await db.projectContract.update({
@@ -140,6 +179,12 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        contractType: true,
+        paymentMethod: true,
+        hasRetention: true,
+        retentionRate: true,
+        retentionAmount: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
         updatedAt: true,
@@ -162,6 +207,12 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      contractType: contract.contractType,
+      paymentMethod: contract.paymentMethod,
+      hasRetention: contract.hasRetention,
+      retentionRate: contract.retentionRate,
+      retentionAmount: contract.retentionAmount,
+      attachmentUrl: contract.attachmentUrl,
       remark: contract.remark,
       createdAt: contract.createdAt,
       updatedAt: contract.updatedAt,

@@ -46,6 +46,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         unreceivedAmount: true,
         signDate: true,
         startDate: true,
+        endDate: true,
         status: true,
         contractType: true,
         paymentMethod: true,
@@ -53,7 +54,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         retentionRate: true,
         retentionAmount: true,
         attachmentUrl: true,
+        remark: true,
         createdAt: true,
+        updatedAt: true,
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -74,6 +77,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       unreceivedAmount: contract.unreceivedAmount,
       signDate: contract.signDate,
       startDate: contract.startDate,
+      endDate: contract.endDate,
       status: contract.status,
       contractType: contract.contractType,
       paymentMethod: contract.paymentMethod,
@@ -81,7 +85,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       retentionRate: contract.retentionRate,
       retentionAmount: contract.retentionAmount,
       attachmentUrl: contract.attachmentUrl,
+      remark: contract.remark,
       createdAt: contract.createdAt,
+      updatedAt: contract.updatedAt,
     }))
 
     return success(result)
@@ -159,9 +165,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         receivedAmount: true,
         unreceivedAmount: true,
         signDate: true,
+        startDate: true,
+        endDate: true,
         status: true,
+        contractType: true,
+        paymentMethod: true,
+        hasRetention: true,
+        retentionRate: true,
+        retentionAmount: true,
+        attachmentUrl: true,
         remark: true,
         createdAt: true,
+        updatedAt: true,
       },
     })
 
@@ -178,9 +193,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       receivedAmount: contract.receivedAmount,
       unreceivedAmount: contract.unreceivedAmount,
       signDate: contract.signDate,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
       status: contract.status,
+      contractType: contract.contractType,
+      paymentMethod: contract.paymentMethod,
+      hasRetention: contract.hasRetention,
+      retentionRate: contract.retentionRate,
+      retentionAmount: contract.retentionAmount,
+      attachmentUrl: contract.attachmentUrl,
       remark: contract.remark,
       createdAt: contract.createdAt,
+      updatedAt: contract.updatedAt,
     })
   },
 }, {

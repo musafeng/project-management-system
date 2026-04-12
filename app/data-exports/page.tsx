@@ -30,6 +30,9 @@ const RESOURCE_TYPE_OPTIONS = [
   { label: '劳务付款', value: 'labor-payments' },
   { label: '分包合同', value: 'subcontract-contracts' },
   { label: '分包付款', value: 'subcontract-payments' },
+  { label: '项目费用报销', value: 'project-expenses' },
+  { label: '管理费用报销', value: 'management-expenses' },
+  { label: '销售费用报销', value: 'sales-expenses' },
   { label: '项目列表', value: 'projects' },
 ]
 
@@ -68,6 +71,32 @@ export default function DataExportsPage() {
     fetch('/api/projects').then(r => r.json()).then(res => {
       if (res.success) setProjects(res.data || [])
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const nextResourceType = searchParams.get('resourceType') || undefined
+    const nextRegionId = searchParams.get('regionId') || undefined
+    const nextProjectId = searchParams.get('projectId') || undefined
+    const nextApprovalStatus = searchParams.get('approvalStatus') || 'ALL'
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    setResourceType(nextResourceType)
+    setRegionId(nextRegionId)
+    setProjectId(nextProjectId)
+    setApprovalStatus(nextApprovalStatus)
+    setDateRange(
+      startDate || endDate
+        ? [
+            startDate ? dayjs(startDate) : null,
+            endDate ? dayjs(endDate) : null,
+          ]
+        : null
+    )
+    setPreviewData([])
+    setColumns([])
+    setQueried(false)
   }, [])
 
   function buildParams() {
@@ -270,6 +299,4 @@ export default function DataExportsPage() {
     </div>
   )
 }
-
-
 
