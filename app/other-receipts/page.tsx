@@ -17,6 +17,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 interface OtherReceipt {
   id: string
@@ -70,6 +71,10 @@ export default function OtherReceiptsPage() {
     load()
   }, [])
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const handleOpen = (record?: OtherReceipt) => {
     setEditing(record || null)
     form.resetFields()
@@ -88,28 +93,33 @@ export default function OtherReceiptsPage() {
   }
 
   const handleSubmit = async (values: any) => {
-    const payload = {
-      ...values,
-      receiptDate: values.receiptDate?.format('YYYY-MM-DD'),
+    try {
+      const payload = {
+        ...values,
+        receiptDate: values.receiptDate?.format('YYYY-MM-DD'),
+      }
+
+      const url = editing ? `/api/other-receipts/${editing.id}` : '/api/other-receipts'
+      const method = editing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await response.json()
+
+      if (json.success) {
+        message.success(editing ? '更新成功' : '创建成功')
+        setModalOpen(false)
+        void load()
+        return
+      }
+
+      message.error(json.error || '操作失败')
+    } catch (err) {
+      console.error('提交其他收款失败:', err)
+      message.error('提交失败，请检查表单后重试')
     }
-
-    const url = editing ? `/api/other-receipts/${editing.id}` : '/api/other-receipts'
-    const method = editing ? 'PUT' : 'POST'
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const json = await response.json()
-
-    if (json.success) {
-      message.success(editing ? '更新成功' : '创建成功')
-      setModalOpen(false)
-      void load()
-      return
-    }
-
-    message.error(json.error || '操作失败')
   }
 
   const handleDelete = async (id: string) => {
@@ -170,6 +180,7 @@ export default function OtherReceiptsPage() {
         <h2 style={{ margin: 0 }}>其他收款</h2>
         <Space>
           <span style={{ color: '#52c41a', fontWeight: 600 }}>合计：{fmt(total)}</span>
+          <Button onClick={() => window.open('/data-exports?resourceType=other-receipts', '_blank')}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>
@@ -187,7 +198,7 @@ export default function OtherReceiptsPage() {
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
           <Form.Item label="收款事由" name="receiptType" rules={[{ required: true, message: '请填写收款事由' }]}>
             <Input placeholder="请输入收款事由" />
           </Form.Item>
@@ -200,8 +211,8 @@ export default function OtherReceiptsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

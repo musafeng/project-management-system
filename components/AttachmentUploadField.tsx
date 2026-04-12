@@ -43,16 +43,17 @@ export default function AttachmentUploadField({
       const fd = new FormData()
       fd.append('file', file)
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const json = await res.json()
+      const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        message.error(json.error || '上传失败')
+        message.error(typeof json.error === 'string' ? json.error : '上传失败')
         return false
       }
       onChange?.(json.url)
       setFileName(json.name || getDisplayName(json.url))
       message.success(`${json.name || '文件'} 上传成功`)
-    } catch {
-      message.error('上传失败，请检查网络')
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : ''
+      message.error(errorMessage || '上传失败，请检查网络')
     } finally {
       setUploading(false)
     }
@@ -80,7 +81,7 @@ export default function AttachmentUploadField({
         beforeUpload={handleUpload}
         showUploadList={false}
         disabled={uploading}
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
+        accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
       >
         <Button icon={<UploadOutlined />} loading={uploading}>
           {uploading ? '上传中...' : '选择文件'}
@@ -94,7 +95,7 @@ export default function AttachmentUploadField({
           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={handleClear} />
         </Space>
       ) : (
-        <span style={{ color: '#999', fontSize: 12 }}>支持 图片 / PDF / Word / Excel / ZIP，最大 100MB</span>
+        <span style={{ color: '#999', fontSize: 12 }}>支持 图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，最大 100MB</span>
       )}
     </Space>
   )

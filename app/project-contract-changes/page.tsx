@@ -19,6 +19,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalActions } from '@/components/ApprovalActions'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 interface ProjectContract {
   id: string
@@ -292,8 +293,8 @@ export default function ProjectContractChangesPage() {
             <Input.TextArea rows={3} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl" rules={[{ required: true, message: '请填写附件URL' }]}>
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl" rules={[{ required: true, message: '请上传附件' }]}>
+            <AttachmentUploadField />
           </Form.Item>
         </Form>
       </Modal>

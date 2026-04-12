@@ -24,15 +24,18 @@ const RESOURCE_TYPE_OPTIONS = [
   { label: '项目合同', value: 'project-contracts' },
   { label: '项目合同变更', value: 'project-contract-changes' },
   { label: '合同收款', value: 'contract-receipts' },
+  { label: '其他收款', value: 'other-receipts' },
   { label: '采购合同', value: 'procurement-contracts' },
   { label: '采购付款', value: 'procurement-payments' },
   { label: '劳务合同', value: 'labor-contracts' },
   { label: '劳务付款', value: 'labor-payments' },
   { label: '分包合同', value: 'subcontract-contracts' },
   { label: '分包付款', value: 'subcontract-payments' },
+  { label: '其他付款', value: 'other-payments' },
   { label: '项目费用报销', value: 'project-expenses' },
   { label: '管理费用报销', value: 'management-expenses' },
   { label: '销售费用报销', value: 'sales-expenses' },
+  { label: '备用金申请', value: 'petty-cashes' },
   { label: '项目列表', value: 'projects' },
 ]
 
@@ -299,4 +302,3 @@ export default function DataExportsPage() {
     </div>
   )
 }
-

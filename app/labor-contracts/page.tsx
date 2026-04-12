@@ -20,6 +20,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 /**
  * 劳务合同数据类型
@@ -581,6 +582,10 @@ export default function LaborContractsPage() {
                 重置
               </Button>
 
+              <Button onClick={() => window.open('/data-exports?resourceType=labor-contracts', '_blank')}>
+                导出数据
+              </Button>
+
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -702,8 +707,8 @@ export default function LaborContractsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

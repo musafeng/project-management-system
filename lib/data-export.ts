@@ -11,15 +11,18 @@ export type ResourceType =
   | 'project-contracts'
   | 'project-contract-changes'
   | 'contract-receipts'
+  | 'other-receipts'
   | 'procurement-contracts'
   | 'procurement-payments'
   | 'labor-contracts'
   | 'labor-payments'
   | 'subcontract-contracts'
   | 'subcontract-payments'
+  | 'other-payments'
   | 'project-expenses'
   | 'management-expenses'
   | 'sales-expenses'
+  | 'petty-cashes'
   | 'projects'
 
 export interface ExportFilter {
@@ -324,6 +327,36 @@ async function exportContractReceipts(f: ExportFilter) {
   })
 }
 
+async function exportOtherReceipts(f: ExportFilter) {
+  const where = buildDirectRegionWhere(f)
+  applyDateRange(where, f, 'receiptDate')
+
+  const rows = await db.otherReceipt.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project?.code ?? '',
+    项目名称: r.Project?.name ?? '',
+    收款事由: r.receiptType,
+    收款金额: fmtDecimal(r.receiptAmount),
+    收款日期: fmtDate(r.receiptDate),
+    收款方式: r.receiptMethod ?? '',
+    审批状态: r.approvalStatus,
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
 async function exportProjectExpenses(f: ExportFilter) {
   const where: Record<string, any> = {
     Project: {
@@ -429,6 +462,37 @@ async function exportSalesExpenses(f: ExportFilter) {
     日期: fmtDate(r.expenseDate),
     审批状态: r.approvalStatus,
     整单附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
+async function exportOtherPayments(f: ExportFilter) {
+  const where = buildDirectRegionWhere(f)
+  applyDateRange(where, f, 'paymentDate')
+
+  const rows = await db.otherPayment.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project?.code ?? '',
+    项目名称: r.Project?.name ?? '',
+    付款事由: r.paymentType,
+    付款金额: fmtDecimal(r.paymentAmount),
+    付款日期: fmtDate(r.paymentDate),
+    付款方式: r.paymentMethod ?? '',
+    状态: r.status,
+    审批状态: r.approvalStatus,
+    附件: r.attachmentUrl ?? '',
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -648,6 +712,39 @@ async function exportProjects(f: ExportFilter) {
   }))
 }
 
+async function exportPettyCashes(f: ExportFilter) {
+  const where = buildDirectRegionWhere(f)
+  applyDateRange(where, f, 'issueDate')
+
+  const rows = await db.pettyCash.findMany({
+    where,
+    include: {
+      Project: { select: { name: true, code: true } },
+      Region: { select: { name: true } },
+    },
+    orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    区域: r.Region?.name ?? '',
+    项目编号: r.Project?.code ?? '',
+    项目名称: r.Project?.name ?? '',
+    申请人: r.holder,
+    申请事由: r.applyReason ?? '',
+    发放金额: fmtDecimal(r.issuedAmount),
+    已退回金额: fmtDecimal(r.returnedAmount),
+    发放日期: fmtDate(r.issueDate),
+    退回日期: fmtDate(r.returnDate),
+    状态: r.status,
+    审批状态: r.approvalStatus,
+    附件: r.attachmentUrl ?? '',
+    备注: r.remark ?? '',
+    创建时间: fmtDate(r.createdAt),
+    更新时间: fmtDate(r.updatedAt),
+  }))
+}
+
 // ============================================================
 // 统一入口
 // ============================================================
@@ -658,15 +755,18 @@ export async function previewExportData(filter: ExportFilter): Promise<Record<st
     case 'project-contracts': return exportProjectContracts(filter)
     case 'project-contract-changes': return exportProjectContractChanges(filter)
     case 'contract-receipts': return exportContractReceipts(filter)
+    case 'other-receipts': return exportOtherReceipts(filter)
     case 'procurement-contracts': return exportProcurementContracts(filter)
     case 'procurement-payments': return exportProcurementPayments(filter)
     case 'labor-contracts': return exportLaborContracts(filter)
     case 'labor-payments': return exportLaborPayments(filter)
     case 'subcontract-contracts': return exportSubcontractContracts(filter)
     case 'subcontract-payments': return exportSubcontractPayments(filter)
+    case 'other-payments': return exportOtherPayments(filter)
     case 'project-expenses': return exportProjectExpenses(filter)
     case 'management-expenses': return exportManagementExpenses(filter)
     case 'sales-expenses': return exportSalesExpenses(filter)
+    case 'petty-cashes': return exportPettyCashes(filter)
     case 'projects': return exportProjects(filter)
     default: return []
   }

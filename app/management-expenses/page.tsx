@@ -83,6 +83,10 @@ export default function ManagementExpensesPage() {
     load()
   }, [])
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const totalAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
 
   const handleOpen = (record?: Expense) => {
@@ -109,29 +113,34 @@ export default function ManagementExpensesPage() {
       return
     }
 
-    const payload = {
-      ...values,
-      expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
-      expenseItems: items,
+    try {
+      const payload = {
+        ...values,
+        expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
+        expenseItems: items,
+      }
+
+      const url = editing ? `/api/management-expenses/${editing.id}` : '/api/management-expenses'
+      const method = editing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await response.json()
+
+      if (json.success) {
+        message.success(editing ? '更新成功' : '创建成功')
+        setModalOpen(false)
+        void load()
+        return
+      }
+
+      message.error(json.error || '操作失败')
+    } catch (err) {
+      console.error('提交管理费用报销失败:', err)
+      message.error('提交失败，请检查表单后重试')
     }
-
-    const url = editing ? `/api/management-expenses/${editing.id}` : '/api/management-expenses'
-    const method = editing ? 'PUT' : 'POST'
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const json = await response.json()
-
-    if (json.success) {
-      message.success(editing ? '更新成功' : '创建成功')
-      setModalOpen(false)
-      void load()
-      return
-    }
-
-    message.error(json.error || '操作失败')
   }
 
   const handleDelete = async (id: string) => {
@@ -218,7 +227,7 @@ export default function ManagementExpensesPage() {
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
           <Form.Item label="报销人" name="submitter" rules={[{ required: true, message: '请填写报销人' }]}>
             <Input />
           </Form.Item>

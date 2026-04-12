@@ -20,6 +20,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 /**
  * 分包合同数据类型
@@ -383,6 +384,10 @@ export default function SubcontractContractsPage() {
     }
   }
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   /**
    * 表格列定义
    */
@@ -581,6 +586,10 @@ export default function SubcontractContractsPage() {
                 重置
               </Button>
 
+              <Button onClick={() => window.open('/data-exports?resourceType=subcontract-contracts', '_blank')}>
+                导出数据
+              </Button>
+
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -625,6 +634,7 @@ export default function SubcontractContractsPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
           style={{ marginTop: 20 }}
         >
           <Form.Item
@@ -702,8 +712,8 @@ export default function SubcontractContractsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

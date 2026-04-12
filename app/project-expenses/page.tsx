@@ -92,6 +92,10 @@ export default function ProjectExpensesPage() {
     loadConstructions()
   }, [])
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const totalAmount = items.reduce((s, i) => s + (Number(i.amount) || 0), 0)
 
   const selectedConstructionId = Form.useWatch('constructionId', form)
@@ -132,22 +136,27 @@ export default function ProjectExpensesPage() {
       return
     }
 
-    const payload = {
-      ...values,
-      expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
-      expenseItems: items,
-      totalAmount,
-    }
-    const url = editing ? `/api/project-expenses/${editing.id}` : '/api/project-expenses'
-    const method = editing ? 'PUT' : 'POST'
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    const json = await res.json()
-    if (json.success) {
-      message.success(editing ? '更新成功' : '创建成功')
-      setModalOpen(false)
-      void load()
-    } else {
-      message.error(json.error || '操作失败')
+    try {
+      const payload = {
+        ...values,
+        expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
+        expenseItems: items,
+        totalAmount,
+      }
+      const url = editing ? `/api/project-expenses/${editing.id}` : '/api/project-expenses'
+      const method = editing ? 'PUT' : 'POST'
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const json = await res.json()
+      if (json.success) {
+        message.success(editing ? '更新成功' : '创建成功')
+        setModalOpen(false)
+        void load()
+      } else {
+        message.error(json.error || '操作失败')
+      }
+    } catch (err) {
+      console.error('提交项目费用报销失败:', err)
+      message.error('提交失败，请检查表单后重试')
     }
   }
 
@@ -204,7 +213,7 @@ export default function ProjectExpensesPage() {
       </div>
       <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
       <Modal title={editing ? '编辑项目费用报销' : '新增项目费用报销'} open={modalOpen} onOk={() => form.submit()} onCancel={() => setModalOpen(false)} width={620} okText="确定" cancelText="取消">
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
           <Form.Item label="施工立项" name="constructionId" rules={[{ required: true, message: '请选择施工立项' }]}>
             <Select
               placeholder="请选择已审批通过的施工立项"

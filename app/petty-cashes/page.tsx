@@ -17,6 +17,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
 
 interface PettyCash {
   id: string
@@ -80,6 +81,10 @@ export default function PettyCashesPage() {
     load()
   }, [])
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const handleOpen = (record?: PettyCash) => {
     setEditing(record || null)
     form.resetFields()
@@ -99,28 +104,33 @@ export default function PettyCashesPage() {
   }
 
   const handleSubmit = async (values: any) => {
-    const payload = {
-      ...values,
-      issueDate: values.issueDate?.format('YYYY-MM-DD'),
+    try {
+      const payload = {
+        ...values,
+        issueDate: values.issueDate?.format('YYYY-MM-DD'),
+      }
+
+      const url = editing ? `/api/petty-cashes/${editing.id}` : '/api/petty-cashes'
+      const method = editing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await response.json()
+
+      if (json.success) {
+        message.success(editing ? '更新成功' : '创建成功')
+        setModalOpen(false)
+        void load()
+        return
+      }
+
+      message.error(json.error || '操作失败')
+    } catch (err) {
+      console.error('提交备用金申请失败:', err)
+      message.error('提交失败，请检查表单后重试')
     }
-
-    const url = editing ? `/api/petty-cashes/${editing.id}` : '/api/petty-cashes'
-    const method = editing ? 'PUT' : 'POST'
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const json = await response.json()
-
-    if (json.success) {
-      message.success(editing ? '更新成功' : '创建成功')
-      setModalOpen(false)
-      void load()
-      return
-    }
-
-    message.error(json.error || '操作失败')
   }
 
   const handleDelete = async (id: string) => {
@@ -188,6 +198,7 @@ export default function PettyCashesPage() {
         <h2 style={{ margin: 0 }}>备用金申请</h2>
         <Space>
           <span style={{ color: '#fa8c16', fontWeight: 600 }}>合计发放：{fmt(total)}</span>
+          <Button onClick={() => window.open('/data-exports?resourceType=petty-cashes', '_blank')}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>
@@ -205,7 +216,7 @@ export default function PettyCashesPage() {
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
           <Form.Item label="申请人" name="holder" rules={[{ required: true, message: '请填写申请人' }]}>
             <Input />
           </Form.Item>
@@ -222,8 +233,8 @@ export default function PettyCashesPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">
