@@ -20,6 +20,8 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 /**
  * 分包付款数据类型
@@ -255,6 +257,10 @@ export default function SubcontractPaymentsPage() {
     }
   }
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   /**
    * 表格列定义
    */
@@ -459,6 +465,8 @@ export default function SubcontractPaymentsPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 20 }}
         >
           <Form.Item
@@ -510,8 +518,8 @@ export default function SubcontractPaymentsPage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="附件URL" name="attachmentUrl">
-            <Input placeholder="请输入附件链接" />
+          <Form.Item label="附件" name="attachmentUrl">
+            <AttachmentUploadField />
           </Form.Item>
 
           <Form.Item label="备注" name="remark">

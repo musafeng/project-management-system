@@ -21,6 +21,7 @@ import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 /**
  * 采购付款数据类型
@@ -480,6 +481,7 @@ export default function ProcurementPaymentsPage() {
           layout="vertical"
           onFinish={handleSubmit}
           onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 20 }}
         >
           <Form.Item

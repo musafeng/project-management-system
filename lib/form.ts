@@ -1,0 +1,46 @@
+export const DEFAULT_FORM_VALIDATE_MESSAGES = {
+  default: '${label}校验未通过',
+  required: '请填写${label}',
+  enum: '${label}格式不正确',
+  whitespace: '${label}不能为空',
+  date: {
+    format: '${label}日期格式不正确',
+    parse: '${label}日期格式不正确',
+    invalid: '${label}日期无效',
+  },
+  types: {
+    string: '${label}格式不正确',
+    number: '${label}格式不正确',
+    boolean: '${label}格式不正确',
+    integer: '${label}格式不正确',
+    float: '${label}格式不正确',
+    array: '${label}格式不正确',
+    object: '${label}格式不正确',
+    enum: '${label}格式不正确',
+    date: '${label}日期格式不正确',
+    url: '${label}格式不正确',
+    email: '${label}格式不正确',
+    hex: '${label}格式不正确',
+  },
+  string: {
+    len: '${label}长度必须为${len}',
+    min: '${label}至少${min}个字符',
+    max: '${label}不能超过${max}个字符',
+    range: '${label}长度需在${min}-${max}之间',
+  },
+  number: {
+    len: '${label}必须等于${len}',
+    min: '${label}不能小于${min}',
+    max: '${label}不能大于${max}',
+    range: '${label}需在${min}-${max}之间',
+  },
+  array: {
+    len: '请上传${len}个${label}',
+    min: '请至少选择${min}个${label}',
+    max: '${label}不能超过${max}个',
+    range: '${label}数量需在${min}-${max}之间',
+  },
+  pattern: {
+    mismatch: '${label}格式不正确',
+  },
+} as const

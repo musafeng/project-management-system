@@ -5,6 +5,7 @@
  */
 
 import { db } from '@/lib/db'
+import { summarizeAttachmentUrls } from '@/lib/attachments'
 
 export type ResourceType =
   | 'construction-approvals'
@@ -229,7 +230,7 @@ async function exportProjectContracts(f: ExportFilter) {
     签订日期: fmtDate(r.signDate),
     开工日期: fmtDate(r.startDate),
     竣工日期: fmtDate(r.endDate),
-    附件: r.attachmentUrl ?? '',
+    附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -275,7 +276,7 @@ async function exportProjectContractChanges(f: ExportFilter) {
     合同总金额: fmtDecimal(r.totalAmount),
     审批状态: r.approvalStatus,
     备注: r.remark ?? '',
-    附件: r.attachmentUrl ?? '',
+    附件: summarizeAttachmentUrls(r.attachmentUrl),
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
   }))
@@ -319,7 +320,7 @@ async function exportContractReceipts(f: ExportFilter) {
       收款方式: r.receiptMethod ?? '',
       收款状态: r.status,
       审批状态: r.approvalStatus,
-      附件: r.attachmentUrl ?? '',
+      附件: summarizeAttachmentUrls(r.attachmentUrl),
       备注: r.remark ?? '',
       创建时间: fmtDate(r.createdAt),
       更新时间: fmtDate(r.updatedAt),
@@ -350,7 +351,7 @@ async function exportOtherReceipts(f: ExportFilter) {
     收款日期: fmtDate(r.receiptDate),
     收款方式: r.receiptMethod ?? '',
     审批状态: r.approvalStatus,
-    附件: r.attachmentUrl ?? '',
+    附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -389,7 +390,7 @@ async function exportProjectExpenses(f: ExportFilter) {
     费用明细: summarizeExpenseItems(r.expenseItems),
     日期: fmtDate(r.expenseDate),
     审批状态: r.approvalStatus,
-    整单附件: r.attachmentUrl ?? '',
+    整单附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -425,7 +426,7 @@ async function exportManagementExpenses(f: ExportFilter) {
     费用明细: summarizeExpenseItems(r.expenseItems),
     日期: fmtDate(r.expenseDate),
     审批状态: r.approvalStatus,
-    整单附件: r.attachmentUrl ?? '',
+    整单附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -461,7 +462,7 @@ async function exportSalesExpenses(f: ExportFilter) {
     费用明细: summarizeExpenseItems(r.expenseItems),
     日期: fmtDate(r.expenseDate),
     审批状态: r.approvalStatus,
-    整单附件: r.attachmentUrl ?? '',
+    整单附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -492,7 +493,7 @@ async function exportOtherPayments(f: ExportFilter) {
     付款方式: r.paymentMethod ?? '',
     状态: r.status,
     审批状态: r.approvalStatus,
-    附件: r.attachmentUrl ?? '',
+    附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),
@@ -738,7 +739,7 @@ async function exportPettyCashes(f: ExportFilter) {
     退回日期: fmtDate(r.returnDate),
     状态: r.status,
     审批状态: r.approvalStatus,
-    附件: r.attachmentUrl ?? '',
+    附件: summarizeAttachmentUrls(r.attachmentUrl),
     备注: r.remark ?? '',
     创建时间: fmtDate(r.createdAt),
     更新时间: fmtDate(r.updatedAt),

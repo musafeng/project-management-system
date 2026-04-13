@@ -1,8 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Space, Upload, message } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import {
+  getAttachmentDisplayName,
+  parseAttachmentUrls,
+  serializeAttachmentUrls,
+} from '@/lib/attachments'
 
 interface AttachmentUploadFieldProps {
   value?: string | null
@@ -10,35 +15,28 @@ interface AttachmentUploadFieldProps {
   disabled?: boolean
 }
 
-function getDisplayName(url?: string | null) {
-  if (!url) return ''
-  const parts = url.split('/')
-  const raw = parts[parts.length - 1] || ''
-  const name = raw.replace(/^\d+-/, '')
-  try {
-    return decodeURIComponent(name)
-  } catch {
-    return name
-  }
-}
-
 export default function AttachmentUploadField({
   value,
   onChange,
   disabled,
 }: AttachmentUploadFieldProps) {
-  const [uploading, setUploading] = useState(false)
-  const [fileName, setFileName] = useState('')
-
-  const currentUrl = value || ''
-  const fallbackName = useMemo(() => getDisplayName(currentUrl), [currentUrl])
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const attachments = useMemo(() => parseAttachmentUrls(value), [value])
+  const attachmentsRef = useRef<string[]>(attachments)
+  const uploading = uploadingCount > 0
 
   useEffect(() => {
-    setFileName(fallbackName)
-  }, [fallbackName])
+    attachmentsRef.current = attachments
+  }, [attachments])
+
+  const emitChange = (nextUrls: string[]) => {
+    const serialized = serializeAttachmentUrls(nextUrls)
+    attachmentsRef.current = parseAttachmentUrls(serialized)
+    onChange?.(serialized)
+  }
 
   const handleUpload = async (file: File) => {
-    setUploading(true)
+    setUploadingCount((count) => count + 1)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -48,28 +46,30 @@ export default function AttachmentUploadField({
         message.error(typeof json.error === 'string' ? json.error : '上传失败')
         return false
       }
-      onChange?.(json.url)
-      setFileName(json.name || getDisplayName(json.url))
+      emitChange([...attachmentsRef.current, json.url])
       message.success(`${json.name || '文件'} 上传成功`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : ''
       message.error(errorMessage || '上传失败，请检查网络')
     } finally {
-      setUploading(false)
+      setUploadingCount((count) => Math.max(0, count - 1))
     }
     return false
   }
 
-  const handleClear = () => {
-    onChange?.(null)
-    setFileName('')
+  const handleRemove = (targetUrl: string) => {
+    emitChange(attachmentsRef.current.filter((url) => url !== targetUrl))
   }
 
   if (disabled) {
-    return currentUrl ? (
-      <a href={currentUrl} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
-        {fileName || fallbackName || currentUrl}
-      </a>
+    return attachments.length > 0 ? (
+      <Space direction="vertical" size={4}>
+        {attachments.map((url) => (
+          <a key={url} href={url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+            {getAttachmentDisplayName(url) || url}
+          </a>
+        ))}
+      </Space>
     ) : (
       <span style={{ color: '#999' }}>暂无附件</span>
     )
@@ -78,6 +78,7 @@ export default function AttachmentUploadField({
   return (
     <Space wrap>
       <Upload
+        multiple
         beforeUpload={handleUpload}
         showUploadList={false}
         disabled={uploading}
@@ -87,16 +88,27 @@ export default function AttachmentUploadField({
           {uploading ? '上传中...' : '选择文件'}
         </Button>
       </Upload>
-      {currentUrl ? (
-        <Space size={4}>
-          <a href={currentUrl} target="_blank" rel="noreferrer">
-            {fileName || fallbackName || '查看附件'}
-          </a>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={handleClear} />
+      <span style={{ color: '#999', fontSize: 12 }}>
+        支持多选；图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，单文件最大 100MB
+      </span>
+      {attachments.length > 0 ? (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          {attachments.map((url) => (
+            <Space key={url} size={4} wrap>
+              <a href={url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+                {getAttachmentDisplayName(url) || '查看附件'}
+              </a>
+              <Button
+                type="text"
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={() => handleRemove(url)}
+              />
+            </Space>
+          ))}
         </Space>
-      ) : (
-        <span style={{ color: '#999', fontSize: 12 }}>支持 图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，最大 100MB</span>
-      )}
+      ) : null}
     </Space>
   )
 }

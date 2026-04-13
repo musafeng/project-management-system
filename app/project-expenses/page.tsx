@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface ExpenseItem {
   type: string
@@ -213,7 +214,14 @@ export default function ProjectExpensesPage() {
       </div>
       <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
       <Modal title={editing ? '编辑项目费用报销' : '新增项目费用报销'} open={modalOpen} onOk={() => form.submit()} onCancel={() => setModalOpen(false)} width={620} okText="确定" cancelText="取消">
-        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
+        >
           <Form.Item label="施工立项" name="constructionId" rules={[{ required: true, message: '请选择施工立项' }]}>
             <Select
               placeholder="请选择已审批通过的施工立项"

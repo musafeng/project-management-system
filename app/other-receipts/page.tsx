@@ -18,6 +18,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface OtherReceipt {
   id: string
@@ -198,7 +199,14 @@ export default function OtherReceiptsPage() {
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={handleFinishFailed} style={{ marginTop: 16 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
+        >
           <Form.Item label="收款事由" name="receiptType" rules={[{ required: true, message: '请填写收款事由' }]}>
             <Input placeholder="请输入收款事由" />
           </Form.Item>

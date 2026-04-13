@@ -20,6 +20,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface ProjectContract {
   id: string
@@ -170,6 +171,10 @@ export default function ProjectContractChangesPage() {
     message.error(json.error || '操作失败')
   }
 
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const handleDelete = async (id: string) => {
     const response = await fetch(`/api/project-contract-changes/${id}`, { method: 'DELETE' })
     const json = await response.json()
@@ -258,7 +263,14 @@ export default function ProjectContractChangesPage() {
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
+        >
           <Form.Item label="项目合同名称" name="contractId" rules={[{ required: true, message: '请选择项目合同' }]}>
             <Select
               placeholder="请选择项目合同"
