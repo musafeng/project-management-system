@@ -99,17 +99,26 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
    */
   POST: async (req) => {
     const body = await req.json()
+    const contractAmount = Number(body.contractAmount ?? 0)
+    const retentionRate =
+      body.retentionRate === undefined || body.retentionRate === null || body.retentionRate === ''
+        ? null
+        : Number(body.retentionRate)
+    const retentionAmount =
+      body.retentionAmount === undefined || body.retentionAmount === null || body.retentionAmount === ''
+        ? null
+        : Number(body.retentionAmount)
 
     // 验证必填字段
     if (!body.projectId || typeof body.projectId !== 'string') {
       throw new BadRequestError('项目 ID 为必填项')
     }
 
-    if (body.contractAmount === undefined || typeof body.contractAmount !== 'number') {
+    if (!Number.isFinite(contractAmount)) {
       throw new BadRequestError('合同金额为必填项且必须是数字')
     }
 
-    if (body.contractAmount <= 0) {
+    if (contractAmount <= 0) {
       throw new BadRequestError('合同金额必须大于 0')
     }
 
@@ -131,19 +140,19 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       name: body.name || `${code}`,
       projectId: body.projectId,
       customerId: project.customerId,
-      contractAmount: body.contractAmount,
+      contractAmount,
       changedAmount: 0,
-      receivableAmount: body.contractAmount,
+      receivableAmount: contractAmount,
       receivedAmount: 0,
-      unreceivedAmount: body.contractAmount,
+      unreceivedAmount: contractAmount,
       signDate: body.signDate ? new Date(body.signDate) : null,
       startDate: body.startDate ? new Date(body.startDate) : null,
       status: 'DRAFT',
       contractType: body.contractType?.trim() || null,
       paymentMethod: body.paymentMethod?.trim() || null,
       hasRetention: body.hasRetention ?? false,
-      retentionRate: body.retentionRate ?? null,
-      retentionAmount: body.retentionAmount ?? null,
+      retentionRate,
+      retentionAmount,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
       regionId,

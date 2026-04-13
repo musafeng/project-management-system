@@ -9,6 +9,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -24,12 +25,26 @@ interface OtherPayment {
   id: string
   projectId?: string | null
   projectName?: string | null
+  supplierId?: string | null
+  supplierName?: string | null
+  contact?: string | null
+  accountName?: string | null
+  bankAccount?: string | null
+  bankName?: string | null
   paymentType: string
   paymentAmount: number
   paymentDate: string
   attachmentUrl?: string
   approvalStatus: string
   remark?: string
+}
+
+interface SupplierOption {
+  id: string
+  name: string
+  contact?: string | null
+  bankAccount?: string | null
+  bankName?: string | null
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -52,10 +67,24 @@ function fmtDate(value: string) {
 
 export default function OtherPaymentsPage() {
   const [data, setData] = useState<OtherPayment[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [loading, setLoading] = useState(true)
+  const [suppliersLoading, setSuppliersLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<OtherPayment | null>(null)
   const [form] = Form.useForm()
+  const selectedSupplierId = Form.useWatch('supplierId', form)
+
+  const loadSuppliers = async () => {
+    setSuppliersLoading(true)
+    try {
+      const response = await fetch('/api/suppliers')
+      const json = await response.json()
+      if (json.success) setSuppliers(json.data || [])
+    } finally {
+      setSuppliersLoading(false)
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -70,7 +99,31 @@ export default function OtherPaymentsPage() {
 
   useEffect(() => {
     load()
+    loadSuppliers()
   }, [])
+
+  useEffect(() => {
+    if (!selectedSupplierId) {
+      if (!editing) {
+        form.setFieldsValue({
+          contact: undefined,
+          accountName: undefined,
+          bankAccount: undefined,
+          bankName: undefined,
+        })
+      }
+      return
+    }
+
+    const supplier = suppliers.find((item) => item.id === selectedSupplierId)
+    if (!supplier) return
+    form.setFieldsValue({
+      contact: supplier.contact || undefined,
+      accountName: supplier.name || undefined,
+      bankAccount: supplier.bankAccount || undefined,
+      bankName: supplier.bankName || undefined,
+    })
+  }, [selectedSupplierId, suppliers, form, editing])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -82,6 +135,11 @@ export default function OtherPaymentsPage() {
 
     if (record) {
       form.setFieldsValue({
+        supplierId: record.supplierId || undefined,
+        contact: record.contact || undefined,
+        accountName: record.accountName || undefined,
+        bankAccount: record.bankAccount || undefined,
+        bankName: record.bankName || undefined,
         paymentType: record.paymentType,
         paymentAmount: record.paymentAmount,
         paymentDate: dayjs(record.paymentDate),
@@ -207,6 +265,36 @@ export default function OtherPaymentsPage() {
           validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 16 }}
         >
+          <Form.Item label="供应商" name="supplierId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              loading={suppliersLoading}
+              placeholder="请选择供应商档案"
+              options={suppliers.map((supplier) => ({
+                label: supplier.name,
+                value: supplier.id,
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="联系人" name="contact">
+            <Input placeholder="选择供应商后自动带出，可手动调整" />
+          </Form.Item>
+
+          <Form.Item label="户名" name="accountName">
+            <Input placeholder="选择供应商后自动带出，可手动调整" />
+          </Form.Item>
+
+          <Form.Item label="银行卡号" name="bankAccount">
+            <Input placeholder="选择供应商后自动带出，可手动调整" />
+          </Form.Item>
+
+          <Form.Item label="开户银行" name="bankName">
+            <Input placeholder="选择供应商后自动带出，可手动调整" />
+          </Form.Item>
+
           <Form.Item label="付款事由" name="paymentType" rules={[{ required: true, message: '请填写付款事由' }]}>
             <Input placeholder="请输入付款事由" />
           </Form.Item>

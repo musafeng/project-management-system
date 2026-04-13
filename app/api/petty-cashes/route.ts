@@ -57,7 +57,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
 
       if (!holder) throw new BadRequestError('申请人为必填项')
       if (!issueDate) throw new BadRequestError('日期为必填项')
-      if (issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
+      if (!Number.isFinite(issuedAmount) || issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
 
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)

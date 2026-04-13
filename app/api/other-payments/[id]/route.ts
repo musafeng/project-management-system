@@ -10,6 +10,10 @@ import {
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import {
+  parseOtherPaymentRemark,
+  serializeOtherPaymentRemark,
+} from '@/lib/other-payment-supplier'
 
 function getIdFromRequest(req: Request) {
   return new URL(req.url).pathname.split('/').pop() ?? ''
@@ -30,6 +34,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       return success({
         ...record,
         projectName: record.Project?.name ?? null,
+        ...parseOtherPaymentRemark(record.remark),
       })
     },
 
@@ -52,12 +57,57 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         body.paymentAmount === undefined
           ? Number(existing.paymentAmount)
           : Number(body.paymentAmount)
+      const parsedRemark = parseOtherPaymentRemark(existing.remark)
+      const supplierId =
+        body.supplierId === undefined
+          ? parsedRemark.supplierId ?? null
+          : String(body.supplierId ?? '').trim() || null
 
       if (!paymentType) throw new BadRequestError('付款事由为必填项')
-      if (paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
 
       if (nextProjectId) {
         await assertProjectInCurrentRegion(nextProjectId)
+      }
+
+      let supplierName =
+        body.supplierName === undefined
+          ? parsedRemark.supplierName ?? null
+          : String(body.supplierName ?? '').trim() || null
+      let contact =
+        body.contact === undefined
+          ? parsedRemark.contact ?? null
+          : String(body.contact ?? '').trim() || null
+      let accountName =
+        body.accountName === undefined
+          ? parsedRemark.accountName ?? null
+          : String(body.accountName ?? '').trim() || null
+      let bankAccount =
+        body.bankAccount === undefined
+          ? parsedRemark.bankAccount ?? null
+          : String(body.bankAccount ?? '').trim() || null
+      let bankName =
+        body.bankName === undefined
+          ? parsedRemark.bankName ?? null
+          : String(body.bankName ?? '').trim() || null
+
+      if (supplierId) {
+        const supplier = await db.supplier.findUnique({
+          where: { id: supplierId },
+          select: {
+            id: true,
+            name: true,
+            contact: true,
+            bankAccount: true,
+            bankName: true,
+          },
+        })
+        if (!supplier) throw new NotFoundError('供应商不存在')
+        supplierName = supplierName || supplier.name
+        contact = contact || supplier.contact || null
+        accountName = accountName || supplier.name
+        bankAccount = bankAccount || supplier.bankAccount || null
+        bankName = bankName || supplier.bankName || null
       }
 
       const updated = await db.otherPayment.update({
@@ -77,15 +127,25 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
             body.attachmentUrl === undefined
               ? existing.attachmentUrl
               : String(body.attachmentUrl ?? '').trim() || null,
-          remark:
-            body.remark === undefined
-              ? existing.remark
-              : String(body.remark ?? '').trim() || null,
+          remark: serializeOtherPaymentRemark(
+            body.remark === undefined ? parsedRemark.remark : String(body.remark ?? '').trim() || null,
+            {
+              supplierId,
+              supplierName,
+              contact,
+              accountName,
+              bankAccount,
+              bankName,
+            }
+          ),
           updatedAt: new Date(),
         },
       })
 
-      return success(updated)
+      return success({
+        ...updated,
+        ...parseOtherPaymentRemark(updated.remark),
+      })
     },
 
     DELETE: async (req) => {

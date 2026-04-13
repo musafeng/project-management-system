@@ -115,6 +115,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
   POST: async (req) => {
     const body = await req.json()
+    const contractAmount = Number(body.contractAmount ?? 0)
 
     if (!body.projectId || typeof body.projectId !== 'string') {
       throw new BadRequestError('项目 ID 为必填项')
@@ -129,10 +130,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
       throw new BadRequestError('合同名称为必填项')
     }
-    if (body.contractAmount === undefined || typeof body.contractAmount !== 'number') {
+    if (!Number.isFinite(contractAmount)) {
       throw new BadRequestError('合同金额为必填项且必须是数字')
     }
-    if (body.contractAmount <= 0) {
+    if (contractAmount <= 0) {
       throw new BadRequestError('合同金额必须大于 0')
     }
 
@@ -162,11 +163,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       constructionId: body.constructionId,
       workerId,
       vendorId: null,
-      contractAmount: body.contractAmount,
+      contractAmount,
       changedAmount: 0,
-      payableAmount: body.contractAmount,
+      payableAmount: contractAmount,
       paidAmount: 0,
-      unpaidAmount: body.contractAmount,
+      unpaidAmount: contractAmount,
       signDate: body.signDate ? new Date(body.signDate) : null,
       status: 'DRAFT',
       subcontractType: body.subcontractType?.trim() || null,

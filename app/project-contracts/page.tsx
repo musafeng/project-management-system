@@ -19,6 +19,7 @@ import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 const { Text } = Typography
 
@@ -186,6 +187,10 @@ export default function ProjectContractsPage() {
         loadContracts(lastFilter)
       } else { message.error(j.error || '操作失败') }
     } catch { message.error('网络错误') }
+  }
+
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
   }
 
   // ============================================================
@@ -434,7 +439,14 @@ export default function ProjectContractsPage() {
         okText="保存" cancelText="取消"
         width={560}
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ marginTop: 16 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
+        >
           <Form.Item name="name" label="合同名称" rules={[{ required: true, message: '请输入合同名称' }]}>
             <Input placeholder="请输入合同名称" />
           </Form.Item>
@@ -449,7 +461,10 @@ export default function ProjectContractsPage() {
           <Form.Item name="contractAmount" label="合同金额（元）" rules={[{ required: true, message: '请输入合同金额' }]}>
             <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="¥"
               formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              parser={(v) => v?.replace(/,/g, '') as any}
+              parser={(v) => {
+                const normalized = v?.replace(/,/g, '') || ''
+                return (normalized ? Number(normalized) : undefined) as any
+              }}
             />
           </Form.Item>
           <Form.Item name="contractType" label="合同类型" rules={[{ required: true, message: '请选择合同类型' }]}>
@@ -473,7 +488,19 @@ export default function ProjectContractsPage() {
               options={['按进度', '按合同', '其他'].map((value) => ({ label: value, value }))}
             />
           </Form.Item>
-          <Form.Item name="hasRetention" label="有无质保金" initialValue={false} rules={[{ required: true, message: '请选择是否有质保金' }]}>
+          <Form.Item
+            name="hasRetention"
+            label="有无质保金"
+            initialValue={false}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (typeof value === 'boolean') return
+                  throw new Error('请选择是否有质保金')
+                },
+              },
+            ]}
+          >
             <Select
               placeholder="请选择"
               options={[

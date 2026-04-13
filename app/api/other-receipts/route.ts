@@ -56,7 +56,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
 
       if (!receiptType) throw new BadRequestError('收款事由为必填项')
       if (!receiptDate) throw new BadRequestError('日期为必填项')
-      if (receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
+      if (!Number.isFinite(receiptAmount) || receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
 
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)

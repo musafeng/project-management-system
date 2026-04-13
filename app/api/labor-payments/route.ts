@@ -101,14 +101,15 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
   POST: async (req) => {
     const body = await req.json()
+    const amount = Number(body.amount ?? 0)
 
     if (!body.contractId || typeof body.contractId !== 'string') {
       throw new BadRequestError('合同 ID 为必填项')
     }
-    if (body.amount === undefined || typeof body.amount !== 'number') {
+    if (!Number.isFinite(amount)) {
       throw new BadRequestError('付款金额为必填项且必须是数字')
     }
-    if (body.amount <= 0) {
+    if (amount <= 0) {
       throw new BadRequestError('付款金额必须大于 0')
     }
 
@@ -121,7 +122,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       projectId: contract.projectId,
       contractId: body.contractId,
       workerId: contract.workerId,
-      paymentAmount: body.amount,
+      paymentAmount: amount,
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       paymentMethod: body.paymentMethod?.trim() || null,
       paymentNumber: body.paymentNumber?.trim() || null,
@@ -160,7 +161,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    const newPaidAmount = Number(contract.paidAmount) + Number(body.amount)
+    const newPaidAmount = Number(contract.paidAmount) + amount
     const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount
 
     await db.laborContract.update({

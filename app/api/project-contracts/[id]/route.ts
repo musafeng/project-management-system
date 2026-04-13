@@ -139,12 +139,13 @@ const handler = apiHandlerWithMethod({
     }
 
     if (body.retentionRate !== undefined) {
-      updateData.retentionRate = body.retentionRate === null || body.retentionRate === '' ? null : body.retentionRate
+      updateData.retentionRate =
+        body.retentionRate === null || body.retentionRate === '' ? null : Number(body.retentionRate)
     }
 
     if (body.retentionAmount !== undefined) {
       updateData.retentionAmount =
-        body.retentionAmount === null || body.retentionAmount === '' ? null : body.retentionAmount
+        body.retentionAmount === null || body.retentionAmount === '' ? null : Number(body.retentionAmount)
     }
 
     if (body.attachmentUrl !== undefined) {

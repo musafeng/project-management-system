@@ -6,6 +6,10 @@ import {
 } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import {
+  parseOtherPaymentRemark,
+  serializeOtherPaymentRemark,
+} from '@/lib/other-payment-supplier'
 
 export const { GET, POST } = apiHandlerWithPermissionAndLog(
   {
@@ -42,6 +46,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         records.map((record) => ({
           ...record,
           projectName: record.Project?.name ?? null,
+          ...parseOtherPaymentRemark(record.remark),
         }))
       )
     },
@@ -53,14 +58,40 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const paymentType = String(body.paymentType ?? '').trim()
       const paymentDate = String(body.paymentDate ?? '').trim()
       const paymentAmount = Number(body.paymentAmount ?? 0)
+      const supplierId = String(body.supplierId ?? '').trim() || null
 
       if (!paymentType) throw new BadRequestError('付款事由为必填项')
       if (!paymentDate) throw new BadRequestError('日期为必填项')
-      if (paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
 
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+      }
+
+      let supplierName: string | null = null
+      let contact: string | null = String(body.contact ?? '').trim() || null
+      let accountName: string | null = String(body.accountName ?? '').trim() || null
+      let bankAccount: string | null = String(body.bankAccount ?? '').trim() || null
+      let bankName: string | null = String(body.bankName ?? '').trim() || null
+
+      if (supplierId) {
+        const supplier = await db.supplier.findUnique({
+          where: { id: supplierId },
+          select: {
+            id: true,
+            name: true,
+            contact: true,
+            bankAccount: true,
+            bankName: true,
+          },
+        })
+        if (!supplier) throw new NotFoundError('供应商不存在')
+        supplierName = supplier.name
+        contact = contact || supplier.contact || null
+        accountName = accountName || supplier.name
+        bankAccount = bankAccount || supplier.bankAccount || null
+        bankName = bankName || supplier.bankName || null
       }
 
       const now = new Date()
@@ -74,12 +105,22 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           paymentDate: new Date(paymentDate),
           paymentMethod: String(body.paymentMethod ?? '').trim() || null,
           attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
-          remark: String(body.remark ?? '').trim() || null,
+          remark: serializeOtherPaymentRemark(String(body.remark ?? '').trim() || null, {
+            supplierId,
+            supplierName,
+            contact,
+            accountName,
+            bankAccount,
+            bankName,
+          }),
           updatedAt: now,
         },
       })
 
-      return success(record)
+      return success({
+        ...record,
+        ...parseOtherPaymentRemark(record.remark),
+      })
     },
   },
   {
