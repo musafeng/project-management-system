@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OSS from 'ali-oss'
 import { serverEnv } from '@/lib/env'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 
 export const maxDuration = 60
 
@@ -68,6 +69,12 @@ function getOssClient() {
   return new OSS({ region, accessKeyId, accessKeySecret, bucket })
 }
 
+function getUploadErrorMessage(input: unknown) {
+  const text = input instanceof Error ? input.message : String(input || '')
+  const translated = toChineseErrorMessage(text)
+  return /[\u4e00-\u9fa5]/.test(translated) ? translated : '上传失败，请稍后重试'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
@@ -108,6 +115,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url, key: ossKey, name: file.name, size: file.size })
   } catch (err: any) {
     console.error('[upload] OSS 上传失败:', err)
-    return NextResponse.json({ error: err.message || '上传失败，请稍后重试' }, { status: 500 })
+    return NextResponse.json({ error: getUploadErrorMessage(err) }, { status: 500 })
   }
 }

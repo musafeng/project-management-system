@@ -20,6 +20,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface ProjectContract {
@@ -73,6 +74,20 @@ function fmtDate(value: string) {
   }
 }
 
+async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  try {
+    return await response.json()
+  } catch {
+    return { success: false, error: '服务器返回数据格式异常，请稍后重试' }
+  }
+}
+
+function getFriendlyErrorMessage(input: unknown, fallback: string) {
+  const text = typeof input === 'string' ? input : input instanceof Error ? input.message : ''
+  const translated = toChineseErrorMessage(text)
+  return /[\u4e00-\u9fa5]/.test(translated) ? translated : fallback
+}
+
 export default function ProjectContractChangesPage() {
   const [data, setData] = useState<ProjectContractChange[]>([])
   const [contracts, setContracts] = useState<ProjectContract[]>([])
@@ -122,7 +137,7 @@ export default function ProjectContractChangesPage() {
 
     if (record) {
       const res = await fetch(`/api/project-contract-changes/${record.id}`)
-      const json: ApiResponse<ProjectContractChange> = await res.json()
+      const json = await parseApiResponse<ProjectContractChange>(res)
       if (!json.success || !json.data) {
         message.error(json.error || '获取详情失败')
         return
@@ -143,32 +158,37 @@ export default function ProjectContractChangesPage() {
   }
 
   const handleSubmit = async (values: any) => {
-    const payload = {
-      contractId: values.contractId,
-      changeDate: values.changeDate?.format('YYYY-MM-DD'),
-      increaseAmount: values.increaseAmount,
-      remark: values.remark,
-      attachmentUrl: values.attachmentUrl,
+    try {
+      const payload = {
+        contractId: values.contractId,
+        changeDate: values.changeDate?.format('YYYY-MM-DD'),
+        increaseAmount: values.increaseAmount,
+        remark: values.remark,
+        attachmentUrl: values.attachmentUrl,
+      }
+
+      const url = editing ? `/api/project-contract-changes/${editing.id}` : '/api/project-contract-changes'
+      const method = editing ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await parseApiResponse<any>(response)
+
+      if (json.success) {
+        message.success(editing ? '更新成功' : '创建成功')
+        setModalOpen(false)
+        void load()
+        void loadContracts()
+        return
+      }
+
+      message.error(json.error || '操作失败')
+    } catch (err) {
+      console.error('提交项目合同变更失败:', err)
+      message.error(getFriendlyErrorMessage(err, '提交失败，请检查表单后重试'))
     }
-
-    const url = editing ? `/api/project-contract-changes/${editing.id}` : '/api/project-contract-changes'
-    const method = editing ? 'PUT' : 'POST'
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const json = await response.json()
-
-    if (json.success) {
-      message.success(editing ? '更新成功' : '创建成功')
-      setModalOpen(false)
-      void load()
-      void loadContracts()
-      return
-    }
-
-    message.error(json.error || '操作失败')
   }
 
   const handleFinishFailed = () => {
@@ -177,7 +197,7 @@ export default function ProjectContractChangesPage() {
 
   const handleDelete = async (id: string) => {
     const response = await fetch(`/api/project-contract-changes/${id}`, { method: 'DELETE' })
-    const json = await response.json()
+    const json = await parseApiResponse<any>(response)
 
     if (json.success) {
       message.success('已删除')

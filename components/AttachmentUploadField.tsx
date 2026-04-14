@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Space, Upload, message } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
   getAttachmentDisplayName,
   parseAttachmentUrls,
@@ -23,6 +24,7 @@ export default function AttachmentUploadField({
   const [uploadingCount, setUploadingCount] = useState(0)
   const attachments = useMemo(() => parseAttachmentUrls(value), [value])
   const attachmentsRef = useRef<string[]>(attachments)
+  const uploadQueueRef = useRef<Promise<void>>(Promise.resolve())
   const uploading = uploadingCount > 0
 
   useEffect(() => {
@@ -35,7 +37,16 @@ export default function AttachmentUploadField({
     onChange?.(serialized)
   }
 
-  const handleUpload = async (file: File) => {
+  const getFriendlyUploadErrorMessage = (input: unknown) => {
+    const text = typeof input === 'string' ? input : input instanceof Error ? input.message : ''
+    const translated = toChineseErrorMessage(text)
+    if (/[\u4e00-\u9fa5]/.test(translated)) {
+      return translated
+    }
+    return '上传失败，请检查网络后重试'
+  }
+
+  const uploadSingleFile = async (file: File) => {
     setUploadingCount((count) => count + 1)
     try {
       const fd = new FormData()
@@ -43,17 +54,23 @@ export default function AttachmentUploadField({
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        message.error(typeof json.error === 'string' ? json.error : '上传失败')
-        return false
+        message.error(getFriendlyUploadErrorMessage(json.error))
+        return
       }
       emitChange([...attachmentsRef.current, json.url])
       message.success(`${json.name || '文件'} 上传成功`)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : ''
-      message.error(errorMessage || '上传失败，请检查网络')
+      message.error(getFriendlyUploadErrorMessage(err))
     } finally {
       setUploadingCount((count) => Math.max(0, count - 1))
     }
+  }
+
+  const handleUpload = (file: File) => {
+    uploadQueueRef.current = uploadQueueRef.current
+      .catch(() => undefined)
+      .then(() => uploadSingleFile(file))
+
     return false
   }
 

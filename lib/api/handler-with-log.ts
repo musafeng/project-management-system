@@ -9,6 +9,7 @@ import { canAccessApi } from './permissions'
 import { createActionLog, buildActionLogDetail } from '@/lib/action-log'
 import { ActionType } from '@prisma/client'
 import { ApiError } from './errors'
+import { toChineseErrorMessage } from './error-message'
 import { error as errorResponse, success as successResponse } from './response'
 
 export type ApiHandlerFn = (req: Request) => Promise<any>
@@ -21,6 +22,11 @@ export interface PermissionAndLogOptions {
   checkWritePermission?: boolean // 是否检查写操作权限（默认 true）
   resource?: string // 资源名称，用于日志记录
   resourceIdExtractor?: (req: Request, result?: any) => string | null // 提取 resourceId 的函数
+}
+
+function toUserFacingErrorMessage(message: string | null | undefined) {
+  const translated = toChineseErrorMessage(message)
+  return /[\u4e00-\u9fa5]/.test(translated) ? translated : '操作失败，请稍后重试'
 }
 
 /**
@@ -75,7 +81,7 @@ export function apiHandlerWithPermissionAndLog(
 
         if (!handler) {
           return NextResponse.json(
-            errorResponse(`Method ${method} not allowed`),
+            errorResponse(toChineseErrorMessage(`Method ${method} not allowed`)),
             { status: 405 }
           )
         }
@@ -194,7 +200,7 @@ export function apiHandlerWithPermissionAndLog(
           // Prisma 唯一性约束错误
           if (message.includes('Unique constraint failed')) {
             return NextResponse.json(
-              errorResponse('数据已存在，请检查唯一字段'),
+              errorResponse(toChineseErrorMessage(message)),
               { status: 409 }
             )
           }
@@ -202,21 +208,21 @@ export function apiHandlerWithPermissionAndLog(
           // Prisma 外键约束错误
           if (message.includes('Foreign key constraint failed')) {
             return NextResponse.json(
-              errorResponse('关联数据不存在或已被删除'),
+              errorResponse(toChineseErrorMessage(message)),
               { status: 400 }
             )
           }
 
           // 其他错误
           return NextResponse.json(
-            errorResponse(message),
+            errorResponse(toUserFacingErrorMessage(message)),
             { status: 500 }
           )
         }
 
         // 未知错误
         return NextResponse.json(
-          errorResponse('Unknown error occurred'),
+          errorResponse(toChineseErrorMessage('Unknown error occurred')),
           { status: 500 }
         )
       }
@@ -231,4 +237,3 @@ export function apiHandlerWithPermissionAndLog(
     PATCH: methods.PATCH ? createHandlerWrapper('PATCH') : undefined,
   }
 }
-

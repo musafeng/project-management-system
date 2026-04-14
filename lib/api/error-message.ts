@@ -3,6 +3,31 @@ export function toChineseErrorMessage(message: string | null | undefined): strin
 
   if (!text) return '操作失败，请稍后重试'
 
+  if (
+    text.includes('Failed to fetch') ||
+    text.includes('fetch failed') ||
+    text.includes('NetworkError') ||
+    text.includes('Load failed')
+  ) {
+    return '网络连接失败，请检查网络后重试'
+  }
+
+  if (
+    text.includes('Unexpected token') ||
+    text.includes('Unexpected end of JSON input') ||
+    text.includes('JSON.parse')
+  ) {
+    return '服务器返回数据格式异常，请稍后重试'
+  }
+
+  if (
+    text.includes('ECONNRESET') ||
+    text.includes('ETIMEDOUT') ||
+    text.includes('socket hang up')
+  ) {
+    return '网络连接超时或已中断，请稍后重试'
+  }
+
   if (text.includes('Unique constraint failed')) {
     return '数据已存在，请检查唯一字段是否重复'
   }
