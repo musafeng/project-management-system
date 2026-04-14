@@ -12,6 +12,9 @@ import {
   setCurrentRegionId,
 } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 export const GET = apiHandler(async (_req) => {
   const user = await requireAuth()
   const context = await resolveCurrentRegionContext(user)

@@ -2,6 +2,9 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError } from '@/lib/
 import { db } from '@/lib/db'
 import { createProjectContractChangeRecord } from '@/lib/project-contract-changes'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * POST /api/project-contracts/{id}/changes
  * 记录合同变更

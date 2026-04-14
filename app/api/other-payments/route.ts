@@ -11,6 +11,9 @@ import {
   serializeOtherPaymentRemark,
 } from '@/lib/other-payment-supplier'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog(
   {
     GET: async (req) => {

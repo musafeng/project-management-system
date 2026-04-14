@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getProjectStats } from '../../../lib/stats'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
+
+export const dynamic = 'force-dynamic'
+
 
 export async function GET(request: Request) {
   try {
@@ -14,8 +18,9 @@ export async function GET(request: Request) {
     return NextResponse.json(stats)
   } catch (error: any) {
     console.error('API错误:', error)
-    return NextResponse.json({ error: '统计查询失败', message: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: toChineseErrorMessage(error?.message || '统计查询失败') },
+      { status: 500 }
+    )
   }
 }
-
-

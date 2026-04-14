@@ -5,6 +5,9 @@
 import { apiHandlerWithPermissionAndLog, success, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { GET, PUT } = apiHandlerWithPermissionAndLog({
   GET: async (req) => {
     const id = req.url.split('/process-definitions/')[1]?.split('/')[0]?.split('?')[0]

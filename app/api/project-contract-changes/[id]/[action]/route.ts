@@ -3,6 +3,9 @@ import { handleSubmit, handleApprove, handleReject } from '@/lib/approval'
 import { success } from '@/lib/api'
 import { applyApprovedProjectContractChange } from '@/lib/project-contract-changes'
 
+export const dynamic = 'force-dynamic'
+
+
 const MODEL = 'projectContractChange' as const
 const BASE = '/api/project-contract-changes'
 

@@ -8,6 +8,9 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * 生成供应商编码
  * 格式：SUP + 时间戳

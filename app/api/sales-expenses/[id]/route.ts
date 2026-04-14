@@ -11,6 +11,9 @@ import {
   requireCurrentRegionId,
 } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function getIdFromRequest(req: Request) {
   return new URL(req.url).pathname.split('/').pop() ?? ''
 }

@@ -138,10 +138,11 @@ export default function ProcessDefinitionsPage() {
 
   // 当进入详情时同步 selectedDef 的节点数据
   useEffect(() => {
-    if (selectedDef) {
-      const updated = definitions.find((d) => d.id === selectedDef.id)
-      if (updated) setSelectedDef(updated)
-    }
+    setSelectedDef((current) => {
+      if (!current) return current
+      const updated = definitions.find((d) => d.id === current.id)
+      return updated ?? current
+    })
   }, [definitions])
 
   // ─── 流程定义操作 ──────────────────────────────────────────────────────────

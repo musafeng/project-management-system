@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/projects

@@ -9,6 +9,9 @@
 import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 const handler = apiHandlerWithMethod({
   /**
    * GET /api/labor-workers/{id}

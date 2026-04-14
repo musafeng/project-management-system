@@ -4,6 +4,9 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { POST } = apiHandlerWithPermissionAndLog({
   POST: async (req) => {
     await requireSystemManager()

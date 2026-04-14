@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Switch, Space, Tag, message, Tabs } from 'antd'
 import { PlusOutlined, EditOutlined, TeamOutlined } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 
 interface OrgUnit {
   id: string
@@ -23,15 +24,16 @@ export default function OrgUnitsPage() {
 
   const fetchUnits = async () => {
     setLoading(true)
-    try {
-      const res = await fetch('/api/org-units', { credentials: 'include' })
-      const json = await res.json()
-      if (json.success) setUnits(json.data)
-    } catch {
-      message.error('加载组织列表失败')
-    } finally {
-      setLoading(false)
+    const result = await requestApi<OrgUnit[]>('/api/org-units', {
+      credentials: 'include',
+      fallbackError: '加载组织列表失败，请稍后重试',
+    })
+    if (result.success) setUnits(result.data || [])
+    else {
+      setUnits([])
+      message.error(result.error || '加载组织列表失败，请稍后重试')
     }
+    setLoading(false)
   }
 
   useEffect(() => { fetchUnits() }, [])
@@ -52,31 +54,21 @@ export default function OrgUnitsPage() {
   const handleSave = async () => {
     const values = await form.validateFields()
     setSaving(true)
-    try {
-      if (editingUnit) {
-        const res = await fetch(`/api/org-units/${editingUnit.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify(values),
-        })
-        const json = await res.json()
-        if (!json.success) throw new Error(json.error)
-        message.success('已更新')
-      } else {
-        const res = await fetch('/api/org-units', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify(values),
-        })
-        const json = await res.json()
-        if (!json.success) throw new Error(json.error)
-        message.success('已创建')
-      }
+    const result = await requestApi(editingUnit ? `/api/org-units/${editingUnit.id}` : '/api/org-units', {
+      method: editingUnit ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(values),
+      fallbackError: editingUnit ? '更新组织失败，请稍后重试' : '创建组织失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success(editingUnit ? '已更新' : '已创建')
       setModalOpen(false)
       fetchUnits()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '操作失败')
-    } finally {
-      setSaving(false)
+    } else {
+      message.error(result.error || (editingUnit ? '更新组织失败，请稍后重试' : '创建组织失败，请稍后重试'))
     }
+    setSaving(false)
   }
 
   const columns = [
@@ -143,8 +135,6 @@ export default function OrgUnitsPage() {
     </div>
   )
 }
-
-
 
 
 

@@ -1,6 +1,9 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { GET, POST } = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/customers

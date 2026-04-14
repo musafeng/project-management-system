@@ -4,6 +4,9 @@ import { previewExportData } from '@/lib/data-export'
 import type { ExportFilter, ResourceType } from '@/lib/data-export'
 import { resolveRequestedRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * GET /api/data-exports/preview
  * 查询导出预览数据（JSON 列表）
@@ -44,5 +47,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: '查询失败' }, { status: 500 })
   }
 }
-
 

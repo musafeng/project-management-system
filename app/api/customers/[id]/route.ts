@@ -1,6 +1,9 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 const handler = apiHandlerWithMethod({
   /**
    * GET /api/customers/{id}
@@ -184,4 +187,3 @@ const handler = apiHandlerWithMethod({
 export const GET = handler
 export const PUT = handler
 export const DELETE = handler
-

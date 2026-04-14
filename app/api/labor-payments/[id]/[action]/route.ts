@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { handleSubmit, handleApprove, handleReject } from '@/lib/approval'
 import { success } from '@/lib/api'
 
+export const dynamic = 'force-dynamic'
+
+
 const MODEL = 'laborPayment' as const
 const BASE = '/api/labor-payments'
 
@@ -28,7 +31,6 @@ export async function POST(
     return NextResponse.json({ success: false, error: msg }, { status })
   }
 }
-
 
 
 

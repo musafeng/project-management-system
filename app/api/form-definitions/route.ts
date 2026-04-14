@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSystemManager } from '@/lib/api'
 
+export const dynamic = 'force-dynamic'
+
+
 // GET /api/form-definitions?code=xxx
 export async function GET(req: NextRequest) {
   try {

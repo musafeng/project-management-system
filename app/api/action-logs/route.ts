@@ -15,6 +15,9 @@ import { requireSystemManager } from '@/lib/api/auth'
 import { success, error as errorResponse } from '@/lib/api'
 import { getActionLogs, getActionLogsCount } from '@/lib/action-log'
 
+export const dynamic = 'force-dynamic'
+
+
 type ActionTypeValue = 'CREATE' | 'UPDATE' | 'DELETE'
 
 export async function GET(request: Request) {

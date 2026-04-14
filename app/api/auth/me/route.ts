@@ -7,9 +7,13 @@
  */
 
 import { apiHandler, success, BadRequestError } from '@/lib/api'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { getAuthCookie } from '@/lib/auth'
 import { getSystemUserRoleAndStatus, upsertSystemUserFromDingTalkUser, getSystemUserDeptInfo } from '@/lib/system-user'
 import { getUserDetail } from '@/lib/dingtalk'
+
+export const dynamic = 'force-dynamic'
+
 
 export const GET = apiHandler(async (req) => {
   try {
@@ -54,11 +58,14 @@ export const GET = apiHandler(async (req) => {
   } catch (error) {
     console.error('获取当前登录用户失败:', error)
 
+    if (error instanceof BadRequestError) {
+      throw error
+    }
+
     if (error instanceof Error) {
-      throw new BadRequestError(error.message)
+      throw new BadRequestError(toChineseErrorMessage(error.message))
     }
 
     throw new BadRequestError('获取用户信息失败')
   }
 })
-

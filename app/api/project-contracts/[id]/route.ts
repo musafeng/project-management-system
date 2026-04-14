@@ -2,6 +2,9 @@ import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, Conflict
 import { db } from '@/lib/db'
 import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 const handler = apiHandlerWithMethod({
   /**
    * GET /api/project-contracts/{id}

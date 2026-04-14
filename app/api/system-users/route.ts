@@ -8,6 +8,9 @@
 import { apiHandler, success, requireSystemManager } from '@/lib/api'
 import { getSystemUsers } from '@/lib/system-user'
 
+export const dynamic = 'force-dynamic'
+
+
 export const GET = apiHandler(async (req) => {
   try {
     await requireSystemManager()
@@ -18,4 +21,3 @@ export const GET = apiHandler(async (req) => {
     return success({ users: [], total: 0, error: error instanceof Error ? error.message : '未知错误' })
   }
 })
-

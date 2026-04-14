@@ -7,6 +7,9 @@ import {
   requireCurrentRegionId,
 } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 const handlers = apiHandlerWithPermissionAndLog({
   /**
    * GET /api/construction-approvals

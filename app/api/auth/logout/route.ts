@@ -8,6 +8,9 @@
 import { apiHandler, success } from '@/lib/api'
 import { clearAuthCookie } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
+
 export const POST = apiHandler(async (req) => {
   try {
     // 清除登录态 cookie
@@ -21,4 +24,3 @@ export const POST = apiHandler(async (req) => {
     throw error
   }
 })
-

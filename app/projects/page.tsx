@@ -20,6 +20,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { requestApi } from '@/lib/client-request'
 
 interface Project {
   id: string
@@ -47,12 +48,6 @@ interface Customer {
   contact: string | null
   phone: string | null
   createdAt: string
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
 }
 
 const PROJECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -149,40 +144,33 @@ export default function ProjectsPage() {
   }, [])
 
   const loadCustomers = async () => {
-    try {
-      setCustomersLoading(true)
-      const response = await fetch('/api/customers')
-      const result: ApiResponse<Customer[]> = await response.json()
-      if (result.success && result.data) setCustomers(result.data)
-      else console.error('加载客户列表失败:', result.error)
-    } catch (err) {
-      console.error('加载客户列表失败:', err)
-    } finally {
-      setCustomersLoading(false)
+    setCustomersLoading(true)
+    const result = await requestApi<Customer[]>('/api/customers', {
+      fallbackError: '加载客户列表失败，请稍后重试',
+    })
+    if (result.success && result.data) setCustomers(result.data)
+    else {
+      setCustomers([])
+      message.error(result.error || '加载客户列表失败，请稍后重试')
     }
+    setCustomersLoading(false)
   }
 
   const loadProjects = async (searchKeyword?: string, searchStatus?: string) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      if (searchKeyword) params.append('keyword', searchKeyword)
-      if (searchStatus) params.append('status', searchStatus)
-      const url = `/api/projects${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
-      const result: ApiResponse<Project[]> = await response.json()
-      if (result.success && result.data) setProjects(result.data)
-      else {
-        message.error(result.error || '数据加载失败')
-        setProjects([])
-      }
-    } catch (err) {
-      console.error('加载项目列表失败:', err)
-      message.error('数据加载失败，请检查网络连接')
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (searchKeyword) params.append('keyword', searchKeyword)
+    if (searchStatus) params.append('status', searchStatus)
+    const url = `/api/projects${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<Project[]>(url, {
+      fallbackError: '加载项目列表失败，请稍后重试',
+    })
+    if (result.success && result.data) setProjects(result.data)
+    else {
+      message.error(result.error || '加载项目列表失败，请稍后重试')
       setProjects([])
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -204,74 +192,62 @@ export default function ProjectsPage() {
   }
 
   const handleEditClick = async (id: string) => {
-    try {
-      const response = await fetch(`/api/projects/${id}`)
-      const result: ApiResponse<ProjectDetail> = await response.json()
-      if (result.success && result.data) {
-        setEditingId(id)
-        form.setFieldsValue({
-          name: result.data.name,
-          customerId: result.data.customerId,
-          budget: result.data.budget || undefined,
-          startDate: result.data.startDate ? dayjs(result.data.startDate) : undefined,
-          endDate: result.data.endDate ? dayjs(result.data.endDate) : undefined,
-          remark: result.data.remark || undefined,
-        })
-        setIsModalVisible(true)
-      } else {
-        message.error(result.error || '获取项目信息失败')
-      }
-    } catch (err) {
-      console.error('获取项目信息失败:', err)
-      message.error('获取项目信息失败')
+    const result = await requestApi<ProjectDetail>(`/api/projects/${id}`, {
+      fallbackError: '获取项目信息失败，请稍后重试',
+    })
+    if (result.success && result.data) {
+      setEditingId(id)
+      form.setFieldsValue({
+        name: result.data.name,
+        customerId: result.data.customerId,
+        budget: result.data.budget || undefined,
+        startDate: result.data.startDate ? dayjs(result.data.startDate) : undefined,
+        endDate: result.data.endDate ? dayjs(result.data.endDate) : undefined,
+        remark: result.data.remark || undefined,
+      })
+      setIsModalVisible(true)
+    } else {
+      message.error(result.error || '获取项目信息失败，请稍后重试')
     }
   }
 
   const handleDelete = async (id: string) => {
-    try {
-      const response = await fetch(`/api/projects/${id}`, { method: 'DELETE' })
-      const result: ApiResponse<any> = await response.json()
-      if (result.success) {
-        message.success('项目已删除')
-        loadProjects(keyword, status)
-      } else {
-        message.error(result.error || '删除失败')
-      }
-    } catch (err) {
-      console.error('删除项目失败:', err)
-      message.error('删除失败，请检查网络连接')
+    const result = await requestApi(`/api/projects/${id}`, {
+      method: 'DELETE',
+      fallbackError: '删除项目失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success('项目已删除')
+      loadProjects(keyword, status)
+    } else {
+      message.error(result.error || '删除项目失败，请稍后重试')
     }
   }
 
   const handleSubmit = async (values: any) => {
-    try {
-      const url = editingId ? `/api/projects/${editingId}` : '/api/projects'
-      const method = editingId ? 'PUT' : 'POST'
-      const payload = {
-        name: values.name,
-        customerId: values.customerId,
-        budget: values.budget || 0,
-        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
-        endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
-        remark: values.remark || null,
-      }
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const result: ApiResponse<any> = await response.json()
-      if (result.success) {
-        message.success(editingId ? '项目已更新' : '项目已创建')
-        setIsModalVisible(false)
-        form.resetFields()
-        loadProjects(keyword, status)
-      } else {
-        message.error(result.error || '操作失败')
-      }
-    } catch (err) {
-      console.error('提交表单失败:', err)
-      message.error('操作失败，请检查网络连接')
+    const url = editingId ? `/api/projects/${editingId}` : '/api/projects'
+    const method = editingId ? 'PUT' : 'POST'
+    const payload = {
+      name: values.name,
+      customerId: values.customerId,
+      budget: values.budget || 0,
+      startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
+      endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
+      remark: values.remark || null,
+    }
+    const result = await requestApi(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      fallbackError: editingId ? '更新项目失败，请稍后重试' : '创建项目失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success(editingId ? '项目已更新' : '项目已创建')
+      setIsModalVisible(false)
+      form.resetFields()
+      loadProjects(keyword, status)
+    } else {
+      message.error(result.error || (editingId ? '更新项目失败，请稍后重试' : '创建项目失败，请稍后重试'))
     }
   }
 

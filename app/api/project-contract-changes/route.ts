@@ -4,6 +4,9 @@ import { Prisma } from '@prisma/client'
 import { createProjectContractChangeRecord } from '@/lib/project-contract-changes'
 import { requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function toResponse(change: {
   id: string
   contractId: string

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Switch, Space, Tag, message } from 'antd'
 import { PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 
 interface Region {
   id: string
@@ -22,15 +23,16 @@ export default function RegionsPage() {
 
   const fetchRegions = async () => {
     setLoading(true)
-    try {
-      const res = await fetch('/api/regions', { credentials: 'include' })
-      const json = await res.json()
-      if (json.success) setRegions(json.data)
-    } catch {
-      message.error('加载区域列表失败')
-    } finally {
-      setLoading(false)
+    const result = await requestApi<Region[]>('/api/regions', {
+      credentials: 'include',
+      fallbackError: '加载区域列表失败，请稍后重试',
+    })
+    if (result.success) setRegions(result.data || [])
+    else {
+      setRegions([])
+      message.error(result.error || '加载区域列表失败，请稍后重试')
     }
+    setLoading(false)
   }
 
   useEffect(() => { fetchRegions() }, [])
@@ -50,51 +52,36 @@ export default function RegionsPage() {
   const handleSave = async () => {
     const values = await form.validateFields()
     setSaving(true)
-    try {
-      if (editingRegion) {
-        const res = await fetch(`/api/regions/${editingRegion.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(values),
-        })
-        const json = await res.json()
-        if (!json.success) throw new Error(json.error)
-        message.success('区域已更新')
-      } else {
-        const res = await fetch('/api/regions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(values),
-        })
-        const json = await res.json()
-        if (!json.success) throw new Error(json.error)
-        message.success('区域已创建')
-      }
+    const result = await requestApi(editingRegion ? `/api/regions/${editingRegion.id}` : '/api/regions', {
+      method: editingRegion ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(values),
+      fallbackError: editingRegion ? '更新区域失败，请稍后重试' : '创建区域失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success(editingRegion ? '区域已更新' : '区域已创建')
       setModalOpen(false)
       fetchRegions()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '操作失败')
-    } finally {
-      setSaving(false)
+    } else {
+      message.error(result.error || (editingRegion ? '更新区域失败，请稍后重试' : '创建区域失败，请稍后重试'))
     }
+    setSaving(false)
   }
 
   const toggleActive = async (region: Region) => {
-    try {
-      const res = await fetch(`/api/regions/${region.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ isActive: !region.isActive }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error)
+    const result = await requestApi(`/api/regions/${region.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ isActive: !region.isActive }),
+      fallbackError: '更新区域状态失败，请稍后重试',
+    })
+    if (result.success) {
       message.success(region.isActive ? '已停用' : '已启用')
       fetchRegions()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '操作失败')
+    } else {
+      message.error(result.error || '更新区域状态失败，请稍后重试')
     }
   }
 
@@ -173,8 +160,6 @@ export default function RegionsPage() {
     </div>
   )
 }
-
-
 
 
 

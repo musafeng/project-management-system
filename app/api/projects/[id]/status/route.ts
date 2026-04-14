@@ -2,6 +2,9 @@ import { apiHandler, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertDirectRecordInCurrentRegion } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * POST /api/projects/{id}/status
  * 更新项目状态

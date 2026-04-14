@@ -20,6 +20,7 @@ import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { requestApi } from '@/lib/client-request'
 
 const { Text } = Typography
 
@@ -66,12 +67,6 @@ interface Project {
   code: string
 }
 
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
 // ============================================================
 // 主页面
 // ============================================================
@@ -89,24 +84,33 @@ export default function ProjectContractsPage() {
   const watchedRetentionRate = Form.useWatch('retentionRate', form)
 
   const loadProjects = async () => {
-    const res = await fetch('/api/projects', { credentials: 'include' })
-    const j: ApiResponse<Project[]> = await res.json()
-    if (j.success) setProjects(j.data || [])
+    const result = await requestApi<Project[]>('/api/projects', {
+      credentials: 'include',
+      fallbackError: '加载项目列表失败，请稍后重试',
+    })
+    if (result.success) setProjects(result.data || [])
+    else {
+      setProjects([])
+      message.error(result.error || '加载项目列表失败，请稍后重试')
+    }
   }
 
   const loadContracts = async (filters: FilterValues = {}) => {
     setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (filters.keyword) params.set('keyword', filters.keyword as string)
-      if (filters.projectId) params.set('projectId', filters.projectId as string)
-      if (filters.status) params.set('status', filters.status as string)
-      const res = await fetch(`/api/project-contracts?${params}`, { credentials: 'include' })
-      const j: ApiResponse<ProjectContract[]> = await res.json()
-      if (j.success) setContracts(j.data || [])
-      else message.error(j.error || '加载失败')
-    } catch { message.error('网络错误') }
-    finally { setLoading(false) }
+    const params = new URLSearchParams()
+    if (filters.keyword) params.set('keyword', filters.keyword as string)
+    if (filters.projectId) params.set('projectId', filters.projectId as string)
+    if (filters.status) params.set('status', filters.status as string)
+    const result = await requestApi<ProjectContract[]>(`/api/project-contracts?${params}`, {
+      credentials: 'include',
+      fallbackError: '加载合同列表失败，请稍后重试',
+    })
+    if (result.success) setContracts(result.data || [])
+    else {
+      setContracts([])
+      message.error(result.error || '加载合同列表失败，请稍后重试')
+    }
+    setLoading(false)
   }
 
   useEffect(() => { loadProjects(); loadContracts() }, [])
@@ -132,61 +136,60 @@ export default function ProjectContractsPage() {
   }
 
   const handleEditClick = async (id: string) => {
-    try {
-      const res = await fetch(`/api/project-contracts/${id}`, { credentials: 'include' })
-      const j: ApiResponse<ProjectContractDetail> = await res.json()
-      if (j.success && j.data) {
-        setEditingId(id)
-        form.setFieldsValue({
-          name: j.data.name,
-          projectId: j.data.projectId,
-          contractAmount: j.data.contractAmount,
-          signDate: j.data.signDate ? dayjs(j.data.signDate) : undefined,
-          startDate: j.data.startDate ? dayjs(j.data.startDate) : undefined,
-          endDate: j.data.endDate ? dayjs(j.data.endDate) : undefined,
-          contractType: j.data.contractType || undefined,
-          paymentMethod: j.data.paymentMethod || undefined,
-          hasRetention: Boolean(j.data.hasRetention),
-          retentionRate: j.data.retentionRate ?? undefined,
-          retentionAmount: j.data.retentionAmount ?? undefined,
-          attachmentUrl: j.data.attachmentUrl || null,
-          remark: j.data.remark || undefined,
-        })
-        setModalOpen(true)
-      } else { message.error(j.error || '加载失败') }
-    } catch { message.error('网络错误') }
+    const result = await requestApi<ProjectContractDetail>(`/api/project-contracts/${id}`, {
+      credentials: 'include',
+      fallbackError: '加载合同详情失败，请稍后重试',
+    })
+    if (result.success && result.data) {
+      setEditingId(id)
+      form.setFieldsValue({
+        name: result.data.name,
+        projectId: result.data.projectId,
+        contractAmount: result.data.contractAmount,
+        signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
+        startDate: result.data.startDate ? dayjs(result.data.startDate) : undefined,
+        endDate: result.data.endDate ? dayjs(result.data.endDate) : undefined,
+        contractType: result.data.contractType || undefined,
+        paymentMethod: result.data.paymentMethod || undefined,
+        hasRetention: Boolean(result.data.hasRetention),
+        retentionRate: result.data.retentionRate ?? undefined,
+        retentionAmount: result.data.retentionAmount ?? undefined,
+        attachmentUrl: result.data.attachmentUrl || null,
+        remark: result.data.remark || undefined,
+      })
+      setModalOpen(true)
+    } else { message.error(result.error || '加载合同详情失败，请稍后重试') }
   }
 
   const handleDelete = async (id: string) => {
-    try {
-      const res = await fetch(`/api/project-contracts/${id}`, { method: 'DELETE', credentials: 'include' })
-      const j: ApiResponse<any> = await res.json()
-      if (j.success) { message.success('合同已删除'); loadContracts(lastFilter) }
-      else message.error(j.error || '删除失败')
-    } catch { message.error('网络错误') }
+    const result = await requestApi(`/api/project-contracts/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      fallbackError: '删除合同失败，请稍后重试',
+    })
+    if (result.success) { message.success('合同已删除'); loadContracts(lastFilter) }
+    else message.error(result.error || '删除合同失败，请稍后重试')
   }
 
   const handleSubmit = async (values: any) => {
-    try {
-      const url = editingId ? `/api/project-contracts/${editingId}` : '/api/project-contracts'
-      const res = await fetch(url, {
-        method: editingId ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...values,
-          signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
-          startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
-          endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
-        }),
-      })
-      const j: ApiResponse<any> = await res.json()
-      if (j.success) {
-        message.success(editingId ? '合同已更新' : '合同已创建')
-        setModalOpen(false); form.resetFields()
-        loadContracts(lastFilter)
-      } else { message.error(j.error || '操作失败') }
-    } catch { message.error('网络错误') }
+    const url = editingId ? `/api/project-contracts/${editingId}` : '/api/project-contracts'
+    const result = await requestApi(url, {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        ...values,
+        signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : null,
+        endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
+      }),
+      fallbackError: editingId ? '更新合同失败，请稍后重试' : '创建合同失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success(editingId ? '合同已更新' : '合同已创建')
+      setModalOpen(false); form.resetFields()
+      loadContracts(lastFilter)
+    } else { message.error(result.error || (editingId ? '更新合同失败，请稍后重试' : '创建合同失败，请稍后重试')) }
   }
 
   const handleFinishFailed = () => {

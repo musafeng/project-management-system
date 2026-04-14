@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function toResponse(payment: {
   id: string
   contractId: string

@@ -10,6 +10,9 @@ import { requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 import { SystemUserRole } from '@prisma/client'
 
+export const dynamic = 'force-dynamic'
+
+
 export async function PUT(
   req: Request,
   { params }: { params: { id: string } }
@@ -87,5 +90,4 @@ export async function PUT(
     return NextResponse.json({ success: false, error: '未知错误' }, { status: 500 })
   }
 }
-
 

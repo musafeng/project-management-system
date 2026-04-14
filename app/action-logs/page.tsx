@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Table, Input, Select, Button, Space, Spin, message, Card } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -33,6 +33,12 @@ interface PaginationInfo {
   totalPages: number
 }
 
+interface LogFilters {
+  keyword?: string
+  action?: string | undefined
+  resource?: string
+}
+
 /**
  * 操作日志页面
  */
@@ -54,21 +60,25 @@ export default function ActionLogsPage() {
   /**
    * 加载日志列表
    */
-  const loadLogs = async (page = 1) => {
+  const loadLogs = useCallback(async (page = 1, filters?: LogFilters) => {
+    const nextKeyword = filters && 'keyword' in filters ? filters.keyword ?? '' : keyword
+    const nextAction = filters && 'action' in filters ? filters.action : action
+    const nextResource = filters && 'resource' in filters ? filters.resource ?? '' : resource
+
     try {
       setLoading(true)
       const params = new URLSearchParams()
       params.append('page', page.toString())
       params.append('pageSize', '20')
 
-      if (keyword) {
-        params.append('keyword', keyword)
+      if (nextKeyword) {
+        params.append('keyword', nextKeyword)
       }
-      if (action) {
-        params.append('action', action)
+      if (nextAction) {
+        params.append('action', nextAction)
       }
-      if (resource) {
-        params.append('resource', resource)
+      if (nextResource) {
+        params.append('resource', nextResource)
       }
 
       const response = await fetch(`/api/action-logs?${params.toString()}`)
@@ -86,14 +96,14 @@ export default function ActionLogsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [action, keyword, resource])
 
   /**
    * 初始化加载
    */
   useEffect(() => {
     loadLogs(1)
-  }, [])
+  }, [loadLogs])
 
   /**
    * 处理查询
@@ -111,7 +121,7 @@ export default function ActionLogsPage() {
     setResource('')
     setPagination({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
     setLogs([])
-    loadLogs(1)
+    loadLogs(1, { keyword: '', action: undefined, resource: '' })
   }
 
   /**
@@ -298,4 +308,3 @@ export default function ActionLogsPage() {
     </div>
   )
 }
-

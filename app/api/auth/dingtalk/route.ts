@@ -7,9 +7,13 @@
  */
 
 import { apiHandler, success, BadRequestError } from '@/lib/api'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { getUserByCode } from '@/lib/dingtalk'
 import { setAuthCookie } from '@/lib/auth'
 import { upsertSystemUserFromDingTalkUser, getSystemUserRoleAndStatus, getSystemUserDeptInfo } from '@/lib/system-user'
+
+export const dynamic = 'force-dynamic'
+
 
 export const POST = apiHandler(async (req) => {
   try {
@@ -57,11 +61,14 @@ export const POST = apiHandler(async (req) => {
   } catch (error) {
     console.error('钉钉认证失败:', error)
 
-    if (error instanceof Error) {
-      throw new BadRequestError(`认证失败: ${error.message}`)
+    if (error instanceof BadRequestError) {
+      throw error
     }
 
-    throw new BadRequestError('认证失败: 未知错误')
+    if (error instanceof Error) {
+      throw new BadRequestError(`认证失败：${toChineseErrorMessage(error.message)}`)
+    }
+
+    throw new BadRequestError('认证失败：请稍后重试')
   }
 })
-

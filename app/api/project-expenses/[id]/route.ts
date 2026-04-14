@@ -12,6 +12,9 @@ import {
 } from '@/lib/region'
 import type { ExpenseCategory } from '@prisma/client'
 
+export const dynamic = 'force-dynamic'
+
+
 const ALLOWED_EXPENSE_TYPES = new Set(['辅料', '人工', '材料'])
 
 function mapExpenseCategory(type: string): ExpenseCategory {

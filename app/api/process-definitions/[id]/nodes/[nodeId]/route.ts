@@ -5,6 +5,9 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   PUT: async (req) => {
     await requireSystemManager()
@@ -58,5 +61,4 @@ export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   resource: 'process-definitions',
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-
 

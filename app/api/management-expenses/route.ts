@@ -7,6 +7,9 @@ import {
 import { db } from '@/lib/db'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function normalizeExpenseItems(items: unknown) {
   if (!Array.isArray(items)) return []
 

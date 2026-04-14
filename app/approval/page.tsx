@@ -11,6 +11,7 @@ import {
   SearchOutlined, CheckOutlined, CloseOutlined,
   EyeOutlined, RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
 } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 
 // ============================================================
 // TypeScript 类型
@@ -243,19 +244,21 @@ export default function ApprovalCenterPage() {
 
   const load = useCallback(async (t = tab, rt = resourceType, kw = keyword) => {
     setLoading(true)
-    try {
-      const params = new URLSearchParams({ tab: t })
-      if (rt) params.set('resourceType', rt)
-      if (kw) params.set('keyword', kw)
-      const res = await fetch(`/api/approval?${params}`, { credentials: 'include' })
-      const json = await res.json()
-      if (json.success) setItems(json.data.items)
-      else message.error(json.error || '加载失败')
-    } catch {
-      message.error('网络错误')
-    } finally {
-      setLoading(false)
+    const params = new URLSearchParams({ tab: t })
+    if (rt) params.set('resourceType', rt)
+    if (kw) params.set('keyword', kw)
+
+    const result = await requestApi<{ items: ApprovalItem[] }>(`/api/approval?${params}`, {
+      credentials: 'include',
+      fallbackError: '加载审批列表失败，请稍后重试',
+    })
+
+    if (result.success && result.data?.items) setItems(result.data.items)
+    else {
+      setItems([])
+      message.error(result.error || '加载审批列表失败，请稍后重试')
     }
+    setLoading(false)
   }, [tab, resourceType, keyword])
 
   useEffect(() => { load() }, [tab]) // eslint-disable-line
@@ -270,33 +273,30 @@ export default function ApprovalCenterPage() {
   // 审批通过
   const handleApprove = async (row: ApprovalItem) => {
     setActionLoading(true)
-    try {
-      const res = await fetch(`/api/${row.resourceType}/${row.resourceId}/approve`, {
-        method: 'POST', credentials: 'include',
-      })
-      const json = await res.json()
-      if (json.success) { message.success('审批通过'); load() }
-      else message.error(json.error || '操作失败')
-    } catch { message.error('网络错误') }
-    finally { setActionLoading(false) }
+    const result = await requestApi(`/api/${row.resourceType}/${row.resourceId}/approve`, {
+      method: 'POST',
+      credentials: 'include',
+      fallbackError: '审批失败，请稍后重试',
+    })
+    if (result.success) { message.success('审批通过'); load() }
+    else message.error(result.error || '审批失败，请稍后重试')
+    setActionLoading(false)
   }
 
   // 驳回确认
   const handleRejectConfirm = async () => {
     if (!rejectTarget) return
     setActionLoading(true)
-    try {
-      const res = await fetch(`/api/${rejectTarget.resourceType}/${rejectTarget.resourceId}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ reason: rejectReason }),
-      })
-      const json = await res.json()
-      if (json.success) { message.success('已驳回'); setRejectTarget(null); setRejectReason(''); load() }
-      else message.error(json.error || '操作失败')
-    } catch { message.error('网络错误') }
-    finally { setActionLoading(false) }
+    const result = await requestApi(`/api/${rejectTarget.resourceType}/${rejectTarget.resourceId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ reason: rejectReason }),
+      fallbackError: '驳回失败，请稍后重试',
+    })
+    if (result.success) { message.success('已驳回'); setRejectTarget(null); setRejectReason(''); load() }
+    else message.error(result.error || '驳回失败，请稍后重试')
+    setActionLoading(false)
   }
 
   // 撤回
@@ -306,14 +306,13 @@ export default function ApprovalCenterPage() {
       content: '撤回后该单据将回到草稿状态，需重新提交审批。',
       okText: '确认撤回', cancelText: '取消', okButtonProps: { danger: true },
       onOk: async () => {
-        try {
-          const res = await fetch(`/api/${row.resourceType}/${row.resourceId}/cancel`, {
-            method: 'POST', credentials: 'include',
-          })
-          const json = await res.json()
-          if (json.success) { message.success('已撤回'); load() }
-          else message.error(json.error || '操作失败')
-        } catch { message.error('网络错误') }
+        const result = await requestApi(`/api/${row.resourceType}/${row.resourceId}/cancel`, {
+          method: 'POST',
+          credentials: 'include',
+          fallbackError: '撤回失败，请稍后重试',
+        })
+        if (result.success) { message.success('已撤回'); load() }
+        else message.error(result.error || '撤回失败，请稍后重试')
       },
     })
   }

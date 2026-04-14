@@ -14,6 +14,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 
 interface SystemUser {
   id: string
@@ -67,45 +68,38 @@ export default function SystemUsersPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   const loadUsers = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch('/api/system-users', { credentials: 'include' })
-      const result = await res.json()
-      if (result.success && result.data?.users) {
-        setUsers(result.data.users)
-      } else {
-        message.error(result.error || '加载失败')
-      }
-    } catch (err) {
-      message.error('加载用户列表失败')
-    } finally {
-      setLoading(false)
+    setLoading(true)
+    const result = await requestApi<{ users: SystemUser[] }>('/api/system-users', {
+      credentials: 'include',
+      fallbackError: '加载用户列表失败，请稍后重试',
+    })
+    if (result.success && result.data?.users) {
+      setUsers(result.data.users)
+    } else {
+      setUsers([])
+      message.error(result.error || '加载用户列表失败，请稍后重试')
     }
+    setLoading(false)
   }
 
   useEffect(() => { loadUsers() }, [])
 
   const updateUser = async (id: string, payload: { role?: string; isActive?: boolean }) => {
-    try {
-      setUpdatingId(id)
-      const res = await fetch(`/api/system-users/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
-      const result = await res.json()
-      if (result.success) {
-        message.success('更新成功')
-        await loadUsers()
-      } else {
-        message.error(result.error || '更新失败')
-      }
-    } catch (err) {
-      message.error('操作失败，请检查网络')
-    } finally {
-      setUpdatingId(null)
+    setUpdatingId(id)
+    const result = await requestApi(`/api/system-users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '更新用户失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success('更新成功')
+      await loadUsers()
+    } else {
+      message.error(result.error || '更新用户失败，请稍后重试')
     }
+    setUpdatingId(null)
   }
 
   const columns: ColumnsType<SystemUser> = [
@@ -229,7 +223,6 @@ export default function SystemUsersPage() {
     </div>
   )
 }
-
 
 
 

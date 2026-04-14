@@ -15,6 +15,9 @@ import {
   serializeOtherPaymentRemark,
 } from '@/lib/other-payment-supplier'
 
+export const dynamic = 'force-dynamic'
+
+
 function getIdFromRequest(req: Request) {
   return new URL(req.url).pathname.split('/').pop() ?? ''
 }

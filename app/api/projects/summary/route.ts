@@ -12,6 +12,9 @@ import { db } from '@/lib/db'
 import { requireCurrentRegionId } from '@/lib/region'
 import { Prisma } from '@prisma/client'
 
+export const dynamic = 'force-dynamic'
+
+
 type ProjectWithCustomer = Prisma.ProjectGetPayload<{ include: { Customer: { select: { name: true } } } }>
 
 /**

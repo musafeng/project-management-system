@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSystemManager } from '@/lib/api'
 
+export const dynamic = 'force-dynamic'
+
+
 // PUT /api/form-definitions/[id]/fields/[fieldId]
 export async function PUT(
   req: NextRequest,

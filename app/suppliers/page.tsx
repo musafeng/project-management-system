@@ -14,6 +14,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 
 /**
  * 供应商数据类型
@@ -45,15 +46,6 @@ interface SupplierDetail extends Supplier {
 }
 
 /**
- * API 响应类型
- */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
-/**
  * 格式化日期
  */
 function formatDate(dateString: string): string {
@@ -77,28 +69,22 @@ export default function SuppliersPage() {
    * 加载供应商列表
    */
   const loadSuppliers = async (searchKeyword?: string) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      if (searchKeyword) params.append('keyword', searchKeyword)
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (searchKeyword) params.append('keyword', searchKeyword)
 
-      const url = `/api/suppliers${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
-      const result: ApiResponse<Supplier[]> = await response.json()
+    const url = `/api/suppliers${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<Supplier[]>(url, {
+      fallbackError: '加载供应商列表失败，请稍后重试',
+    })
 
-      if (result.success && result.data) {
-        setSuppliers(result.data)
-      } else {
-        message.error(result.error || '数据加载失败')
-        setSuppliers([])
-      }
-    } catch (err) {
-      console.error('加载供应商列表失败:', err)
-      message.error('数据加载失败，请检查网络连接')
+    if (result.success && result.data) {
+      setSuppliers(result.data)
+    } else {
+      message.error(result.error || '加载供应商列表失败，请稍后重试')
       setSuppliers([])
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   /**
@@ -136,29 +122,25 @@ export default function SuppliersPage() {
    * 打开编辑弹窗
    */
   const handleEditClick = async (id: string) => {
-    try {
-      const response = await fetch(`/api/suppliers/${id}`)
-      const result: ApiResponse<SupplierDetail> = await response.json()
+    const result = await requestApi<SupplierDetail>(`/api/suppliers/${id}`, {
+      fallbackError: '获取供应商信息失败，请稍后重试',
+    })
 
-      if (result.success && result.data) {
-        setEditingId(id)
-        form.setFieldsValue({
-          name: result.data.name,
-          contact: result.data.contact || undefined,
-          phone: result.data.phone || undefined,
-          address: result.data.address || undefined,
-          bankAccount: result.data.bankAccount || undefined,
-          bankName: result.data.bankName || undefined,
-          attachmentUrl: result.data.attachmentUrl || undefined,
-          remark: result.data.remark || undefined,
-        })
-        setIsModalVisible(true)
-      } else {
-        message.error(result.error || '获取供应商信息失败')
-      }
-    } catch (err) {
-      console.error('获取供应商信息失败:', err)
-      message.error('获取供应商信息失败')
+    if (result.success && result.data) {
+      setEditingId(id)
+      form.setFieldsValue({
+        name: result.data.name,
+        contact: result.data.contact || undefined,
+        phone: result.data.phone || undefined,
+        address: result.data.address || undefined,
+        bankAccount: result.data.bankAccount || undefined,
+        bankName: result.data.bankName || undefined,
+        attachmentUrl: result.data.attachmentUrl || undefined,
+        remark: result.data.remark || undefined,
+      })
+      setIsModalVisible(true)
+    } else {
+      message.error(result.error || '获取供应商信息失败，请稍后重试')
     }
   }
 
@@ -166,21 +148,16 @@ export default function SuppliersPage() {
    * 删除供应商
    */
   const handleDelete = async (id: string) => {
-    try {
-      const response = await fetch(`/api/suppliers/${id}`, {
-        method: 'DELETE',
-      })
-      const result: ApiResponse<any> = await response.json()
+    const result = await requestApi(`/api/suppliers/${id}`, {
+      method: 'DELETE',
+      fallbackError: '删除供应商失败，请稍后重试',
+    })
 
-      if (result.success) {
-        message.success('供应商已删除')
-        loadSuppliers(keyword)
-      } else {
-        message.error(result.error || '删除失败')
-      }
-    } catch (err) {
-      console.error('删除供应商失败:', err)
-      message.error('删除失败，请检查网络连接')
+    if (result.success) {
+      message.success('供应商已删除')
+      loadSuppliers(keyword)
+    } else {
+      message.error(result.error || '删除供应商失败，请稍后重试')
     }
   }
 
@@ -188,31 +165,25 @@ export default function SuppliersPage() {
    * 提交表单
    */
   const handleSubmit = async (values: any) => {
-    try {
-      const url = editingId ? `/api/suppliers/${editingId}` : '/api/suppliers'
-      const method = editingId ? 'PUT' : 'POST'
+    const url = editingId ? `/api/suppliers/${editingId}` : '/api/suppliers'
+    const method = editingId ? 'PUT' : 'POST'
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(values),
-      })
+    const result = await requestApi(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(values),
+      fallbackError: editingId ? '更新供应商失败，请稍后重试' : '创建供应商失败，请稍后重试',
+    })
 
-      const result: ApiResponse<any> = await response.json()
-
-      if (result.success) {
-        message.success(editingId ? '供应商已更新' : '供应商已创建')
-        setIsModalVisible(false)
-        form.resetFields()
-        loadSuppliers(keyword)
-      } else {
-        message.error(result.error || '操作失败')
-      }
-    } catch (err) {
-      console.error('提交表单失败:', err)
-      message.error('操作失败，请检查网络连接')
+    if (result.success) {
+      message.success(editingId ? '供应商已更新' : '供应商已创建')
+      setIsModalVisible(false)
+      form.resetFields()
+      loadSuppliers(keyword)
+    } else {
+      message.error(result.error || (editingId ? '更新供应商失败，请稍后重试' : '创建供应商失败，请稍后重试'))
     }
   }
 

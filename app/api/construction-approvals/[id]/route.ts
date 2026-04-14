@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 const handler = apiHandlerWithMethod({
   /**
    * GET /api/construction-approvals/{id}

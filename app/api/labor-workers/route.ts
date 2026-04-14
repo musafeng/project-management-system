@@ -8,6 +8,9 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError } from '@/lib/api'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * 生成劳务人员编码
  * 格式：LABW + 时间戳

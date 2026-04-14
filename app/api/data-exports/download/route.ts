@@ -4,6 +4,9 @@ import { exportToCsv } from '@/lib/data-export'
 import type { ExportFilter, ResourceType } from '@/lib/data-export'
 import { resolveRequestedRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 /**
  * GET /api/data-exports/download
  * 下载 CSV 文件流
@@ -52,5 +55,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: '下载失败' }, { status: 500 })
   }
 }
-
 

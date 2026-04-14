@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function normalizeDeductionItems(items: unknown) {
   if (!Array.isArray(items)) return []
 

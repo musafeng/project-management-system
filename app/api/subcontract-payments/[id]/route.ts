@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
+export const dynamic = 'force-dynamic'
+
+
 function toResponse(payment: {
   id: string
   contractId: string

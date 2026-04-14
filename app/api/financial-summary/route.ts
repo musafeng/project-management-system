@@ -8,6 +8,9 @@ import { db } from '@/lib/db'
 import { requireCurrentRegionId } from '@/lib/region'
 import { Decimal } from '@prisma/client/runtime/library'
 
+export const dynamic = 'force-dynamic'
+
+
 function toNum(v: Decimal | null | undefined) {
   return v ? Number(v) : 0
 }
