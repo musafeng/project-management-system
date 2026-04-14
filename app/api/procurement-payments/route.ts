@@ -1,4 +1,5 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
@@ -22,7 +23,7 @@ function toResponse(payment: {
   paymentDate: Date
   paymentMethod: string | null
   paymentNumber: string | null
-  attachmentUrl: string | null
+  attachmentUrl?: string | null
   approvalStatus: string
   status: string
   remark: string | null
@@ -66,6 +67,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (contractId) where.contractId = contractId
     if (projectId) where.projectId = projectId
 
+    const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
     const payments = await db.procurementPayment.findMany({
       where,
       select: {
@@ -86,7 +88,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentDate: true,
         paymentMethod: true,
         paymentNumber: true,
-        attachmentUrl: true,
+        ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
         status: true,
         remark: true,
@@ -95,7 +97,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       orderBy: { paymentDate: 'desc' },
     })
 
-    return success(payments.map(toResponse))
+    return success(payments.map((payment) => toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null })))
   },
 
   POST: async (req) => {
@@ -116,6 +118,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (!contract) throw new NotFoundError('采购合同不存在')
 
     const regionId = await requireCurrentRegionId()
+    const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
     const createData: Prisma.ProcurementPaymentUncheckedCreateInput = {
       id: crypto.randomUUID(),
       projectId: contract.projectId,
@@ -124,7 +127,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       paymentMethod: body.paymentMethod?.trim() || null,
       paymentNumber: body.paymentNumber?.trim() || null,
-      attachmentUrl: body.attachmentUrl?.trim() || null,
+      ...(supportsAttachmentUrl ? { attachmentUrl: body.attachmentUrl?.trim() || null } : {}),
       status: 'PAID',
       remark: body.remark?.trim() || null,
       regionId,

@@ -8,6 +8,7 @@
     "build:server": "NODE_OPTIONS=--max-old-space-size=1024 prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "prisma:generate": "prisma generate",
     "deploy:server": "bash scripts/deploy-server.sh"
   },

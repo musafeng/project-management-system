@@ -10,6 +10,7 @@ import {
   assertProjectScopedRecordInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import type { ExpenseCategory } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -73,18 +74,19 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const id = getIdFromRequest(req)
       const regionId = await requireCurrentRegionId()
+      const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
       const record = await db.projectExpense.findFirst({
         where: { id, Project: { regionId } },
         include: {
           Project: { select: { name: true } },
-          ConstructionApproval: { select: { name: true } },
+          ...(supportsConstructionId ? { ConstructionApproval: { select: { name: true } } } : {}),
         },
       })
       if (!record) throw new NotFoundError('记录不存在')
       return success({
         ...record,
         projectName: record.Project?.name ?? null,
-        constructionName: record.ConstructionApproval?.name ?? null,
+        constructionName: (record as any).ConstructionApproval?.name ?? null,
         expenseItems: record.expenseItems ? JSON.parse(record.expenseItems) : [],
       })
     },
@@ -94,6 +96,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const existing = await assertProjectScopedRecordInCurrentRegion('projectExpense', id)
       if (!existing) throw new NotFoundError('记录不存在')
+      const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
 
       const constructionId = String(body.constructionId ?? existing.constructionId ?? '').trim()
       if (!constructionId) throw new BadRequestError('施工立项为必填项')
@@ -120,7 +123,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         where: { id },
         data: {
           projectId: construction.projectId,
-          constructionId: construction.id,
+          ...(supportsConstructionId ? { constructionId: construction.id } : {}),
           submitter: body.submitter?.trim() ?? existing.submitter,
           category: items[0] ? mapExpenseCategory(items[0].type) : existing.category,
           expenseDate: body.expenseDate ? new Date(body.expenseDate) : existing.expenseDate,

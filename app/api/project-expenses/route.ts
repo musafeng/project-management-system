@@ -10,6 +10,7 @@ import {
   buildProjectRelationRegionWhere,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import type { ExpenseCategory } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -71,15 +72,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const projectId = searchParams.get('projectId')
       const regionId = await requireCurrentRegionId()
       const where: any = buildProjectRelationRegionWhere(regionId, projectId || undefined)
+      const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
 
       const records = await db.projectExpense.findMany({
         where,
         select: {
           id: true,
           projectId: true,
-          constructionId: true,
           Project: { select: { name: true } },
-          ConstructionApproval: { select: { name: true } },
+          ...(supportsConstructionId ? { constructionId: true } : {}),
+          ...(supportsConstructionId ? { ConstructionApproval: { select: { name: true } } } : {}),
           submitter: true,
           totalAmount: true,
           expenseItems: true,
@@ -96,7 +98,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         records.map((record) => ({
           ...record,
           projectName: record.Project?.name,
-          constructionName: record.ConstructionApproval?.name ?? null,
+          constructionName: (record as any).ConstructionApproval?.name ?? null,
           expenseItems: record.expenseItems ? JSON.parse(record.expenseItems) : [],
         }))
       )
@@ -119,6 +121,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         throw new BadRequestError('施工立项与项目不匹配')
       }
 
+      const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
       const totalAmount = items.reduce(
         (sum: number, item: { type: string; amount: number }) => sum + item.amount,
         0
@@ -128,7 +131,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         data: {
           id: crypto.randomUUID(),
           projectId: construction.projectId,
-          constructionId: construction.id,
+          ...(supportsConstructionId ? { constructionId: construction.id } : {}),
           category: mapExpenseCategory(items[0].type),
           expenseAmount: totalAmount,
           expenseDate: new Date(body.expenseDate),
@@ -140,6 +143,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           approvalStatus: 'PENDING',
           updatedAt: new Date(),
         },
+        select: { id: true },
       })
       return success(record)
     },

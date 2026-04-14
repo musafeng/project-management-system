@@ -6,6 +6,7 @@ import { cookies } from 'next/headers'
 import { checkAuth, isSystemManager, type AuthenticatedUser } from '@/lib/api/auth'
 import { ForbiddenError, NotFoundError } from '@/lib/api/errors'
 import { db } from './db'
+import { getDbTableColumns } from './db-column-compat'
 
 const REGION_COOKIE = 'current_region_id'
 const REGION_COOKIE_MAX_AGE = 365 * 24 * 60 * 60
@@ -65,6 +66,29 @@ const RESOURCE_TYPE_TO_MODEL: Record<string, DirectRegionModel> = {
 
 const RESOURCE_TYPE_TO_PROJECT_MODEL: Record<string, ProjectScopedModel> = {
   'project-expenses': 'projectExpense',
+}
+
+const DIRECT_MODEL_TABLE_MAP: Record<DirectRegionModel, string> = {
+  project: 'Project',
+  projectContract: 'ProjectContract',
+  projectContractChange: 'ProjectContractChange',
+  constructionApproval: 'ConstructionApproval',
+  contractReceipt: 'ContractReceipt',
+  procurementContract: 'ProcurementContract',
+  procurementPayment: 'ProcurementPayment',
+  laborContract: 'LaborContract',
+  laborPayment: 'LaborPayment',
+  subcontractContract: 'SubcontractContract',
+  subcontractPayment: 'SubcontractPayment',
+  managementExpense: 'ManagementExpense',
+  otherPayment: 'OtherPayment',
+  otherReceipt: 'OtherReceipt',
+  pettyCash: 'PettyCash',
+  salesExpense: 'SalesExpense',
+}
+
+const PROJECT_SCOPED_MODEL_TABLE_MAP: Record<ProjectScopedModel, string> = {
+  projectExpense: 'ProjectExpense',
 }
 
 async function getDefaultRegion(): Promise<RegionLite | null> {
@@ -266,8 +290,11 @@ export async function assertDirectRecordInCurrentRegion(
   id: string
 ) {
   const regionId = await requireCurrentRegionId()
+  const columns = await getDbTableColumns(DIRECT_MODEL_TABLE_MAP[model])
+  const select = Object.fromEntries(Array.from(columns).map((column) => [column, true]))
   const record = await (db[model] as any).findFirst({
-    where: { id, regionId },
+    where: columns.has('regionId') ? { id, regionId } : { id },
+    select,
   })
   if (!record) {
     throw new NotFoundError('记录不存在或不属于当前区域')
@@ -280,11 +307,14 @@ export async function assertProjectScopedRecordInCurrentRegion(
   id: string
 ) {
   const regionId = await requireCurrentRegionId()
+  const columns = await getDbTableColumns(PROJECT_SCOPED_MODEL_TABLE_MAP[model])
+  const select = Object.fromEntries(Array.from(columns).map((column) => [column, true]))
   const record = await (db[model] as any).findFirst({
     where: {
       id,
       Project: { regionId },
     },
+    select,
   })
   if (!record) {
     throw new NotFoundError('记录不存在或不属于当前区域')

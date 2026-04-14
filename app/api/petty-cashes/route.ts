@@ -4,6 +4,7 @@ import {
   NotFoundError,
   success,
 } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -15,16 +16,17 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
-      const regionId = await requireCurrentRegionId()
+      const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
       const records = await db.pettyCash.findMany({
         where: {
-          regionId,
+          ...(supportsRegionId ? { regionId } : {}),
           ...(projectId ? { projectId } : {}),
         },
         select: {
           id: true,
-          regionId: true,
+          ...(supportsRegionId ? { regionId: true } : {}),
           projectId: true,
           Project: { select: { name: true } },
           holder: true,
@@ -52,7 +54,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
 
     POST: async (req) => {
       const body = await req.json()
-      const regionId = await requireCurrentRegionId()
+      const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const projectId = String(body.projectId ?? '').trim() || null
       const holder = String(body.holder ?? '').trim()
       const issueDate = String(body.issueDate ?? '').trim()
@@ -71,7 +74,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const record = await db.pettyCash.create({
         data: {
           id: crypto.randomUUID(),
-          regionId,
+          ...(supportsRegionId ? { regionId } : {}),
           projectId,
           holder,
           applyReason: String(body.applyReason ?? '').trim() || null,
@@ -83,6 +86,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           status: 'ISSUED',
           updatedAt: now,
         },
+        select: { id: true },
       })
 
       return success(record)

@@ -1,4 +1,5 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
@@ -22,7 +23,7 @@ function toResponse(payment: {
   paymentDate: Date
   paymentMethod: string | null
   paymentNumber: string | null
-  attachmentUrl: string | null
+  attachmentUrl?: string | null
   approvalStatus?: string
   status: string
   remark: string | null
@@ -65,6 +66,7 @@ const handler = apiHandlerWithMethod({
 
     const regionId = await requireCurrentRegionId()
 
+    const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
     const payment = await db.procurementPayment.findFirst({
       where: { id, regionId },
       select: {
@@ -85,7 +87,7 @@ const handler = apiHandlerWithMethod({
         paymentDate: true,
         paymentMethod: true,
         paymentNumber: true,
-        attachmentUrl: true,
+        ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
         status: true,
         remark: true,
@@ -98,7 +100,7 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    return success(toResponse(payment))
+    return success(toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null }))
   },
 
   DELETE: async (req) => {

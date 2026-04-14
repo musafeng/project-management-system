@@ -4,6 +4,7 @@ import {
   NotFoundError,
   success,
 } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -16,8 +17,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
       const keyword = searchParams.get('keyword')
-      const regionId = await requireCurrentRegionId()
-      const where: any = { regionId }
+      const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
+      const where: any = supportsRegionId ? { regionId } : {}
 
       if (projectId) where.projectId = projectId
       if (keyword) where.receiptType = { contains: keyword }
@@ -28,7 +30,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           id: true,
           projectId: true,
           Project: { select: { name: true } },
-          regionId: true,
+          ...(supportsRegionId ? { regionId: true } : {}),
           receiptType: true,
           receiptAmount: true,
           receiptDate: true,
@@ -51,7 +53,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
 
     POST: async (req) => {
       const body = await req.json()
-      const regionId = await requireCurrentRegionId()
+      const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const projectId = String(body.projectId ?? '').trim() || null
       const receiptType = String(body.receiptType ?? '').trim()
       const receiptDate = String(body.receiptDate ?? '').trim()
@@ -71,7 +74,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         data: {
           id: crypto.randomUUID(),
           projectId,
-          regionId,
+          ...(supportsRegionId ? { regionId } : {}),
           receiptType,
           receiptAmount,
           receiptDate: new Date(receiptDate),
@@ -80,6 +83,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           remark: String(body.remark ?? '').trim() || null,
           updatedAt: now,
         },
+        select: { id: true },
       })
 
       return success(record)

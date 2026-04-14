@@ -1,4 +1,5 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import {
@@ -9,6 +10,43 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+async function resolveSubcontractAssignee(workerId: string) {
+  const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
+  if (supportsWorkerId) {
+    return { workerId, vendorId: null as string | null }
+  }
+
+  const compatCode = `LW-${workerId}`
+  const existingVendor = await db.subcontractVendor.findFirst({
+    where: { code: compatCode },
+    select: { id: true },
+  })
+  if (existingVendor) {
+    return { workerId: null as string | null, vendorId: existingVendor.id }
+  }
+
+  const worker = await db.laborWorker.findUnique({
+    where: { id: workerId },
+    select: { name: true, phone: true, bankAccount: true, bankName: true },
+  })
+  if (!worker) throw new NotFoundError('分包人员不存在')
+
+  const vendor = await db.subcontractVendor.create({
+    data: {
+      id: crypto.randomUUID(),
+      code: compatCode,
+      name: worker.name,
+      phone: worker.phone,
+      bankAccount: worker.bankAccount,
+      bankName: worker.bankName,
+      updatedAt: new Date(),
+    },
+    select: { id: true },
+  })
+
+  return { workerId: null as string | null, vendorId: vendor.id }
+}
+
 
 function toResponse(contract: {
   id: string
@@ -16,7 +54,7 @@ function toResponse(contract: {
   name: string
   projectId: string
   constructionId: string
-  workerId: string | null
+  workerId?: string | null
   vendorId: string | null
   Project: { name: string }
   ConstructionApproval: { name: string }
@@ -85,6 +123,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
 
+    const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const contracts = await db.subcontractContract.findMany({
       where,
       select: {
@@ -93,11 +132,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         name: true,
         projectId: true,
         constructionId: true,
-        workerId: true,
+        ...(supportsWorkerId ? { workerId: true } : {}),
         vendorId: true,
         Project: { select: { name: true } },
         ConstructionApproval: { select: { name: true } },
-        LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        ...(supportsWorkerId ? { LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } } : {}),
         SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         payableAmount: true,
@@ -113,7 +152,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       orderBy: { createdAt: 'desc' },
     })
 
-    return success(contracts.map(toResponse))
+    return success(contracts.map((contract) => toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null })))
   },
 
   POST: async (req) => {
@@ -154,6 +193,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
     })
     if (!worker) throw new NotFoundError('分包人员不存在')
+    const assignee = await resolveSubcontractAssignee(workerId)
+    const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
 
     const code = `SUB${Date.now()}`
 
@@ -164,8 +205,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       name: body.name.trim(),
       projectId: body.projectId,
       constructionId: body.constructionId,
-      workerId,
-      vendorId: null,
+      ...(assignee.workerId ? { workerId: assignee.workerId } : {}),
+      ...(assignee.vendorId ? { vendorId: assignee.vendorId } : {}),
       contractAmount,
       changedAmount: 0,
       payableAmount: contractAmount,
@@ -187,11 +228,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         name: true,
         projectId: true,
         constructionId: true,
-        workerId: true,
+        ...(supportsWorkerId ? { workerId: true } : {}),
         vendorId: true,
         Project: { select: { name: true } },
         ConstructionApproval: { select: { name: true } },
-        LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        ...(supportsWorkerId ? { LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } } : {}),
         SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         payableAmount: true,
@@ -206,7 +247,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    return success(toResponse(contract))
+    return success(toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null }))
   },
 }, {
   resource: 'subcontract-contracts',

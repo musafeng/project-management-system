@@ -1,4 +1,5 @@
 import { apiHandlerWithPermissionAndLog, success } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { createProjectContractChangeRecord } from '@/lib/project-contract-changes'
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 function toResponse(change: {
   id: string
   contractId: string
-  regionId: string | null
+  regionId?: string | null
   changeDate: Date | null
   changeType: string
   changeAmount: Prisma.Decimal | number
@@ -60,9 +61,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const contractId = searchParams.get('contractId')
       const projectId = searchParams.get('projectId')
 
-      const regionId = await requireCurrentRegionId()
+      const supportsRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const where: any = {}
-      where.regionId = regionId
+      if (supportsRegionId) where.regionId = regionId
       if (contractId) where.contractId = contractId
       if (projectId) {
         where.ProjectContract = { projectId }
@@ -73,7 +75,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         select: {
           id: true,
           contractId: true,
-          regionId: true,
+          ...(supportsRegionId ? { regionId: true } : {}),
           changeDate: true,
           changeType: true,
           changeAmount: true,

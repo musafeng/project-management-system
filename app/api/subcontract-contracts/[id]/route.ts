@@ -1,4 +1,5 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import {
@@ -10,6 +11,43 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+async function resolveSubcontractAssignee(workerId: string) {
+  const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
+  if (supportsWorkerId) {
+    return { workerId, vendorId: null as string | null }
+  }
+
+  const compatCode = `LW-${workerId}`
+  const existingVendor = await db.subcontractVendor.findFirst({
+    where: { code: compatCode },
+    select: { id: true },
+  })
+  if (existingVendor) {
+    return { workerId: null as string | null, vendorId: existingVendor.id }
+  }
+
+  const worker = await db.laborWorker.findUnique({
+    where: { id: workerId },
+    select: { name: true, phone: true, bankAccount: true, bankName: true },
+  })
+  if (!worker) throw new NotFoundError('分包人员不存在')
+
+  const vendor = await db.subcontractVendor.create({
+    data: {
+      id: crypto.randomUUID(),
+      code: compatCode,
+      name: worker.name,
+      phone: worker.phone,
+      bankAccount: worker.bankAccount,
+      bankName: worker.bankName,
+      updatedAt: new Date(),
+    },
+    select: { id: true },
+  })
+
+  return { workerId: null as string | null, vendorId: vendor.id }
+}
+
 
 function toResponse(contract: {
   id: string
@@ -17,7 +55,7 @@ function toResponse(contract: {
   name: string
   projectId: string
   constructionId: string
-  workerId: string | null
+  workerId?: string | null
   vendorId: string | null
   Project: { id: string; name: string }
   ConstructionApproval: { id: string; name: string }
@@ -90,6 +128,7 @@ const handler = apiHandlerWithMethod({
     if (!id) throw new BadRequestError('缺少合同 ID')
 
     const regionId = await requireCurrentRegionId()
+    const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const contract = await db.subcontractContract.findFirst({
       where: { id, regionId },
       select: {
@@ -98,11 +137,11 @@ const handler = apiHandlerWithMethod({
         name: true,
         projectId: true,
         constructionId: true,
-        workerId: true,
+        ...(supportsWorkerId ? { workerId: true } : {}),
         vendorId: true,
         Project: { select: { id: true, name: true } },
         ConstructionApproval: { select: { id: true, name: true } },
-        LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        ...(supportsWorkerId ? { LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } } : {}),
         SubcontractVendor: { select: { id: true, name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         changedAmount: true,
@@ -123,7 +162,7 @@ const handler = apiHandlerWithMethod({
 
     if (!contract) throw new NotFoundError('分包合同不存在')
 
-    return success(toResponse(contract))
+    return success(toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null }))
   },
 
   PUT: async (req) => {
@@ -163,6 +202,7 @@ const handler = apiHandlerWithMethod({
       select: { id: true },
     })
     if (!worker) throw new NotFoundError('分包人员不存在')
+    const assignee = await resolveSubcontractAssignee(workerId)
 
     const contractAmount =
       body.contractAmount === undefined
@@ -182,8 +222,8 @@ const handler = apiHandlerWithMethod({
     const updateData: any = {
       projectId,
       constructionId,
-      workerId,
-      vendorId: null,
+      ...(assignee.workerId ? { workerId: assignee.workerId } : {}),
+      ...(assignee.vendorId ? { vendorId: assignee.vendorId } : {}),
       contractAmount,
       changedAmount,
       payableAmount,
@@ -227,11 +267,13 @@ const handler = apiHandlerWithMethod({
         name: true,
         projectId: true,
         constructionId: true,
-        workerId: true,
+        ...(await hasDbColumn('SubcontractContract', 'workerId') ? { workerId: true } : {}),
         vendorId: true,
         Project: { select: { id: true, name: true } },
         ConstructionApproval: { select: { id: true, name: true } },
-        LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+        ...(await hasDbColumn('SubcontractContract', 'workerId')
+          ? { LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } }
+          : {}),
         SubcontractVendor: { select: { id: true, name: true, phone: true, bankAccount: true, bankName: true } },
         contractAmount: true,
         changedAmount: true,
@@ -250,7 +292,7 @@ const handler = apiHandlerWithMethod({
       },
     })
 
-    return success(toResponse(contract))
+    return success(toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null }))
   },
 
   DELETE: async (req) => {

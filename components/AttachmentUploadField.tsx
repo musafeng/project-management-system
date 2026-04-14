@@ -98,10 +98,9 @@ export default function AttachmentUploadField({
         multiple
         beforeUpload={handleUpload}
         showUploadList={false}
-        disabled={uploading}
         accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
       >
-        <Button icon={<UploadOutlined />} loading={uploading}>
+        <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled}>
           {uploading ? '上传中...' : '选择文件'}
         </Button>
       </Upload>

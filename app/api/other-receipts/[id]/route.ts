@@ -10,6 +10,7 @@ import {
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { hasDbColumn } from '@/lib/db-column-compat'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,9 +23,10 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
   {
     GET: async (req) => {
       const id = getIdFromRequest(req)
-      const regionId = await requireCurrentRegionId()
+      const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
+      const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const record = await db.otherReceipt.findFirst({
-        where: { id, regionId },
+        where: supportsRegionId ? { id, regionId } : { id },
         include: { Project: { select: { name: true } } },
       })
 

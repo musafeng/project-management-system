@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const now = new Date()
     const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_')
-    const ossKey = `attachments/${yearMonth}/${Date.now()}-${safeName}`
+    const ossKey = `attachments/${yearMonth}/${Date.now()}-${crypto.randomUUID()}-${safeName}`
 
     const client = getOssClient()
     const buffer = Buffer.from(await file.arrayBuffer())

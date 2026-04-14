@@ -1,32 +1,36 @@
 import { BadRequestError, NotFoundError } from './api'
+import { getDbTableColumns, hasDbColumn } from './db-column-compat'
 import { db } from './db'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from './region'
 
-export const PROJECT_CONTRACT_CHANGE_SELECT = {
-  id: true,
-  contractId: true,
-  regionId: true,
-  changeDate: true,
-  changeType: true,
-  changeAmount: true,
-  increaseAmount: true,
-  originalAmount: true,
-  totalAmount: true,
-  attachmentUrl: true,
-  remark: true,
-  approvalStatus: true,
-  approvedAt: true,
-  rejectedReason: true,
-  ProjectContract: {
-    select: {
-      code: true,
-      name: true,
-      projectId: true,
-      Project: { select: { name: true } },
+async function getProjectContractChangeSelect() {
+  const columns = await getDbTableColumns('ProjectContractChange')
+  return {
+    id: true,
+    contractId: true,
+    ...(columns.has('regionId') ? { regionId: true } : {}),
+    changeDate: true,
+    changeType: true,
+    changeAmount: true,
+    increaseAmount: true,
+    originalAmount: true,
+    totalAmount: true,
+    attachmentUrl: true,
+    remark: true,
+    approvalStatus: true,
+    approvedAt: true,
+    rejectedReason: true,
+    ProjectContract: {
+      select: {
+        code: true,
+        name: true,
+        projectId: true,
+        Project: { select: { name: true } },
+      },
     },
-  },
-  createdAt: true,
-} as const
+    createdAt: true,
+  } as const
+}
 
 export async function createProjectContractChangeRecord(input: {
   contractId: string
@@ -52,13 +56,14 @@ export async function createProjectContractChangeRecord(input: {
 
   const originalAmount = Number(contract.contractAmount)
   const totalAmount = originalAmount + increaseAmount
-  const regionId = await requireCurrentRegionId()
+  const supportsRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
+  const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
   return db.projectContractChange.create({
     data: {
       id: crypto.randomUUID(),
       contractId,
-      regionId: regionId ?? undefined,
+      ...(supportsRegionId ? { regionId: regionId ?? undefined } : {}),
       changeDate: new Date(changeDate),
       changeType: 'INCREASE',
       changeAmount: increaseAmount,
@@ -71,7 +76,7 @@ export async function createProjectContractChangeRecord(input: {
       approvalStatus: 'APPROVED',
       updatedAt: new Date(),
     },
-    select: PROJECT_CONTRACT_CHANGE_SELECT,
+    select: await getProjectContractChangeSelect(),
   })
 }
 

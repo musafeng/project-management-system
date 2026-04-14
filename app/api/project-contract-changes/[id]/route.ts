@@ -1,4 +1,5 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { assertDirectRecordInCurrentRegion } from '@/lib/region'
 
@@ -24,7 +25,7 @@ function assertEditableChange(change: {
 function toResponse(change: {
   id: string
   contractId: string
-  regionId: string | null
+  regionId?: string | null
   changeDate: Date | null
   changeType: string
   changeAmount: any
@@ -73,13 +74,14 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
   {
     GET: async (req) => {
       const id = getIdFromRequest(req)
+      const supportsRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
       await assertDirectRecordInCurrentRegion('projectContractChange', id)
       const row = await db.projectContractChange.findFirst({
         where: { id },
         select: {
           id: true,
           contractId: true,
-          regionId: true,
+          ...(supportsRegionId ? { regionId: true } : {}),
           changeDate: true,
           changeType: true,
           changeAmount: true,
@@ -160,7 +162,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         select: {
           id: true,
           contractId: true,
-          regionId: true,
+          ...(await hasDbColumn('ProjectContractChange', 'regionId') ? { regionId: true } : {}),
           changeDate: true,
           changeType: true,
           changeAmount: true,
