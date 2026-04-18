@@ -33,16 +33,24 @@ export type ApprovalModel =
   | 'subcontractContract'
   | 'subcontractPayment'
 
-/** 各模块 submit 允许的角色（保留，用于提交权限） */
+/** 各模块 submit 允许的角色。与当前业务菜单保持一致，避免创建后无法提交审批。 */
+const ALL_SUBMIT_ROLES: SystemUserRole[] = [
+  'ADMIN',
+  'PROJECT_MANAGER',
+  'FINANCE',
+  'PURCHASE',
+  'STAFF',
+] as SystemUserRole[]
+
 export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
-  constructionApproval: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
-  projectContractChange: ['FINANCE', 'ADMIN'] as SystemUserRole[],
-  procurementContract: ['PURCHASE', 'ADMIN'] as SystemUserRole[],
-  procurementPayment: ['FINANCE', 'PURCHASE', 'ADMIN'] as SystemUserRole[],
-  laborContract: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
-  laborPayment: ['FINANCE', 'PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
-  subcontractContract: ['PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
-  subcontractPayment: ['FINANCE', 'PROJECT_MANAGER', 'ADMIN'] as SystemUserRole[],
+  constructionApproval: ALL_SUBMIT_ROLES,
+  projectContractChange: ALL_SUBMIT_ROLES,
+  procurementContract: ALL_SUBMIT_ROLES,
+  procurementPayment: ALL_SUBMIT_ROLES,
+  laborContract: ALL_SUBMIT_ROLES,
+  laborPayment: ALL_SUBMIT_ROLES,
+  subcontractContract: ALL_SUBMIT_ROLES,
+  subcontractPayment: ALL_SUBMIT_ROLES,
 }
 
 /** 各模块资源类型（对应 ProcessDefinition.resourceType） */

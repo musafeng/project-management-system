@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button, Tag, Modal, Input, Space, message } from 'antd'
 import { CheckOutlined, CloseOutlined, SendOutlined } from '@ant-design/icons'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 
 /**
  * 审批状态 Tag
@@ -15,6 +16,12 @@ export function ApprovalStatusTag({ status }: { status: string }) {
   }
   const c = config[status] || { color: 'default', label: status }
   return <Tag color={c.color}>{c.label}</Tag>
+}
+
+function getFriendlyActionErrorMessage(input: unknown, fallback: string) {
+  const text = typeof input === 'string' ? input : input instanceof Error ? input.message : ''
+  const translated = toChineseErrorMessage(text)
+  return /[\u4e00-\u9fa5]/.test(translated) ? translated : fallback
 }
 
 /**
@@ -77,8 +84,8 @@ export function ApprovalActions({
         credentials: 'include',
         body: body ? JSON.stringify(body) : undefined,
       })
-      const result = await res.json()
-      if (result.success) {
+      const result = await res.json().catch(() => null)
+      if (result && typeof result === 'object' && 'success' in result && result.success) {
         const labels: Record<string, string> = {
           submit: '已提交审批',
           approve: '审批通过',
@@ -87,10 +94,14 @@ export function ApprovalActions({
         message.success(labels[action] || '操作成功')
         onSuccess()
       } else {
-        message.error(result.error || '操作失败')
+        const rawError =
+          result && typeof result === 'object' && 'error' in result
+            ? (result as { error?: unknown }).error
+            : res.statusText
+        message.error(getFriendlyActionErrorMessage(rawError, '操作失败，请稍后重试'))
       }
-    } catch {
-      message.error('操作失败，请检查网络')
+    } catch (error) {
+      message.error(getFriendlyActionErrorMessage(error, '操作失败，请检查网络'))
     } finally {
       setLoading(null)
     }

@@ -5,6 +5,7 @@
  */
 
 import { db } from '@/lib/db'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { summarizeAttachmentUrls } from '@/lib/attachments'
 
 export type ResourceType =
@@ -238,8 +239,9 @@ async function exportProjectContracts(f: ExportFilter) {
 }
 
 async function exportProjectContractChanges(f: ExportFilter) {
+  const supportsRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
   const where: Record<string, any> = {}
-  if (f.regionId) where.regionId = f.regionId
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') {
     where.approvalStatus = f.approvalStatus
   }
@@ -258,7 +260,7 @@ async function exportProjectContractChanges(f: ExportFilter) {
           Project: { select: { code: true, name: true } },
         },
       },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ changeDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -329,14 +331,20 @@ async function exportContractReceipts(f: ExportFilter) {
 }
 
 async function exportOtherReceipts(f: ExportFilter) {
-  const where = buildDirectRegionWhere(f)
+  const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
+  const where: Record<string, any> = {}
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
   applyDateRange(where, f, 'receiptDate')
 
   const rows = await db.otherReceipt.findMany({
     where,
     include: {
       Project: { select: { name: true, code: true } },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -398,8 +406,9 @@ async function exportProjectExpenses(f: ExportFilter) {
 }
 
 async function exportManagementExpenses(f: ExportFilter) {
+  const supportsRegionId = await hasDbColumn('ManagementExpense', 'regionId')
   const where: Record<string, any> = {}
-  if (f.regionId) where.regionId = f.regionId
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') {
     where.approvalStatus = f.approvalStatus
@@ -410,7 +419,7 @@ async function exportManagementExpenses(f: ExportFilter) {
     where,
     include: {
       Project: { select: { name: true, code: true } },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -434,8 +443,9 @@ async function exportManagementExpenses(f: ExportFilter) {
 }
 
 async function exportSalesExpenses(f: ExportFilter) {
+  const supportsRegionId = await hasDbColumn('SalesExpense', 'regionId')
   const where: Record<string, any> = {}
-  if (f.regionId) where.regionId = f.regionId
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
   if (f.projectId) where.projectId = f.projectId
   if (f.approvalStatus && f.approvalStatus !== 'ALL') {
     where.approvalStatus = f.approvalStatus
@@ -446,7 +456,7 @@ async function exportSalesExpenses(f: ExportFilter) {
     where,
     include: {
       Project: { select: { name: true, code: true } },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -470,14 +480,20 @@ async function exportSalesExpenses(f: ExportFilter) {
 }
 
 async function exportOtherPayments(f: ExportFilter) {
-  const where = buildDirectRegionWhere(f)
+  const supportsRegionId = await hasDbColumn('OtherPayment', 'regionId')
+  const where: Record<string, any> = {}
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
   applyDateRange(where, f, 'paymentDate')
 
   const rows = await db.otherPayment.findMany({
     where,
     include: {
       Project: { select: { name: true, code: true } },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -714,14 +730,20 @@ async function exportProjects(f: ExportFilter) {
 }
 
 async function exportPettyCashes(f: ExportFilter) {
-  const where = buildDirectRegionWhere(f)
+  const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
+  const where: Record<string, any> = {}
+  if (supportsRegionId && f.regionId) where.regionId = f.regionId
+  if (f.projectId) where.projectId = f.projectId
+  if (f.approvalStatus && f.approvalStatus !== 'ALL') {
+    where.approvalStatus = f.approvalStatus
+  }
   applyDateRange(where, f, 'issueDate')
 
   const rows = await db.pettyCash.findMany({
     where,
     include: {
       Project: { select: { name: true, code: true } },
-      Region: { select: { name: true } },
+      ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
   })

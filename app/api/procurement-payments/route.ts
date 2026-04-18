@@ -153,7 +153,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentDate: true,
         paymentMethod: true,
         paymentNumber: true,
-        attachmentUrl: true,
+        ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
         status: true,
         remark: true,
@@ -172,7 +172,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    return success(toResponse(payment))
+    return success(toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null }))
   },
 }, {
   resource: 'procurement-payments',

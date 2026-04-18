@@ -4,6 +4,7 @@
  */
 
 import { db } from './db'
+import { hasDbColumn } from './db-column-compat'
 import { filterResourceItemsByCurrentRegion, requireCurrentRegionId } from './region'
 
 // ============================================================
@@ -89,6 +90,7 @@ export async function getWorkbenchData(
   systemRole: string
 ): Promise<WorkbenchData> {
   const regionId = await requireCurrentRegionId()
+  const supportsProjectContractChangeRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
@@ -164,7 +166,11 @@ export async function getWorkbenchData(
     // 待审批采购合同数
     db.procurementContract.count({ where: { approvalStatus: 'PENDING', regionId } }),
     // 待审批项目合同变更数
-    db.projectContractChange.count({ where: { approvalStatus: 'PENDING', regionId } }),
+    db.projectContractChange.count({
+      where: supportsProjectContractChangeRegionId
+        ? { approvalStatus: 'PENDING', regionId }
+        : { approvalStatus: 'PENDING' },
+    }),
     // 待审批付款数（采购）
     db.procurementPayment.count({ where: { approvalStatus: 'PENDING', regionId } }),
     // 待审批付款数（劳务）
