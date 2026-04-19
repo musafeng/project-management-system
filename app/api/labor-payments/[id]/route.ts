@@ -1,6 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { deleteCompatRecord } from '@/lib/db-write-compat'
 import { assertEditable } from '@/lib/approval'
 import { assertLaborContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -144,9 +145,7 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('关联的劳务合同不存在')
     }
 
-    await db.laborPayment.delete({
-      where: { id },
-    })
+    await deleteCompatRecord('LaborPayment', id)
 
     const newPaidAmount = Number(contract.paidAmount) - Number(payment.paymentAmount)
     const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount

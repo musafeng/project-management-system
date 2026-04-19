@@ -5,6 +5,7 @@ import {
   success,
 } from '@/lib/api'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
   assertProjectInCurrentRegion,
@@ -70,10 +71,8 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!paymentType) throw new BadRequestError('付款事由为必填项')
       if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
-
-      if (nextProjectId) {
-        await assertProjectInCurrentRegion(nextProjectId)
-      }
+      if (!nextProjectId) throw new BadRequestError('项目为必填项')
+      await assertProjectInCurrentRegion(nextProjectId)
 
       let supplierName =
         body.supplierName === undefined
@@ -115,41 +114,40 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         bankName = bankName || supplier.bankName || null
       }
 
-      const updated = await db.otherPayment.update({
-        where: { id },
-        data: {
-          projectId: nextProjectId,
-          paymentType,
-          paymentAmount,
-          paymentDate: body.paymentDate
-            ? new Date(String(body.paymentDate))
-            : existing.paymentDate,
-          paymentMethod:
-            body.paymentMethod === undefined
-              ? existing.paymentMethod
-              : String(body.paymentMethod ?? '').trim() || null,
-          attachmentUrl:
-            body.attachmentUrl === undefined
-              ? existing.attachmentUrl
-              : String(body.attachmentUrl ?? '').trim() || null,
-          remark: serializeOtherPaymentRemark(
-            body.remark === undefined ? parsedRemark.remark : String(body.remark ?? '').trim() || null,
-            {
-              supplierId,
-              supplierName,
-              contact,
-              accountName,
-              bankAccount,
-              bankName,
-            }
-          ),
-          updatedAt: new Date(),
-        },
+      const remark = serializeOtherPaymentRemark(
+        body.remark === undefined ? parsedRemark.remark : String(body.remark ?? '').trim() || null,
+        {
+          supplierId,
+          supplierName,
+          contact,
+          accountName,
+          bankAccount,
+          bankName,
+        }
+      )
+
+      await updateCompatRecord('OtherPayment', id, {
+        projectId: nextProjectId,
+        paymentType,
+        paymentAmount,
+        paymentDate: body.paymentDate
+          ? new Date(String(body.paymentDate))
+          : existing.paymentDate,
+        paymentMethod:
+          body.paymentMethod === undefined
+            ? existing.paymentMethod
+            : String(body.paymentMethod ?? '').trim() || null,
+        attachmentUrl:
+          body.attachmentUrl === undefined
+            ? existing.attachmentUrl
+            : String(body.attachmentUrl ?? '').trim() || null,
+        remark,
+        updatedAt: new Date(),
       })
 
       return success({
-        ...updated,
-        ...parseOtherPaymentRemark(updated.remark),
+        id,
+        ...parseOtherPaymentRemark(remark),
       })
     },
 
@@ -159,7 +157,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!existing) throw new NotFoundError('记录不存在')
 
-      await db.otherPayment.delete({ where: { id } })
+      await deleteCompatRecord('OtherPayment', id)
       return success({ id })
     },
   },

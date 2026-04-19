@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Space, Upload, message } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import type { UploadRequestOption as RcCustomRequestOptions } from 'rc-upload/lib/interface'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
   getAttachmentDisplayName,
@@ -54,24 +55,50 @@ export default function AttachmentUploadField({
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        message.error(getFriendlyUploadErrorMessage(json.error))
-        return
+        throw new Error(getFriendlyUploadErrorMessage((json as { error?: unknown }).error))
+      }
+      if (!json.url || typeof json.url !== 'string') {
+        throw new Error('上传成功但未返回附件地址')
       }
       emitChange([...attachmentsRef.current, json.url])
       message.success(`${json.name || '文件'} 上传成功`)
+      return json.url
     } catch (err) {
       message.error(getFriendlyUploadErrorMessage(err))
+      throw err
     } finally {
       setUploadingCount((count) => Math.max(0, count - 1))
     }
   }
 
-  const handleUpload = (file: File) => {
+  const enqueueUpload = (file: File) => {
     uploadQueueRef.current = uploadQueueRef.current
       .catch(() => undefined)
       .then(() => uploadSingleFile(file))
 
-    return false
+    return uploadQueueRef.current
+  }
+
+  const handleCustomRequest = (options: RcCustomRequestOptions) => {
+    const file = options.file
+    if (!(file instanceof File)) {
+      options.onError?.(new Error('未识别到待上传文件'))
+      return {
+        abort() {},
+      }
+    }
+
+    enqueueUpload(file)
+      .then((url) => {
+        options.onSuccess?.({ url }, file)
+      })
+      .catch((error: unknown) => {
+        options.onError?.(error instanceof Error ? error : new Error('上传失败'))
+      })
+
+    return {
+      abort() {},
+    }
   }
 
   const handleRemove = (targetUrl: string) => {
@@ -96,8 +123,9 @@ export default function AttachmentUploadField({
     <Space wrap>
       <Upload
         multiple
-        beforeUpload={handleUpload}
+        customRequest={handleCustomRequest}
         showUploadList={false}
+        fileList={[]}
         accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
       >
         <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled}>

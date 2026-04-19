@@ -1,6 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import { assertEditable } from '@/lib/approval'
 import {
   assertConstructionApprovalInCurrentRegion,
@@ -183,9 +184,10 @@ const handler = apiHandlerWithMethod({
       body.projectId === undefined ? existingContract.projectId : String(body.projectId ?? '').trim()
     const constructionId =
       body.constructionId === undefined ? existingContract.constructionId : String(body.constructionId ?? '').trim()
+    const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const workerId =
       body.workerId === undefined && body.subcontractWorkerId === undefined
-        ? existingContract.workerId
+        ? ((existingContract as { workerId?: string | null }).workerId ?? '')
         : String(body.workerId ?? body.subcontractWorkerId ?? '').trim()
 
     if (!projectId) throw new BadRequestError('项目为必填项')
@@ -258,20 +260,20 @@ const handler = apiHandlerWithMethod({
       updateData.remark = String(body.remark ?? '').trim() || null
     }
 
-    const contract = await db.subcontractContract.update({
+    await updateCompatRecord('SubcontractContract', id, updateData)
+    const contract = await db.subcontractContract.findFirst({
       where: { id },
-      data: updateData,
       select: {
         id: true,
         code: true,
         name: true,
         projectId: true,
         constructionId: true,
-        ...(await hasDbColumn('SubcontractContract', 'workerId') ? { workerId: true } : {}),
+        ...(supportsWorkerId ? { workerId: true } : {}),
         vendorId: true,
         Project: { select: { id: true, name: true } },
         ConstructionApproval: { select: { id: true, name: true } },
-        ...(await hasDbColumn('SubcontractContract', 'workerId')
+        ...(supportsWorkerId
           ? { LaborWorker: { select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } }
           : {}),
         SubcontractVendor: { select: { id: true, name: true, phone: true, bankAccount: true, bankName: true } },
@@ -291,6 +293,7 @@ const handler = apiHandlerWithMethod({
         updatedAt: true,
       },
     })
+    if (!contract) throw new NotFoundError('分包合同不存在')
 
     return success(toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null }))
   },
@@ -315,9 +318,7 @@ const handler = apiHandlerWithMethod({
       throw new ConflictError('该分包合同已产生付款记录，无法删除')
     }
 
-    await db.subcontractContract.delete({
-      where: { id },
-    })
+    await deleteCompatRecord('SubcontractContract', id)
 
     return success({ message: '分包合同已删除' })
   },

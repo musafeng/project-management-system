@@ -5,6 +5,7 @@ import {
   success,
 } from '@/lib/api'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
   assertProjectInCurrentRegion,
@@ -87,10 +88,9 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? existing.submitter
           : String(body.submitter ?? '').trim()
 
+      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!submitter) throw new BadRequestError('报销人为必填项')
-      if (projectId) {
-        await assertProjectInCurrentRegion(projectId)
-      }
+      await assertProjectInCurrentRegion(projectId)
 
       let expenseItems = existing.expenseItems ? JSON.parse(existing.expenseItems) : []
       let totalAmount = Number(existing.totalAmount ?? existing.expenseAmount ?? 0)
@@ -107,32 +107,29 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         }
       }
 
-      const updated = await db.salesExpense.update({
-        where: { id },
-        data: {
-          projectId,
-          submitter,
-          category:
-            String(body.category ?? '').trim() || expenseItems[0]?.type || existing.category,
-          expenseDate: body.expenseDate
-            ? new Date(String(body.expenseDate))
-            : existing.expenseDate,
-          totalAmount,
-          expenseAmount: totalAmount,
-          expenseItems: JSON.stringify(expenseItems),
-          attachmentUrl:
-            body.attachmentUrl === undefined
-              ? existing.attachmentUrl
-              : String(body.attachmentUrl ?? '').trim() || null,
-          remark:
-            body.remark === undefined
-              ? existing.remark
-              : String(body.remark ?? '').trim() || null,
-          updatedAt: new Date(),
-        },
+      await updateCompatRecord('SalesExpense', id, {
+        projectId,
+        submitter,
+        category:
+          String(body.category ?? '').trim() || expenseItems[0]?.type || existing.category,
+        expenseDate: body.expenseDate
+          ? new Date(String(body.expenseDate))
+          : existing.expenseDate,
+        totalAmount,
+        expenseAmount: totalAmount,
+        expenseItems: JSON.stringify(expenseItems),
+        attachmentUrl:
+          body.attachmentUrl === undefined
+            ? existing.attachmentUrl
+            : String(body.attachmentUrl ?? '').trim() || null,
+        remark:
+          body.remark === undefined
+            ? existing.remark
+            : String(body.remark ?? '').trim() || null,
+        updatedAt: new Date(),
       })
 
-      return success(updated)
+      return success({ id })
     },
 
     DELETE: async (req) => {
@@ -141,7 +138,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!existing) throw new NotFoundError('记录不存在')
 
-      await db.salesExpense.delete({ where: { id } })
+      await deleteCompatRecord('SalesExpense', id)
       return success({ id })
     },
   },

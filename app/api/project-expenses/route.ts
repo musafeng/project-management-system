@@ -11,6 +11,7 @@ import {
   requireCurrentRegionId,
 } from '@/lib/region'
 import { hasDbColumn } from '@/lib/db-column-compat'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import type { ExpenseCategory } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -127,25 +128,23 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         0
       )
 
-      const record = await db.projectExpense.create({
-        data: {
-          id: crypto.randomUUID(),
-          projectId: construction.projectId,
-          ...(supportsConstructionId ? { constructionId: construction.id } : {}),
-          category: mapExpenseCategory(items[0].type),
-          expenseAmount: totalAmount,
-          expenseDate: new Date(body.expenseDate),
-          submitter: body.submitter.trim(),
-          totalAmount,
-          expenseItems: JSON.stringify(items),
-          attachmentUrl: body.attachmentUrl?.trim() || null,
-          remark: body.remark?.trim() || null,
-          approvalStatus: 'PENDING',
-          updatedAt: new Date(),
-        },
-        select: { id: true },
+      const id = crypto.randomUUID()
+      await insertCompatRecord('ProjectExpense', {
+        id,
+        projectId: construction.projectId,
+        ...(supportsConstructionId ? { constructionId: construction.id } : {}),
+        category: mapExpenseCategory(items[0].type),
+        expenseAmount: totalAmount,
+        expenseDate: new Date(body.expenseDate),
+        submitter: body.submitter.trim(),
+        totalAmount,
+        expenseItems: JSON.stringify(items),
+        attachmentUrl: body.attachmentUrl?.trim() || null,
+        remark: body.remark?.trim() || null,
+        approvalStatus: 'PENDING',
+        updatedAt: new Date(),
       })
-      return success(record)
+      return success({ id })
     },
   },
   { resource: 'project-expenses', resourceIdExtractor: (_req, result) => result?.data?.id || null }

@@ -5,6 +5,7 @@ import {
   success,
 } from '@/lib/api'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
   assertProjectInCurrentRegion,
@@ -66,50 +67,46 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? Number(existing.returnedAmount ?? 0)
           : Number(body.returnedAmount)
 
+      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!holder) throw new BadRequestError('申请人为必填项')
       if (issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
-      if (projectId) {
-        await assertProjectInCurrentRegion(projectId)
-      }
+      await assertProjectInCurrentRegion(projectId)
 
-      const updated = await db.pettyCash.update({
-        where: { id },
-        data: {
-          projectId,
-          holder,
-          applyReason:
-            body.applyReason === undefined
-              ? existing.applyReason
-              : String(body.applyReason ?? '').trim() || null,
-          description:
-            body.description === undefined
-              ? existing.description
-              : String(body.description ?? '').trim() || null,
-          issuedAmount,
-          issueDate: body.issueDate
-            ? new Date(String(body.issueDate))
-            : existing.issueDate,
-          returnedAmount,
-          returnDate:
-            body.returnDate === undefined
-              ? existing.returnDate
-              : body.returnDate
-                ? new Date(String(body.returnDate))
-                : null,
-          status: resolveStatus(issuedAmount, returnedAmount),
-          attachmentUrl:
-            body.attachmentUrl === undefined
-              ? existing.attachmentUrl
-              : String(body.attachmentUrl ?? '').trim() || null,
-          remark:
-            body.remark === undefined
-              ? existing.remark
-              : String(body.remark ?? '').trim() || null,
-          updatedAt: new Date(),
-        },
+      await updateCompatRecord('PettyCash', id, {
+        projectId,
+        holder,
+        applyReason:
+          body.applyReason === undefined
+            ? existing.applyReason
+            : String(body.applyReason ?? '').trim() || null,
+        description:
+          body.description === undefined
+            ? existing.description
+            : String(body.description ?? '').trim() || null,
+        issuedAmount,
+        issueDate: body.issueDate
+          ? new Date(String(body.issueDate))
+          : existing.issueDate,
+        returnedAmount,
+        returnDate:
+          body.returnDate === undefined
+            ? existing.returnDate
+            : body.returnDate
+              ? new Date(String(body.returnDate))
+              : null,
+        status: resolveStatus(issuedAmount, returnedAmount),
+        attachmentUrl:
+          body.attachmentUrl === undefined
+            ? existing.attachmentUrl
+            : String(body.attachmentUrl ?? '').trim() || null,
+        remark:
+          body.remark === undefined
+            ? existing.remark
+            : String(body.remark ?? '').trim() || null,
+        updatedAt: new Date(),
       })
 
-      return success(updated)
+      return success({ id })
     },
 
     DELETE: async (req) => {
@@ -118,7 +115,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!existing) throw new NotFoundError('记录不存在')
 
-      await db.pettyCash.delete({ where: { id } })
+      await deleteCompatRecord('PettyCash', id)
       return success({ id })
     },
   },

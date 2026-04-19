@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import {
   assertConstructionApprovalInCurrentRegion,
@@ -220,8 +221,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       regionId,
       updatedAt: new Date(),
     }
-    const contract = await db.subcontractContract.create({
-      data: createData,
+    await insertCompatRecord('SubcontractContract', createData)
+    const contract = await db.subcontractContract.findFirst({
+      where: { id: createData.id },
       select: {
         id: true,
         code: true,
@@ -246,6 +248,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         createdAt: true,
       },
     })
+    if (!contract) throw new NotFoundError('分包合同创建成功后未查询到记录')
 
     return success(toResponse({ ...contract, workerId: (contract as any).workerId ?? null, LaborWorker: (contract as any).LaborWorker ?? null }))
   },

@@ -9,6 +9,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -32,6 +33,12 @@ interface OtherReceipt {
   remark?: string
 }
 
+interface ProjectOption {
+  id: string
+  code: string
+  name: string
+}
+
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   PENDING: { label: '待审批', color: 'orange' },
   APPROVED: { label: '已通过', color: 'green' },
@@ -52,6 +59,7 @@ function fmtDate(value: string) {
 
 export default function OtherReceiptsPage() {
   const [data, setData] = useState<OtherReceipt[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<OtherReceipt | null>(null)
@@ -70,6 +78,12 @@ export default function OtherReceiptsPage() {
 
   useEffect(() => {
     load()
+    fetch('/api/projects')
+      .then((response) => response.json())
+      .then((json) => {
+        if (json.success) setProjects(json.data || [])
+      })
+      .catch(() => {})
   }, [])
 
   const handleFinishFailed = () => {
@@ -82,6 +96,7 @@ export default function OtherReceiptsPage() {
 
     if (record) {
       form.setFieldsValue({
+        projectId: record.projectId,
         receiptType: record.receiptType,
         receiptAmount: record.receiptAmount,
         receiptDate: dayjs(record.receiptDate),
@@ -207,6 +222,18 @@ export default function OtherReceiptsPage() {
           validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 16 }}
         >
+          <Form.Item label="项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择项目"
+              options={projects.map((project) => ({
+                label: `${project.code} / ${project.name}`,
+                value: project.id,
+              }))}
+            />
+          </Form.Item>
+
           <Form.Item label="收款事由" name="receiptType" rules={[{ required: true, message: '请填写收款事由' }]}>
             <Input placeholder="请输入收款事由" />
           </Form.Item>

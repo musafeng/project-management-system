@@ -252,7 +252,18 @@ async function exportProjectContractChanges(f: ExportFilter) {
 
   const rows = await db.projectContractChange.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      changeDate: true,
+      changeAmount: true,
+      increaseAmount: true,
+      originalAmount: true,
+      totalAmount: true,
+      approvalStatus: true,
+      remark: true,
+      attachmentUrl: true,
+      createdAt: true,
+      updatedAt: true,
       ProjectContract: {
         select: {
           code: true,
@@ -342,7 +353,17 @@ async function exportOtherReceipts(f: ExportFilter) {
 
   const rows = await db.otherReceipt.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      receiptType: true,
+      receiptAmount: true,
+      receiptDate: true,
+      receiptMethod: true,
+      approvalStatus: true,
+      attachmentUrl: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
@@ -367,6 +388,7 @@ async function exportOtherReceipts(f: ExportFilter) {
 }
 
 async function exportProjectExpenses(f: ExportFilter) {
+  const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
   const where: Record<string, any> = {
     Project: {
       ...(f.regionId ? { regionId: f.regionId } : {}),
@@ -380,9 +402,20 @@ async function exportProjectExpenses(f: ExportFilter) {
 
   const rows = await db.projectExpense.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      expenseDate: true,
+      expenseAmount: true,
+      totalAmount: true,
+      expenseItems: true,
+      attachmentUrl: true,
+      approvalStatus: true,
+      remark: true,
+      submitter: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
-      ConstructionApproval: { select: { name: true, code: true } },
+      ...(supportsConstructionId ? { ConstructionApproval: { select: { name: true, code: true } } } : {}),
     },
     orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
   })
@@ -391,8 +424,8 @@ async function exportProjectExpenses(f: ExportFilter) {
     id: r.id,
     项目编号: r.Project.code,
     项目名称: r.Project.name,
-    施工立项编号: r.ConstructionApproval?.code ?? '',
-    施工立项名称: r.ConstructionApproval?.name ?? '',
+    施工立项编号: (r as any).ConstructionApproval?.code ?? '',
+    施工立项名称: (r as any).ConstructionApproval?.name ?? '',
     报销人: r.submitter ?? '',
     总金额: fmtDecimal(r.totalAmount ?? r.expenseAmount),
     费用明细: summarizeExpenseItems(r.expenseItems),
@@ -417,7 +450,19 @@ async function exportManagementExpenses(f: ExportFilter) {
 
   const rows = await db.managementExpense.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      category: true,
+      totalAmount: true,
+      expenseAmount: true,
+      expenseItems: true,
+      expenseDate: true,
+      approvalStatus: true,
+      attachmentUrl: true,
+      remark: true,
+      submitter: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
@@ -454,7 +499,19 @@ async function exportSalesExpenses(f: ExportFilter) {
 
   const rows = await db.salesExpense.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      category: true,
+      totalAmount: true,
+      expenseAmount: true,
+      expenseItems: true,
+      expenseDate: true,
+      approvalStatus: true,
+      attachmentUrl: true,
+      remark: true,
+      submitter: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
@@ -491,7 +548,18 @@ async function exportOtherPayments(f: ExportFilter) {
 
   const rows = await db.otherPayment.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      paymentType: true,
+      paymentAmount: true,
+      paymentDate: true,
+      paymentMethod: true,
+      status: true,
+      approvalStatus: true,
+      attachmentUrl: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },
@@ -638,13 +706,26 @@ async function exportLaborPayments(f: ExportFilter) {
 }
 
 async function exportSubcontractContracts(f: ExportFilter) {
+  const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
   const where = buildDirectRegionWhere(f)
   const rows = await db.subcontractContract.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      contractAmount: true,
+      payableAmount: true,
+      paidAmount: true,
+      unpaidAmount: true,
+      status: true,
+      approvalStatus: true,
+      signDate: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       SubcontractVendor: { select: { name: true } },
-      LaborWorker: { select: { name: true } },
+      ...(supportsWorkerId ? { LaborWorker: { select: { name: true } } } : {}),
       Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -656,7 +737,7 @@ async function exportSubcontractContracts(f: ExportFilter) {
     区域: r.Region?.name ?? '',
     项目编号: r.Project.code,
     项目名称: r.Project.name,
-    分包对象: r.LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
+    分包对象: (r as any).LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
     合同金额: fmtDecimal(r.contractAmount),
     应付金额: fmtDecimal(r.payableAmount),
     已付金额: fmtDecimal(r.paidAmount),
@@ -670,14 +751,24 @@ async function exportSubcontractContracts(f: ExportFilter) {
 }
 
 async function exportSubcontractPayments(f: ExportFilter) {
+  const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
+  const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
   const where = buildDirectRegionWhere(f)
   const rows = await db.subcontractPayment.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      paymentAmount: true,
+      paymentDate: true,
+      status: true,
+      approvalStatus: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       SubcontractContract: { select: { code: true, name: true } },
       SubcontractVendor: { select: { name: true } },
-      LaborWorker: { select: { name: true } },
+      ...(supportsPaymentWorkerId && supportsWorkerId ? { LaborWorker: { select: { name: true } } } : {}),
       Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -689,7 +780,7 @@ async function exportSubcontractPayments(f: ExportFilter) {
     项目名称: r.Project.name,
     合同编号: r.SubcontractContract.code,
     合同名称: r.SubcontractContract.name,
-    分包对象: r.LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
+    分包对象: (r as any).LaborWorker?.name ?? r.SubcontractVendor?.name ?? '',
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     状态: r.status,
@@ -741,7 +832,20 @@ async function exportPettyCashes(f: ExportFilter) {
 
   const rows = await db.pettyCash.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      holder: true,
+      applyReason: true,
+      issuedAmount: true,
+      returnedAmount: true,
+      issueDate: true,
+      returnDate: true,
+      status: true,
+      approvalStatus: true,
+      attachmentUrl: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       Project: { select: { name: true, code: true } },
       ...(supportsRegionId ? { Region: { select: { name: true } } } : {}),
     },

@@ -5,6 +5,7 @@ import {
   success,
 } from '@/lib/api'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
   assertProjectInCurrentRegion,
@@ -58,39 +59,34 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? Number(existing.receiptAmount)
           : Number(body.receiptAmount)
 
+      if (!nextProjectId) throw new BadRequestError('项目为必填项')
       if (!receiptType) throw new BadRequestError('收款事由为必填项')
       if (receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
+      await assertProjectInCurrentRegion(nextProjectId)
 
-      if (nextProjectId) {
-        await assertProjectInCurrentRegion(nextProjectId)
-      }
-
-      const updated = await db.otherReceipt.update({
-        where: { id },
-        data: {
-          projectId: nextProjectId,
-          receiptType,
-          receiptAmount,
-          receiptDate: body.receiptDate
-            ? new Date(String(body.receiptDate))
-            : existing.receiptDate,
-          receiptMethod:
-            body.receiptMethod === undefined
-              ? existing.receiptMethod
-              : String(body.receiptMethod ?? '').trim() || null,
-          attachmentUrl:
-            body.attachmentUrl === undefined
-              ? existing.attachmentUrl
-              : String(body.attachmentUrl ?? '').trim() || null,
-          remark:
-            body.remark === undefined
-              ? existing.remark
-              : String(body.remark ?? '').trim() || null,
-          updatedAt: new Date(),
-        },
+      await updateCompatRecord('OtherReceipt', id, {
+        projectId: nextProjectId,
+        receiptType,
+        receiptAmount,
+        receiptDate: body.receiptDate
+          ? new Date(String(body.receiptDate))
+          : existing.receiptDate,
+        receiptMethod:
+          body.receiptMethod === undefined
+            ? existing.receiptMethod
+            : String(body.receiptMethod ?? '').trim() || null,
+        attachmentUrl:
+          body.attachmentUrl === undefined
+            ? existing.attachmentUrl
+            : String(body.attachmentUrl ?? '').trim() || null,
+        remark:
+          body.remark === undefined
+            ? existing.remark
+            : String(body.remark ?? '').trim() || null,
+        updatedAt: new Date(),
       })
 
-      return success(updated)
+      return success({ id })
     },
 
     DELETE: async (req) => {
@@ -99,7 +95,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!existing) throw new NotFoundError('记录不存在')
 
-      await db.otherReceipt.delete({ where: { id } })
+      await deleteCompatRecord('OtherReceipt', id)
       return success({ id })
     },
   },

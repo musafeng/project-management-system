@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -19,7 +20,7 @@ function toResponse(payment: {
     constructionId: string
     ConstructionApproval: { name: string }
     Project: { name: string }
-    LaborWorker: { name: string; phone: string | null; idNumber: string | null; bankAccount: string | null; bankName: string | null } | null
+    LaborWorker?: { name: string; phone: string | null; idNumber: string | null; bankAccount: string | null; bankName: string | null } | null
     SubcontractVendor: { name: string; phone: string | null; bankAccount: string | null; bankName: string | null } | null
   }
   paymentAmount: Prisma.Decimal | number
@@ -76,6 +77,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (projectId) where.projectId = projectId
 
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const payments = await db.subcontractPayment.findMany({
       where,
       select: {
@@ -91,7 +93,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
             constructionId: true,
             ConstructionApproval: { select: { name: true } },
             Project: { select: { name: true } },
-            LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+            ...(supportsContractWorkerId
+              ? { LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } }
+              : {}),
             SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
           },
         },
@@ -133,12 +137,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const regionId = await requireCurrentRegionId()
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
+    const workerId = supportsContractWorkerId ? (contract as { workerId?: string | null }).workerId ?? null : null
+    const vendorId = supportsContractWorkerId ? null : (contract as { vendorId?: string | null }).vendorId ?? null
+    if (!workerId && !vendorId) {
+      throw new BadRequestError('分包合同未配置分包对象')
+    }
     const createData: Prisma.SubcontractPaymentUncheckedCreateInput = {
       id: crypto.randomUUID(),
       projectId: contract.projectId,
       contractId: body.contractId,
-      workerId: contract.workerId,
-      vendorId: null,
+      ...(workerId ? { workerId } : {}),
+      ...(vendorId ? { vendorId } : {}),
       paymentAmount: body.amount,
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       paymentMethod: body.paymentMethod?.trim() || null,
@@ -149,8 +159,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       regionId,
       updatedAt: new Date(),
     }
-    const payment = await db.subcontractPayment.create({
-      data: createData,
+    await insertCompatRecord('SubcontractPayment', createData)
+    const payment = await db.subcontractPayment.findFirst({
+      where: { id: createData.id },
       select: {
         id: true,
         contractId: true,
@@ -164,7 +175,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
             constructionId: true,
             ConstructionApproval: { select: { name: true } },
             Project: { select: { name: true } },
-            LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+            ...(supportsContractWorkerId
+              ? { LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } }
+              : {}),
             SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
           },
         },
@@ -179,6 +192,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         createdAt: true,
       },
     })
+    if (!payment) throw new NotFoundError('付款记录创建成功后未查询到记录')
 
     const newPaidAmount = Number(contract.paidAmount) + Number(body.amount)
     const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount

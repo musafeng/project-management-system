@@ -1,6 +1,7 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { deleteCompatRecord } from '@/lib/db-write-compat'
 import { assertEditable } from '@/lib/approval'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -19,7 +20,7 @@ function toResponse(payment: {
     constructionId: string
     ConstructionApproval: { name: string }
     Project: { name: string }
-    LaborWorker: { name: string; phone: string | null; idNumber: string | null; bankAccount: string | null; bankName: string | null } | null
+    LaborWorker?: { name: string; phone: string | null; idNumber: string | null; bankAccount: string | null; bankName: string | null } | null
     SubcontractVendor: { name: string; phone: string | null; bankAccount: string | null; bankName: string | null } | null
   }
   paymentAmount: any
@@ -76,6 +77,7 @@ const handler = apiHandlerWithMethod({
     const regionId = await requireCurrentRegionId()
 
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const payment = await db.subcontractPayment.findFirst({
       where: { id, regionId },
       select: {
@@ -91,7 +93,9 @@ const handler = apiHandlerWithMethod({
             constructionId: true,
             ConstructionApproval: { select: { name: true } },
             Project: { select: { name: true } },
-            LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } },
+            ...(supportsContractWorkerId
+              ? { LaborWorker: { select: { name: true, phone: true, idNumber: true, bankAccount: true, bankName: true } } }
+              : {}),
             SubcontractVendor: { select: { name: true, phone: true, bankAccount: true, bankName: true } },
           },
         },
@@ -151,9 +155,7 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('关联的分包合同不存在')
     }
 
-    await db.subcontractPayment.delete({
-      where: { id },
-    })
+    await deleteCompatRecord('SubcontractPayment', id)
 
     const newPaidAmount = Number(contract.paidAmount) - Number(payment.paymentAmount)
     const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount

@@ -6,6 +6,7 @@ import {
 } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
@@ -86,7 +87,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('SalesExpense', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim() || null
+      const projectId = String(body.projectId ?? '').trim()
       const submitter = String(body.submitter ?? '').trim()
       const expenseDate = String(body.expenseDate ?? '').trim()
       const expenseItems = normalizeExpenseItems(body.expenseItems)
@@ -95,37 +96,34 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         0
       )
 
+      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!submitter) throw new BadRequestError('报销人为必填项')
       if (!expenseDate) throw new BadRequestError('日期为必填项')
       if (expenseItems.length === 0 || totalAmount <= 0) {
         throw new BadRequestError('请至少填写一条有效费用明细')
       }
 
-      if (projectId) {
-        const project = await assertProjectInCurrentRegion(projectId)
-        if (!project) throw new NotFoundError('项目不存在')
-      }
+      const project = await assertProjectInCurrentRegion(projectId)
+      if (!project) throw new NotFoundError('项目不存在')
 
       const now = new Date()
-      const record = await db.salesExpense.create({
-        data: {
-          id: crypto.randomUUID(),
-          ...(supportsRegionId ? { regionId } : {}),
-          projectId,
-          category: String(body.category ?? '').trim() || expenseItems[0].type,
-          expenseDate: new Date(expenseDate),
-          expenseAmount: totalAmount,
-          submitter,
-          totalAmount,
-          expenseItems: JSON.stringify(expenseItems),
-          attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
-          remark: String(body.remark ?? '').trim() || null,
-          updatedAt: now,
-        },
-        select: { id: true },
+      const id = crypto.randomUUID()
+      await insertCompatRecord('SalesExpense', {
+        id,
+        ...(supportsRegionId ? { regionId } : {}),
+        projectId,
+        category: String(body.category ?? '').trim() || expenseItems[0].type,
+        expenseDate: new Date(expenseDate),
+        expenseAmount: totalAmount,
+        submitter,
+        totalAmount,
+        expenseItems: JSON.stringify(expenseItems),
+        attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
+        remark: String(body.remark ?? '').trim() || null,
+        updatedAt: now,
       })
 
-      return success(record)
+      return success({ id })
     },
   },
   {

@@ -41,6 +41,12 @@ interface Expense {
   remark?: string
 }
 
+interface ProjectOption {
+  id: string
+  code: string
+  name: string
+}
+
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   PENDING: { label: '待审批', color: 'orange' },
   APPROVED: { label: '已通过', color: 'green' },
@@ -63,6 +69,7 @@ function fmtDate(value: string) {
 
 export default function SalesExpensesPage() {
   const [data, setData] = useState<Expense[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
@@ -82,6 +89,12 @@ export default function SalesExpensesPage() {
 
   useEffect(() => {
     load()
+    fetch('/api/projects')
+      .then((response) => response.json())
+      .then((json) => {
+        if (json.success) setProjects(json.data || [])
+      })
+      .catch(() => {})
   }, [])
 
   const handleFinishFailed = () => {
@@ -98,6 +111,7 @@ export default function SalesExpensesPage() {
 
     if (record) {
       form.setFieldsValue({
+        projectId: record.projectId || undefined,
         submitter: record.submitter,
         expenseDate: dayjs(record.expenseDate),
         attachmentUrl: record.attachmentUrl,
@@ -236,6 +250,18 @@ export default function SalesExpensesPage() {
           validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 16 }}
         >
+          <Form.Item label="项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择项目"
+              options={projects.map((project) => ({
+                label: `${project.code} / ${project.name}`,
+                value: project.id,
+              }))}
+            />
+          </Form.Item>
+
           <Form.Item label="报销人" name="submitter" rules={[{ required: true, message: '请填写报销人' }]}>
             <Input />
           </Form.Item>

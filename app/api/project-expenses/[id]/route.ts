@@ -5,6 +5,7 @@ import {
   success,
 } from '@/lib/api'
 import { db } from '@/lib/db'
+import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertProjectScopedRecordInCurrentRegion,
@@ -119,33 +120,30 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
         0
       )
 
-      const updated = await db.projectExpense.update({
-        where: { id },
-        data: {
-          projectId: construction.projectId,
-          ...(supportsConstructionId ? { constructionId: construction.id } : {}),
-          submitter: body.submitter?.trim() ?? existing.submitter,
-          category: items[0] ? mapExpenseCategory(items[0].type) : existing.category,
-          expenseDate: body.expenseDate ? new Date(body.expenseDate) : existing.expenseDate,
-          totalAmount,
-          expenseAmount: totalAmount,
-          expenseItems: JSON.stringify(items),
-          attachmentUrl:
-            body.attachmentUrl === undefined
-              ? existing.attachmentUrl
-              : body.attachmentUrl?.trim() || null,
-          remark:
-            body.remark === undefined ? existing.remark : body.remark?.trim() || null,
-        },
+      await updateCompatRecord('ProjectExpense', id, {
+        projectId: construction.projectId,
+        ...(supportsConstructionId ? { constructionId: construction.id } : {}),
+        submitter: body.submitter?.trim() ?? existing.submitter,
+        category: items[0] ? mapExpenseCategory(items[0].type) : existing.category,
+        expenseDate: body.expenseDate ? new Date(body.expenseDate) : existing.expenseDate,
+        totalAmount,
+        expenseAmount: totalAmount,
+        expenseItems: JSON.stringify(items),
+        attachmentUrl:
+          body.attachmentUrl === undefined
+            ? existing.attachmentUrl
+            : body.attachmentUrl?.trim() || null,
+        remark:
+          body.remark === undefined ? existing.remark : body.remark?.trim() || null,
       })
-      return success(updated)
+      return success({ id })
     },
 
     DELETE: async (req) => {
       const id = getIdFromRequest(req)
       const existing = await assertProjectScopedRecordInCurrentRegion('projectExpense', id)
       if (!existing) throw new NotFoundError('记录不存在')
-      await db.projectExpense.delete({ where: { id } })
+      await deleteCompatRecord('ProjectExpense', id)
       return success({ id })
     },
   },

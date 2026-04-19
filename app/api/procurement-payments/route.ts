@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
@@ -133,8 +134,9 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       regionId,
       updatedAt: new Date(),
     }
-    const payment = await db.procurementPayment.create({
-      data: createData,
+    await insertCompatRecord('ProcurementPayment', createData)
+    const payment = await db.procurementPayment.findFirst({
+      where: { id: createData.id },
       select: {
         id: true,
         contractId: true,
@@ -160,6 +162,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         createdAt: true,
       },
     })
+    if (!payment) throw new NotFoundError('付款记录创建成功后未查询到记录')
 
     const newPaidAmount = Number(contract.paidAmount) + amount
     const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount

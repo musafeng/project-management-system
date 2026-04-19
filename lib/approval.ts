@@ -8,6 +8,7 @@ import { createActionLog } from './action-log'
 import { ActionType } from '@prisma/client'
 import type { SystemUserRole } from '@prisma/client'
 import { requireRole, getCurrentUser } from './api'
+import { updateCompatRecord } from './db-write-compat'
 import {
   sendApprovalSubmittedNotification,
   sendApprovalApprovedNotification,
@@ -76,6 +77,17 @@ const MODEL_LABEL: Record<ApprovalModel, string> = {
   subcontractPayment: '分包付款',
 }
 
+const MODEL_TABLE: Record<ApprovalModel, string> = {
+  constructionApproval: 'ConstructionApproval',
+  projectContractChange: 'ProjectContractChange',
+  procurementContract: 'ProcurementContract',
+  procurementPayment: 'ProcurementPayment',
+  laborContract: 'LaborContract',
+  laborPayment: 'LaborPayment',
+  subcontractContract: 'SubcontractContract',
+  subcontractPayment: 'SubcontractPayment',
+}
+
 // ============================================================================
 // 内部工具函数
 // ============================================================================
@@ -93,7 +105,7 @@ async function updateApprovalStatus(
   id: string,
   data: Record<string, any>
 ): Promise<void> {
-  await (db[model] as any).update({ where: { id }, data })
+  await updateCompatRecord(MODEL_TABLE[model], id, data)
 }
 
 async function getSubmitterDingUserId(

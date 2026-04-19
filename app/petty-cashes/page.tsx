@@ -9,6 +9,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -34,6 +35,12 @@ interface PettyCash {
   attachmentUrl?: string
   approvalStatus: string
   remark?: string
+}
+
+interface ProjectOption {
+  id: string
+  code: string
+  name: string
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -62,6 +69,7 @@ function fmtDate(value: string) {
 
 export default function PettyCashesPage() {
   const [data, setData] = useState<PettyCash[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PettyCash | null>(null)
@@ -80,6 +88,12 @@ export default function PettyCashesPage() {
 
   useEffect(() => {
     load()
+    fetch('/api/projects')
+      .then((response) => response.json())
+      .then((json) => {
+        if (json.success) setProjects(json.data || [])
+      })
+      .catch(() => {})
   }, [])
 
   const handleFinishFailed = () => {
@@ -92,6 +106,7 @@ export default function PettyCashesPage() {
 
     if (record) {
       form.setFieldsValue({
+        projectId: record.projectId || undefined,
         holder: record.holder,
         applyReason: record.applyReason,
         issuedAmount: record.issuedAmount,
@@ -225,6 +240,18 @@ export default function PettyCashesPage() {
           validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
           style={{ marginTop: 16 }}
         >
+          <Form.Item label="项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择项目"
+              options={projects.map((project) => ({
+                label: `${project.code} / ${project.name}`,
+                value: project.id,
+              }))}
+            />
+          </Form.Item>
+
           <Form.Item label="申请人" name="holder" rules={[{ required: true, message: '请填写申请人' }]}>
             <Input />
           </Form.Item>

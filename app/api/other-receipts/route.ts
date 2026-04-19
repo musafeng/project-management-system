@@ -6,6 +6,7 @@ import {
 } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { insertCompatRecord } from '@/lib/db-write-compat'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
@@ -55,38 +56,35 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim() || null
+      const projectId = String(body.projectId ?? '').trim()
       const receiptType = String(body.receiptType ?? '').trim()
       const receiptDate = String(body.receiptDate ?? '').trim()
       const receiptAmount = Number(body.receiptAmount ?? 0)
 
+      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!receiptType) throw new BadRequestError('收款事由为必填项')
       if (!receiptDate) throw new BadRequestError('日期为必填项')
       if (!Number.isFinite(receiptAmount) || receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
 
-      if (projectId) {
-        const project = await assertProjectInCurrentRegion(projectId)
-        if (!project) throw new NotFoundError('项目不存在')
-      }
+      const project = await assertProjectInCurrentRegion(projectId)
+      if (!project) throw new NotFoundError('项目不存在')
 
       const now = new Date()
-      const record = await db.otherReceipt.create({
-        data: {
-          id: crypto.randomUUID(),
-          projectId,
-          ...(supportsRegionId ? { regionId } : {}),
-          receiptType,
-          receiptAmount,
-          receiptDate: new Date(receiptDate),
-          receiptMethod: String(body.receiptMethod ?? '').trim() || null,
-          attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
-          remark: String(body.remark ?? '').trim() || null,
-          updatedAt: now,
-        },
-        select: { id: true },
+      const id = crypto.randomUUID()
+      await insertCompatRecord('OtherReceipt', {
+        id,
+        projectId,
+        ...(supportsRegionId ? { regionId } : {}),
+        receiptType,
+        receiptAmount,
+        receiptDate: new Date(receiptDate),
+        receiptMethod: String(body.receiptMethod ?? '').trim() || null,
+        attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
+        remark: String(body.remark ?? '').trim() || null,
+        updatedAt: now,
       })
 
-      return success(record)
+      return success({ id })
     },
   },
   {

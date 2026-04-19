@@ -1,6 +1,7 @@
 import { BadRequestError, NotFoundError } from './api'
 import { getDbTableColumns, hasDbColumn } from './db-column-compat'
 import { db } from './db'
+import { insertCompatRecord } from './db-write-compat'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from './region'
 
 async function getProjectContractChangeSelect() {
@@ -59,25 +60,32 @@ export async function createProjectContractChangeRecord(input: {
   const supportsRegionId = await hasDbColumn('ProjectContractChange', 'regionId')
   const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
-  return db.projectContractChange.create({
-    data: {
-      id: crypto.randomUUID(),
-      contractId,
-      ...(supportsRegionId ? { regionId: regionId ?? undefined } : {}),
-      changeDate: new Date(changeDate),
-      changeType: 'INCREASE',
-      changeAmount: increaseAmount,
-      increaseAmount,
-      originalAmount,
-      totalAmount,
-      changeReason: remark,
-      remark,
-      attachmentUrl,
-      approvalStatus: 'APPROVED',
-      updatedAt: new Date(),
-    },
+  const id = crypto.randomUUID()
+  await insertCompatRecord('ProjectContractChange', {
+    id,
+    contractId,
+    ...(supportsRegionId ? { regionId: regionId ?? undefined } : {}),
+    changeDate: new Date(changeDate),
+    changeType: 'INCREASE',
+    changeAmount: increaseAmount,
+    increaseAmount,
+    originalAmount,
+    totalAmount,
+    changeReason: remark,
+    remark,
+    attachmentUrl,
+    approvalStatus: 'APPROVED',
+    updatedAt: new Date(),
+  })
+
+  const created = await db.projectContractChange.findFirst({
+    where: { id },
     select: await getProjectContractChangeSelect(),
   })
+  if (!created) {
+    throw new NotFoundError('合同变更创建成功后未查询到记录')
+  }
+  return created
 }
 
 export async function applyApprovedProjectContractChange(id: string) {
