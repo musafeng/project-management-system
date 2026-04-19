@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { deleteCompatRecord } from '@/lib/db-write-compat'
 import { assertEditable } from '@/lib/approval'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ function toResponse(payment: {
   id: string
   contractId: string
   projectId: string
-  workerId: string | null
+  workerId?: string | null
   vendorId: string | null
   SubcontractContract: {
     code: string
@@ -77,6 +78,7 @@ const handler = apiHandlerWithMethod({
     const regionId = await requireCurrentRegionId()
 
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
     const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const payment = await db.subcontractPayment.findFirst({
       where: { id, regionId },
@@ -84,7 +86,7 @@ const handler = apiHandlerWithMethod({
         id: true,
         contractId: true,
         projectId: true,
-        workerId: true,
+        ...(supportsPaymentWorkerId ? { workerId: true } : {}),
         vendorId: true,
         SubcontractContract: {
           select: {
@@ -116,7 +118,13 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    return success(toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null }))
+    return success(
+      toResponse({
+        ...payment,
+        workerId: (payment as any).workerId ?? null,
+        attachmentUrl: (payment as any).attachmentUrl ?? null,
+      })
+    )
   },
 
   DELETE: async (req) => {
@@ -154,11 +162,15 @@ const handler = apiHandlerWithMethod({
     if (!contract) {
       throw new NotFoundError('关联的分包合同不存在')
     }
+    const contractData = contract as unknown as {
+      paidAmount: Prisma.Decimal | number
+      payableAmount: Prisma.Decimal | number
+    }
 
     await deleteCompatRecord('SubcontractPayment', id)
 
-    const newPaidAmount = Number(contract.paidAmount) - Number(payment.paymentAmount)
-    const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount
+    const newPaidAmount = Number(contractData.paidAmount) - Number(payment.paymentAmount)
+    const newUnpaidAmount = Number(contractData.payableAmount) - newPaidAmount
 
     await db.subcontractContract.update({
       where: { id: payment.contractId },

@@ -587,7 +587,7 @@ export default function SubcontractContractsPage() {
                 重置
               </Button>
 
-              <Button onClick={() => window.open('/data-exports?resourceType=subcontract-contracts', '_blank')}>
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=subcontract-contracts' }}>
                 导出数据
               </Button>
 

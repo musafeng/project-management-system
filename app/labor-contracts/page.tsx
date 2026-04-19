@@ -582,7 +582,7 @@ export default function LaborContractsPage() {
                 重置
               </Button>
 
-              <Button onClick={() => window.open('/data-exports?resourceType=labor-contracts', '_blank')}>
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=labor-contracts' }}>
                 导出数据
               </Button>
 

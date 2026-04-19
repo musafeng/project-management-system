@@ -421,6 +421,10 @@ export default function SubcontractPaymentsPage() {
                 重置
               </Button>
 
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=subcontract-payments' }}>
+                导出数据
+              </Button>
+
               <Button
                 type="primary"
                 icon={<PlusOutlined />}

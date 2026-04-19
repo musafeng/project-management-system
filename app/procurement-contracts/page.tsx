@@ -582,7 +582,7 @@ export default function ProcurementContractsPage() {
                 重置
               </Button>
 
-              <Button onClick={() => window.open('/data-exports?resourceType=procurement-contracts', '_blank')}>
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=procurement-contracts' }}>
                 导出数据
               </Button>
 

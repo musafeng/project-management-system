@@ -12,7 +12,7 @@ function toResponse(payment: {
   id: string
   contractId: string
   projectId: string
-  workerId: string | null
+  workerId?: string | null
   vendorId: string | null
   SubcontractContract: {
     code: string
@@ -77,6 +77,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (projectId) where.projectId = projectId
 
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
     const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const payments = await db.subcontractPayment.findMany({
       where,
@@ -84,7 +85,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         id: true,
         contractId: true,
         projectId: true,
-        workerId: true,
+        ...(supportsPaymentWorkerId ? { workerId: true } : {}),
         vendorId: true,
         SubcontractContract: {
           select: {
@@ -114,7 +115,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     return success(
       payments.map((payment) =>
-        toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null })
+        toResponse({
+          ...payment,
+          workerId: (payment as any).workerId ?? null,
+          attachmentUrl: (payment as any).attachmentUrl ?? null,
+        })
       )
     )
   },
@@ -134,20 +139,28 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const contract = await assertSubcontractContractInCurrentRegion(body.contractId)
     if (!contract) throw new NotFoundError('分包合同不存在')
+    const contractData = contract as unknown as {
+      projectId: string
+      paidAmount: Prisma.Decimal | number
+      payableAmount: Prisma.Decimal | number
+      workerId?: string | null
+      vendorId?: string | null
+    }
 
     const regionId = await requireCurrentRegionId()
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
+    const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
     const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
-    const workerId = supportsContractWorkerId ? (contract as { workerId?: string | null }).workerId ?? null : null
-    const vendorId = supportsContractWorkerId ? null : (contract as { vendorId?: string | null }).vendorId ?? null
+    const workerId = supportsContractWorkerId ? contractData.workerId ?? null : null
+    const vendorId = supportsContractWorkerId ? null : contractData.vendorId ?? null
     if (!workerId && !vendorId) {
       throw new BadRequestError('分包合同未配置分包对象')
     }
     const createData: Prisma.SubcontractPaymentUncheckedCreateInput = {
       id: crypto.randomUUID(),
-      projectId: contract.projectId,
+      projectId: contractData.projectId,
       contractId: body.contractId,
-      ...(workerId ? { workerId } : {}),
+      ...(supportsPaymentWorkerId && workerId ? { workerId } : {}),
       ...(vendorId ? { vendorId } : {}),
       paymentAmount: body.amount,
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
@@ -166,7 +179,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         id: true,
         contractId: true,
         projectId: true,
-        workerId: true,
+        ...(supportsPaymentWorkerId ? { workerId: true } : {}),
         vendorId: true,
         SubcontractContract: {
           select: {
@@ -194,8 +207,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
     if (!payment) throw new NotFoundError('付款记录创建成功后未查询到记录')
 
-    const newPaidAmount = Number(contract.paidAmount) + Number(body.amount)
-    const newUnpaidAmount = Number(contract.payableAmount) - newPaidAmount
+    const newPaidAmount = Number(contractData.paidAmount) + Number(body.amount)
+    const newUnpaidAmount = Number(contractData.payableAmount) - newPaidAmount
 
     await db.subcontractContract.update({
       where: { id: body.contractId },
@@ -205,7 +218,13 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
     })
 
-    return success(toResponse({ ...payment, attachmentUrl: (payment as any).attachmentUrl ?? null }))
+    return success(
+      toResponse({
+        ...payment,
+        workerId: (payment as any).workerId ?? null,
+        attachmentUrl: (payment as any).attachmentUrl ?? null,
+      })
+    )
   },
 }, {
   resource: 'subcontract-payments',

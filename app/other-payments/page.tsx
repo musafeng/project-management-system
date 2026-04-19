@@ -253,7 +253,7 @@ export default function OtherPaymentsPage() {
         <h2 style={{ margin: 0 }}>其他付款</h2>
         <Space>
           <span style={{ color: '#ff4d4f', fontWeight: 600 }}>合计：{fmt(total)}</span>
-          <Button onClick={() => window.open('/data-exports?resourceType=other-payments', '_blank')}>导出数据</Button>
+          <Button onClick={() => { window.location.href = '/data-exports?resourceType=other-payments' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>

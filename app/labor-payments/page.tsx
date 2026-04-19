@@ -421,7 +421,7 @@ export default function LaborPaymentsPage() {
                 重置
               </Button>
 
-              <Button onClick={() => window.open('/data-exports?resourceType=labor-payments', '_blank')}>
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=labor-payments' }}>
                 导出数据
               </Button>
 

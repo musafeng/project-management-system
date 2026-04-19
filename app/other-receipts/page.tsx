@@ -196,7 +196,7 @@ export default function OtherReceiptsPage() {
         <h2 style={{ margin: 0 }}>其他收款</h2>
         <Space>
           <span style={{ color: '#52c41a', fontWeight: 600 }}>合计：{fmt(total)}</span>
-          <Button onClick={() => window.open('/data-exports?resourceType=other-receipts', '_blank')}>导出数据</Button>
+          <Button onClick={() => { window.location.href = '/data-exports?resourceType=other-receipts' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>

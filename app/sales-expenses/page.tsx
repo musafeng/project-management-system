@@ -212,7 +212,7 @@ export default function SalesExpensesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>销售费用报销</h2>
         <Space>
-          <Button onClick={() => window.open('/data-exports?resourceType=sales-expenses', '_blank')}>导出数据</Button>
+          <Button onClick={() => { window.location.href = '/data-exports?resourceType=sales-expenses' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>

@@ -409,7 +409,7 @@ export default function ContractReceiptsPage() {
                   if (selectedContractForFilter?.projectId) {
                     params.set('projectId', selectedContractForFilter.projectId)
                   }
-                  window.open(`/data-exports?${params.toString()}`, '_blank')
+                  window.location.href = `/data-exports?${params.toString()}`
                 }}
               >
                 导出数据

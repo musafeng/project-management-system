@@ -276,8 +276,11 @@ export async function assertLaborContractInCurrentRegion(contractId: string) {
 
 export async function assertSubcontractContractInCurrentRegion(contractId: string) {
   const regionId = await requireCurrentRegionId()
+  const columns = await getDbTableColumns('SubcontractContract')
+  const select = Object.fromEntries(Array.from(columns).map((column) => [column, true]))
   const contract = await db.subcontractContract.findFirst({
-    where: { id: contractId, regionId },
+    where: columns.has('regionId') ? { id: contractId, regionId } : { id: contractId },
+    select,
   })
   if (!contract) {
     throw new NotFoundError('分包合同不存在或不属于当前区域')

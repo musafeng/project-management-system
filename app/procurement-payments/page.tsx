@@ -432,7 +432,7 @@ export default function ProcurementPaymentsPage() {
                 重置
               </Button>
 
-              <Button onClick={() => window.open('/data-exports?resourceType=procurement-payments', '_blank')}>
+              <Button onClick={() => { window.location.href = '/data-exports?resourceType=procurement-payments' }}>
                 导出数据
               </Button>
 

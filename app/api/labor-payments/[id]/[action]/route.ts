@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { handleSubmit, handleApprove, handleReject } from '@/lib/approval'
 import { success } from '@/lib/api'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,12 +27,11 @@ export async function POST(
     }
     return NextResponse.json(success(null))
   } catch (err) {
-    const msg = err instanceof Error ? err.message : '操作失败'
+    const msg = toChineseErrorMessage(err instanceof Error ? err.message : '操作失败')
     const status = msg.includes('未登录') ? 401 : msg.includes('无权限') ? 403 : 400
     return NextResponse.json({ success: false, error: msg }, { status })
   }
 }
-
 
 
 

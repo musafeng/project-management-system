@@ -214,7 +214,7 @@ export default function PettyCashesPage() {
         <h2 style={{ margin: 0 }}>备用金申请</h2>
         <Space>
           <span style={{ color: '#fa8c16', fontWeight: 600 }}>合计发放：{fmt(total)}</span>
-          <Button onClick={() => window.open('/data-exports?resourceType=petty-cashes', '_blank')}>导出数据</Button>
+          <Button onClick={() => { window.location.href = '/data-exports?resourceType=petty-cashes' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>

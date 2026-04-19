@@ -344,7 +344,7 @@ export default function ProjectContractsPage() {
               if (start?.format) params.set('startDate', start.format('YYYY-MM-DD'))
               if (end?.format) params.set('endDate', end.format('YYYY-MM-DD'))
             }
-            window.open(`/data-exports?${params.toString()}`, '_blank')
+            window.location.href = `/data-exports?${params.toString()}`
           }}
         >
           导出
