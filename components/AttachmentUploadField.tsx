@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Space, Upload, message } from 'antd'
+import { Button, Space, message } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
-import type { UploadRequestOption as RcCustomRequestOptions } from 'rc-upload/lib/interface'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
   getAttachmentDisplayName,
@@ -17,19 +16,6 @@ interface AttachmentUploadFieldProps {
   disabled?: boolean
 }
 
-function resolveUploadFile(input: unknown): File | null {
-  const candidate = (input as { originFileObj?: unknown } | null)?.originFileObj ?? input
-  if (
-    candidate &&
-    typeof candidate === 'object' &&
-    typeof (candidate as File).arrayBuffer === 'function' &&
-    typeof (candidate as File).name === 'string'
-  ) {
-    return candidate as File
-  }
-  return null
-}
-
 export default function AttachmentUploadField({
   value,
   onChange,
@@ -38,7 +24,8 @@ export default function AttachmentUploadField({
   const [uploadingCount, setUploadingCount] = useState(0)
   const attachments = useMemo(() => parseAttachmentUrls(value), [value])
   const attachmentsRef = useRef<string[]>(attachments)
-  const uploadQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const uploadQueueRef = useRef<Promise<string | void>>(Promise.resolve())
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const uploading = uploadingCount > 0
 
   useEffect(() => {
@@ -92,30 +79,14 @@ export default function AttachmentUploadField({
     return uploadQueueRef.current
   }
 
-  const handleCustomRequest = (options: RcCustomRequestOptions) => {
-    const file = resolveUploadFile(options.file)
-    if (!file) {
-      options.onError?.(new Error('未识别到待上传文件'))
-      return {
-        abort() {},
-      }
+  const handleSelectFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    for (const file of files) {
+      void enqueueUpload(file)
     }
 
-    enqueueUpload(file)
-      .then((url) => {
-        try {
-          options.onSuccess?.({ url })
-        } catch (callbackError) {
-          console.error('[AttachmentUploadField] onSuccess callback failed:', callbackError)
-        }
-      })
-      .catch((error: unknown) => {
-        options.onError?.(error instanceof Error ? error : new Error('上传失败'))
-      })
-
-    return {
-      abort() {},
-    }
+    // 同一批文件再次选择时，也要确保 change 事件还能触发
+    event.target.value = ''
   }
 
   const handleRemove = (targetUrl: string) => {
@@ -138,17 +109,23 @@ export default function AttachmentUploadField({
 
   return (
     <Space wrap>
-      <Upload
+      <input
+        ref={fileInputRef}
+        type="file"
         multiple
-        customRequest={handleCustomRequest}
-        showUploadList={false}
-        fileList={[]}
         accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
+        style={{ display: 'none' }}
+        onChange={handleSelectFiles}
+        disabled={disabled}
+      />
+      <Button
+        icon={<UploadOutlined />}
+        loading={uploading}
+        disabled={disabled}
+        onClick={() => fileInputRef.current?.click()}
       >
-        <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled}>
-          {uploading ? '上传中...' : '选择文件'}
-        </Button>
-      </Upload>
+        {uploading ? '上传中...' : '选择文件'}
+      </Button>
       <span style={{ color: '#999', fontSize: 12 }}>
         支持多选；图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，单文件最大 100MB
       </span>
