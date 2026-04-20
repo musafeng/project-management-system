@@ -619,7 +619,16 @@ async function exportProcurementPayments(f: ExportFilter) {
   const where = buildDirectRegionWhere(f)
   const rows = await db.procurementPayment.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      paymentAmount: true,
+      paymentDate: true,
+      paymentMethod: true,
+      status: true,
+      approvalStatus: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       ProcurementContract: {
         select: {
           code: true,
@@ -684,7 +693,15 @@ async function exportLaborPayments(f: ExportFilter) {
   const where = buildDirectRegionWhere(f)
   const rows = await db.laborPayment.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      paymentAmount: true,
+      paymentDate: true,
+      status: true,
+      approvalStatus: true,
+      remark: true,
+      createdAt: true,
+      updatedAt: true,
       LaborContract: {
         select: {
           code: true,

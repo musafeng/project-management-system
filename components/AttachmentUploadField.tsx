@@ -103,7 +103,11 @@ export default function AttachmentUploadField({
 
     enqueueUpload(file)
       .then((url) => {
-        options.onSuccess?.({ url }, file)
+        try {
+          options.onSuccess?.({ url })
+        } catch (callbackError) {
+          console.error('[AttachmentUploadField] onSuccess callback failed:', callbackError)
+        }
       })
       .catch((error: unknown) => {
         options.onError?.(error instanceof Error ? error : new Error('上传失败'))
