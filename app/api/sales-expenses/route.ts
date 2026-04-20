@@ -87,7 +87,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('SalesExpense', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim()
+      const projectId = String(body.projectId ?? '').trim() || null
       const submitter = String(body.submitter ?? '').trim()
       const expenseDate = String(body.expenseDate ?? '').trim()
       const expenseItems = normalizeExpenseItems(body.expenseItems)
@@ -96,15 +96,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         0
       )
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!submitter) throw new BadRequestError('报销人为必填项')
       if (!expenseDate) throw new BadRequestError('日期为必填项')
       if (expenseItems.length === 0 || totalAmount <= 0) {
         throw new BadRequestError('请至少填写一条有效费用明细')
       }
 
-      const project = await assertProjectInCurrentRegion(projectId)
-      if (!project) throw new NotFoundError('项目不存在')
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
 
       const now = new Date()
       const id = crypto.randomUUID()

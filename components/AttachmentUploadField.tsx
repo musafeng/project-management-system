@@ -17,6 +17,19 @@ interface AttachmentUploadFieldProps {
   disabled?: boolean
 }
 
+function resolveUploadFile(input: unknown): File | null {
+  const candidate = (input as { originFileObj?: unknown } | null)?.originFileObj ?? input
+  if (
+    candidate &&
+    typeof candidate === 'object' &&
+    typeof (candidate as File).arrayBuffer === 'function' &&
+    typeof (candidate as File).name === 'string'
+  ) {
+    return candidate as File
+  }
+  return null
+}
+
 export default function AttachmentUploadField({
   value,
   onChange,
@@ -80,8 +93,8 @@ export default function AttachmentUploadField({
   }
 
   const handleCustomRequest = (options: RcCustomRequestOptions) => {
-    const file = options.file
-    if (!(file instanceof File)) {
+    const file = resolveUploadFile(options.file)
+    if (!file) {
       options.onError?.(new Error('未识别到待上传文件'))
       return {
         abort() {},

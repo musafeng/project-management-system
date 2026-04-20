@@ -71,8 +71,9 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
 
       if (!paymentType) throw new BadRequestError('付款事由为必填项')
       if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
-      if (!nextProjectId) throw new BadRequestError('项目为必填项')
-      await assertProjectInCurrentRegion(nextProjectId)
+      if (nextProjectId) {
+        await assertProjectInCurrentRegion(nextProjectId)
+      }
 
       let supplierName =
         body.supplierName === undefined

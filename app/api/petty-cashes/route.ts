@@ -57,18 +57,19 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim()
+      const projectId = String(body.projectId ?? '').trim() || null
       const holder = String(body.holder ?? '').trim()
       const issueDate = String(body.issueDate ?? '').trim()
       const issuedAmount = Number(body.issuedAmount ?? 0)
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!holder) throw new BadRequestError('申请人为必填项')
       if (!issueDate) throw new BadRequestError('日期为必填项')
       if (!Number.isFinite(issuedAmount) || issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
 
-      const project = await assertProjectInCurrentRegion(projectId)
-      if (!project) throw new NotFoundError('项目不存在')
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
 
       const now = new Date()
       const id = crypto.randomUUID()

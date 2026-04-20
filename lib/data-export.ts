@@ -620,8 +620,13 @@ async function exportProcurementPayments(f: ExportFilter) {
   const rows = await db.procurementPayment.findMany({
     where,
     include: {
-      Project: { select: { name: true, code: true } },
-      ProcurementContract: { select: { code: true, name: true } },
+      ProcurementContract: {
+        select: {
+          code: true,
+          name: true,
+          Project: { select: { name: true, code: true } },
+        },
+      },
       Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -629,8 +634,8 @@ async function exportProcurementPayments(f: ExportFilter) {
   return rows.map((r) => ({
     id: r.id,
     区域: r.Region?.name ?? '',
-    项目编号: r.Project.code,
-    项目名称: r.Project.name,
+    项目编号: r.ProcurementContract.Project.code,
+    项目名称: r.ProcurementContract.Project.name,
     合同编号: r.ProcurementContract.code,
     合同名称: r.ProcurementContract.name,
     付款金额: fmtDecimal(r.paymentAmount),
@@ -680,9 +685,14 @@ async function exportLaborPayments(f: ExportFilter) {
   const rows = await db.laborPayment.findMany({
     where,
     include: {
-      Project: { select: { name: true, code: true } },
-      LaborContract: { select: { code: true, name: true } },
-      LaborWorker: { select: { name: true } },
+      LaborContract: {
+        select: {
+          code: true,
+          name: true,
+          Project: { select: { name: true, code: true } },
+          LaborWorker: { select: { name: true } },
+        },
+      },
       Region: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -690,11 +700,11 @@ async function exportLaborPayments(f: ExportFilter) {
   return rows.map((r) => ({
     id: r.id,
     区域: r.Region?.name ?? '',
-    项目编号: r.Project.code,
-    项目名称: r.Project.name,
+    项目编号: r.LaborContract.Project.code,
+    项目名称: r.LaborContract.Project.name,
     合同编号: r.LaborContract.code,
     合同名称: r.LaborContract.name,
-    劳务人员: r.LaborWorker.name,
+    劳务人员: r.LaborContract.LaborWorker.name,
     付款金额: fmtDecimal(r.paymentAmount),
     付款日期: fmtDate(r.paymentDate),
     状态: r.status,

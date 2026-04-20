@@ -56,18 +56,19 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim()
+      const projectId = String(body.projectId ?? '').trim() || null
       const receiptType = String(body.receiptType ?? '').trim()
       const receiptDate = String(body.receiptDate ?? '').trim()
       const receiptAmount = Number(body.receiptAmount ?? 0)
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!receiptType) throw new BadRequestError('收款事由为必填项')
       if (!receiptDate) throw new BadRequestError('日期为必填项')
       if (!Number.isFinite(receiptAmount) || receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
 
-      const project = await assertProjectInCurrentRegion(projectId)
-      if (!project) throw new NotFoundError('项目不存在')
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
 
       const now = new Date()
       const id = crypto.randomUUID()

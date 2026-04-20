@@ -88,9 +88,10 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? existing.submitter
           : String(body.submitter ?? '').trim()
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!submitter) throw new BadRequestError('报销人为必填项')
-      await assertProjectInCurrentRegion(projectId)
+      if (projectId) {
+        await assertProjectInCurrentRegion(projectId)
+      }
 
       let expenseItems = existing.expenseItems ? JSON.parse(existing.expenseItems) : []
       let totalAmount = Number(existing.totalAmount ?? existing.expenseAmount ?? 0)

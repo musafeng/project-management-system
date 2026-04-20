@@ -67,10 +67,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? Number(existing.returnedAmount ?? 0)
           : Number(body.returnedAmount)
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!holder) throw new BadRequestError('申请人为必填项')
       if (issuedAmount <= 0) throw new BadRequestError('金额必须大于0')
-      await assertProjectInCurrentRegion(projectId)
+      if (projectId) {
+        await assertProjectInCurrentRegion(projectId)
+      }
 
       await updateCompatRecord('PettyCash', id, {
         projectId,

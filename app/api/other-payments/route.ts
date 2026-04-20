@@ -61,19 +61,20 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const supportsRegionId = await hasDbColumn('OtherPayment', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
-      const projectId = String(body.projectId ?? '').trim()
+      const projectId = String(body.projectId ?? '').trim() || null
       const paymentType = String(body.paymentType ?? '').trim()
       const paymentDate = String(body.paymentDate ?? '').trim()
       const paymentAmount = Number(body.paymentAmount ?? 0)
       const supplierId = String(body.supplierId ?? '').trim() || null
 
-      if (!projectId) throw new BadRequestError('项目为必填项')
       if (!paymentType) throw new BadRequestError('付款事由为必填项')
       if (!paymentDate) throw new BadRequestError('日期为必填项')
       if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new BadRequestError('金额必须大于0')
 
-      const project = await assertProjectInCurrentRegion(projectId)
-      if (!project) throw new NotFoundError('项目不存在')
+      if (projectId) {
+        const project = await assertProjectInCurrentRegion(projectId)
+        if (!project) throw new NotFoundError('项目不存在')
+      }
 
       let supplierName: string | null = null
       let contact: string | null = String(body.contact ?? '').trim() || null

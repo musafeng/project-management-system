@@ -126,14 +126,15 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
   POST: async (req) => {
     const body = await req.json()
+    const amount = Number(body.amount ?? 0)
 
     if (!body.contractId || typeof body.contractId !== 'string') {
       throw new BadRequestError('合同 ID 为必填项')
     }
-    if (body.amount === undefined || typeof body.amount !== 'number') {
+    if (!Number.isFinite(amount)) {
       throw new BadRequestError('付款金额为必填项且必须是数字')
     }
-    if (body.amount <= 0) {
+    if (amount <= 0) {
       throw new BadRequestError('付款金额必须大于 0')
     }
 
@@ -152,7 +153,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
     const supportsContractWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const workerId = supportsContractWorkerId ? contractData.workerId ?? null : null
-    const vendorId = supportsContractWorkerId ? null : contractData.vendorId ?? null
+    const vendorId = contractData.vendorId ?? null
     if (!workerId && !vendorId) {
       throw new BadRequestError('分包合同未配置分包对象')
     }
@@ -162,7 +163,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       contractId: body.contractId,
       ...(supportsPaymentWorkerId && workerId ? { workerId } : {}),
       ...(vendorId ? { vendorId } : {}),
-      paymentAmount: body.amount,
+      paymentAmount: amount,
       paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
       paymentMethod: body.paymentMethod?.trim() || null,
       paymentNumber: body.paymentNumber?.trim() || null,
@@ -207,7 +208,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     })
     if (!payment) throw new NotFoundError('付款记录创建成功后未查询到记录')
 
-    const newPaidAmount = Number(contractData.paidAmount) + Number(body.amount)
+    const newPaidAmount = Number(contractData.paidAmount) + amount
     const newUnpaidAmount = Number(contractData.payableAmount) - newPaidAmount
 
     await db.subcontractContract.update({

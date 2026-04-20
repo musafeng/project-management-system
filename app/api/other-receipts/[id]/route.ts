@@ -59,10 +59,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           ? Number(existing.receiptAmount)
           : Number(body.receiptAmount)
 
-      if (!nextProjectId) throw new BadRequestError('项目为必填项')
       if (!receiptType) throw new BadRequestError('收款事由为必填项')
       if (receiptAmount <= 0) throw new BadRequestError('金额必须大于0')
-      await assertProjectInCurrentRegion(nextProjectId)
+      if (nextProjectId) {
+        await assertProjectInCurrentRegion(nextProjectId)
+      }
 
       await updateCompatRecord('OtherReceipt', id, {
         projectId: nextProjectId,

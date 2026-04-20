@@ -208,18 +208,16 @@ const FORMS: FormDef[] = [
     { label: "收款事由", fieldKey: "receiptType", componentType: "input", required: true, sortOrder: 1 },
     { label: "金额", fieldKey: "receiptAmount", componentType: "number", required: true, sortOrder: 2 },
     { label: "日期", fieldKey: "receiptDate", componentType: "date", required: true, sortOrder: 3 },
-    { label: "关联项目", fieldKey: "projectId", componentType: "cascadeSelect", required: false, sortOrder: 4, linkedTable: "projects", linkedLabelField: "name", linkedValueField: "id" },
-    { label: "备注", fieldKey: "remark", componentType: "textarea", required: true, sortOrder: 5 },
-    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: true, sortOrder: 6 },
+    { label: "备注", fieldKey: "remark", componentType: "textarea", required: true, sortOrder: 4 },
+    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: true, sortOrder: 5 },
   ]},
   // 15. 其他付款
   { code: "other-payments", name: "其他付款", fields: [
     { label: "付款事由", fieldKey: "paymentType", componentType: "input", required: true, sortOrder: 1 },
     { label: "金额", fieldKey: "paymentAmount", componentType: "number", required: true, sortOrder: 2 },
     { label: "日期", fieldKey: "paymentDate", componentType: "date", required: true, sortOrder: 3 },
-    { label: "关联项目", fieldKey: "projectId", componentType: "cascadeSelect", required: false, sortOrder: 4, linkedTable: "projects", linkedLabelField: "name", linkedValueField: "id" },
-    { label: "备注", fieldKey: "remark", componentType: "textarea", required: true, sortOrder: 5 },
-    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: true, sortOrder: 6 },
+    { label: "备注", fieldKey: "remark", componentType: "textarea", required: true, sortOrder: 4 },
+    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: true, sortOrder: 5 },
   ]},
   // 16. 项目费用报销
   { code: "project-expenses", name: "项目费用报销", fields: [
@@ -254,10 +252,9 @@ const FORMS: FormDef[] = [
     { label: "申请事由", fieldKey: "applyReason", componentType: "input", required: true, sortOrder: 1 },
     { label: "申请人", fieldKey: "holder", componentType: "input", required: true, sortOrder: 2 },
     { label: "金额", fieldKey: "issuedAmount", componentType: "number", required: true, sortOrder: 3 },
-    { label: "关联项目", fieldKey: "projectId", componentType: "cascadeSelect", required: true, sortOrder: 4, linkedTable: "projects", linkedLabelField: "name", linkedValueField: "id" },
-    { label: "日期", fieldKey: "issueDate", componentType: "date", required: true, sortOrder: 5 },
-    { label: "备注", fieldKey: "remark", componentType: "textarea", required: false, sortOrder: 6 },
-    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: false, sortOrder: 7 },
+    { label: "日期", fieldKey: "issueDate", componentType: "date", required: true, sortOrder: 4 },
+    { label: "备注", fieldKey: "remark", componentType: "textarea", required: false, sortOrder: 5 },
+    { label: "附件", fieldKey: "attachmentUrl", componentType: "file", required: false, sortOrder: 6 },
   ]},
 ]
 
