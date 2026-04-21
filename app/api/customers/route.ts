@@ -1,5 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,15 +15,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const keyword = searchParams.get('keyword')
+    const supportsRegionId = await hasDbColumn('Customer', 'regionId')
+    const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
     const where = keyword
       ? {
+          ...(supportsRegionId ? { regionId } : {}),
           OR: [
             { name: { contains: keyword } },
             { code: { contains: keyword } },
           ],
         }
-      : {}
+      : supportsRegionId ? { regionId } : {}
 
     const customers = await db.customer.findMany({
       where,
@@ -48,6 +53,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
    */
   POST: async (req) => {
     const body = await req.json()
+    const supportsRegionId = await hasDbColumn('Customer', 'regionId')
+    const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
     // 验证必填字段
     if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
@@ -72,6 +79,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         bankName: body.bankName?.trim() || null,
         remark: body.remark?.trim() || null,
         status: 'active',
+        ...(supportsRegionId ? { regionId } : {}),
         updatedAt: new Date(),
       },
       select: {

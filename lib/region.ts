@@ -32,6 +32,12 @@ type DirectRegionModel =
 type ProjectScopedModel =
   | 'projectExpense'
 
+type MasterRegionModel =
+  | 'customer'
+  | 'supplier'
+  | 'laborWorker'
+  | 'subcontractVendor'
+
 interface RegionLite {
   id: string
   name: string
@@ -89,6 +95,13 @@ const DIRECT_MODEL_TABLE_MAP: Record<DirectRegionModel, string> = {
 
 const PROJECT_SCOPED_MODEL_TABLE_MAP: Record<ProjectScopedModel, string> = {
   projectExpense: 'ProjectExpense',
+}
+
+const MASTER_MODEL_TABLE_MAP: Record<MasterRegionModel, string> = {
+  customer: 'Customer',
+  supplier: 'Supplier',
+  laborWorker: 'LaborWorker',
+  subcontractVendor: 'SubcontractVendor',
 }
 
 async function getDefaultRegion(): Promise<RegionLite | null> {
@@ -317,6 +330,23 @@ export async function assertProjectScopedRecordInCurrentRegion(
       id,
       Project: { regionId },
     },
+    select,
+  })
+  if (!record) {
+    throw new NotFoundError('记录不存在或不属于当前区域')
+  }
+  return record
+}
+
+export async function assertMasterRecordInCurrentRegion(
+  model: MasterRegionModel,
+  id: string
+) {
+  const regionId = await requireCurrentRegionId()
+  const columns = await getDbTableColumns(MASTER_MODEL_TABLE_MAP[model])
+  const select = Object.fromEntries(Array.from(columns).map((column) => [column, true]))
+  const record = await (db[model] as any).findFirst({
+    where: columns.has('regionId') ? { id, regionId } : { id },
     select,
   })
   if (!record) {

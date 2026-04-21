@@ -1,7 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { requireCurrentRegionId } from '@/lib/region'
+import { assertMasterRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,9 +92,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 验证客户是否存在
-    const customer = await db.customer.findUnique({
-      where: { id: body.customerId },
-    })
+    const customer = await assertMasterRecordInCurrentRegion('customer', body.customerId)
 
     if (!customer) {
       throw new NotFoundError('客户不存在')

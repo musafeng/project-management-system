@@ -292,6 +292,10 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
       if (json.success) {
         setCurrentRegionId(regionId)
         message.success(`已切换到：${json.data.regionName}`)
+        if (typeof window !== 'undefined') {
+          window.location.reload()
+          return
+        }
         router.refresh()
       } else {
         message.error(json.error || '切换失败')

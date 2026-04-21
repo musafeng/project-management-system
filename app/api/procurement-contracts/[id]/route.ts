@@ -4,6 +4,7 @@ import { assertEditable } from '@/lib/approval'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertDirectRecordInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -137,10 +138,7 @@ const handler = apiHandlerWithMethod({
     if (construction.projectId !== projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
-    const supplier = await db.supplier.findUnique({
-      where: { id: supplierId },
-      select: { id: true },
-    })
+    const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
     if (!supplier) throw new NotFoundError('供应商不存在')
 
     const contractAmount =

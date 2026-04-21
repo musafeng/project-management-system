@@ -100,11 +100,14 @@ model Customer {
   status          String            @default("active")
   taxId           String?
   updatedAt       DateTime
+  regionId        String?
   Project         Project[]
   ProjectContract ProjectContract[]
+  Region          Region?           @relation(fields: [regionId], references: [id])
 
   @@index([code])
   @@index([name])
+  @@index([regionId])
 }
 
 model FormDefinition {
@@ -232,13 +235,16 @@ model LaborWorker {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime
   attachmentUrl String?
+  regionId      String?
   LaborContract LaborContract[]
   LaborPayment  LaborPayment[]
   SubcontractContract SubcontractContract[]
   SubcontractPayment  SubcontractPayment[]
+  Region        Region?         @relation(fields: [regionId], references: [id])
 
   @@index([code])
   @@index([name])
+  @@index([regionId])
 }
 
 model ManagementExpense {
@@ -665,8 +671,10 @@ model Region {
   updatedAt            DateTime
   ConstructionApproval ConstructionApproval[]
   ContractReceipt      ContractReceipt[]
+  Customer             Customer[]
   LaborContract        LaborContract[]
   LaborPayment         LaborPayment[]
+  LaborWorker          LaborWorker[]
   ManagementExpense    ManagementExpense[]
   OtherPayment         OtherPayment[]
   OtherReceipt         OtherReceipt[]
@@ -679,6 +687,8 @@ model Region {
   SalesExpense         SalesExpense[]
   SubcontractContract  SubcontractContract[]
   SubcontractPayment   SubcontractPayment[]
+  SubcontractVendor    SubcontractVendor[]
+  Supplier             Supplier[]
 
   @@index([isActive])
 }
@@ -805,11 +815,14 @@ model SubcontractVendor {
   remark              String?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime
+  regionId            String?
   SubcontractContract SubcontractContract[]
   SubcontractPayment  SubcontractPayment[]
+  Region              Region?               @relation(fields: [regionId], references: [id])
 
   @@index([code])
   @@index([name])
+  @@index([regionId])
 }
 
 model Supplier {
@@ -828,10 +841,13 @@ model Supplier {
   taxId               String?
   updatedAt           DateTime
   attachmentUrl       String?
+  regionId            String?
   ProcurementContract ProcurementContract[]
+  Region              Region?               @relation(fields: [regionId], references: [id])
 
   @@index([code])
   @@index([name])
+  @@index([regionId])
 }
 
 model SystemUser {

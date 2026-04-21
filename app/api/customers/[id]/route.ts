@@ -1,4 +1,5 @@
 import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { assertMasterRecordInCurrentRegion } from '@/lib/region'
 import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,8 @@ const handler = apiHandlerWithMethod({
     if (!id) {
       throw new BadRequestError('缺少客户 ID')
     }
+
+    await assertMasterRecordInCurrentRegion('customer', id)
 
     const customer = await db.customer.findUnique({
       where: { id },
@@ -57,9 +60,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 检查客户是否存在
-    const existingCustomer = await db.customer.findUnique({
-      where: { id },
-    })
+    const existingCustomer = await assertMasterRecordInCurrentRegion('customer', id)
 
     if (!existingCustomer) {
       throw new NotFoundError('客户不存在')
@@ -149,9 +150,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 检查客户是否存在
-    const customer = await db.customer.findUnique({
-      where: { id },
-    })
+    const customer = await assertMasterRecordInCurrentRegion('customer', id)
 
     if (!customer) {
       throw new NotFoundError('客户不存在')

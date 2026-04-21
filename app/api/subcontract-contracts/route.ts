@@ -5,6 +5,7 @@ import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import {
   assertConstructionApprovalInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -12,22 +13,25 @@ import {
 export const dynamic = 'force-dynamic'
 
 async function resolveSubcontractAssignee(workerId: string) {
+  const regionId = await requireCurrentRegionId()
   const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
-  if (supportsWorkerId) {
-    return { workerId, vendorId: null as string | null }
-  }
-
-  const compatCode = `LW-${workerId}`
+  const supportsVendorRegionId = await hasDbColumn('SubcontractVendor', 'regionId')
+  const legacyCompatCode = `LW-${workerId}`
+  const compatCode = `${legacyCompatCode}-${regionId.slice(-6)}`
   const existingVendor = await db.subcontractVendor.findFirst({
-    where: { code: compatCode },
+    where: {
+      ...(supportsVendorRegionId ? { regionId } : {}),
+      OR: [{ code: compatCode }, { code: legacyCompatCode }],
+    },
     select: { id: true },
   })
   if (existingVendor) {
-    return { workerId: null as string | null, vendorId: existingVendor.id }
+    return { workerId: supportsWorkerId ? workerId : null, vendorId: existingVendor.id }
   }
 
+  const currentWorker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
   const worker = await db.laborWorker.findUnique({
-    where: { id: workerId },
+    where: { id: currentWorker.id },
     select: { name: true, phone: true, bankAccount: true, bankName: true },
   })
   if (!worker) throw new NotFoundError('分包人员不存在')
@@ -40,12 +44,13 @@ async function resolveSubcontractAssignee(workerId: string) {
       phone: worker.phone,
       bankAccount: worker.bankAccount,
       bankName: worker.bankName,
+      ...(supportsVendorRegionId ? { regionId } : {}),
       updatedAt: new Date(),
     },
     select: { id: true },
   })
 
-  return { workerId: null as string | null, vendorId: vendor.id }
+  return { workerId: supportsWorkerId ? workerId : null, vendorId: vendor.id }
 }
 
 
@@ -189,10 +194,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    const worker = await db.laborWorker.findUnique({
-      where: { id: workerId },
-      select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
-    })
+    const worker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
     if (!worker) throw new NotFoundError('分包人员不存在')
     const assignee = await resolveSubcontractAssignee(workerId)
     const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')

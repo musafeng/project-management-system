@@ -10,6 +10,7 @@
     "lint": "next lint",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "prisma:generate": "prisma generate",
+    "region:isolation": "node --import tsx scripts/apply-region-isolation.ts",
     "deploy:server": "bash scripts/deploy-server.sh"
   },
   "dependencies": {

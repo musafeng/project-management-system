@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -97,16 +98,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           : String(body.bankName ?? '').trim() || null
 
       if (supplierId) {
-        const supplier = await db.supplier.findUnique({
-          where: { id: supplierId },
-          select: {
-            id: true,
-            name: true,
-            contact: true,
-            bankAccount: true,
-            bankName: true,
-          },
-        })
+        const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
         if (!supplier) throw new NotFoundError('供应商不存在')
         supplierName = supplierName || supplier.name
         contact = contact || supplier.contact || null

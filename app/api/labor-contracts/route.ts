@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import {
   assertConstructionApprovalInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -136,10 +137,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    const worker = await db.laborWorker.findUnique({
-      where: { id: body.laborWorkerId },
-      select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
-    })
+    const worker = await assertMasterRecordInCurrentRegion('laborWorker', body.laborWorkerId)
     if (!worker) throw new NotFoundError('劳务人员不存在')
 
     const code = `LABOR${Date.now()}`

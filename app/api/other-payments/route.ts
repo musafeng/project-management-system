@@ -7,7 +7,7 @@ import {
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
-import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertMasterRecordInCurrentRegion, assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 import {
   parseOtherPaymentRemark,
   serializeOtherPaymentRemark,
@@ -83,16 +83,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       let bankName: string | null = String(body.bankName ?? '').trim() || null
 
       if (supplierId) {
-        const supplier = await db.supplier.findUnique({
-          where: { id: supplierId },
-          select: {
-            id: true,
-            name: true,
-            contact: true,
-            bankAccount: true,
-            bankName: true,
-          },
-        })
+        const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
         if (!supplier) throw new NotFoundError('供应商不存在')
         supplierName = supplier.name
         contact = contact || supplier.contact || null
