@@ -12,6 +12,9 @@
  *     total={total}
  *   />
  */
+'use client'
+
+import { useMobile } from '@/hooks/useMobile'
 import type { ReactNode } from 'react'
 import { Button, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
@@ -31,6 +34,8 @@ interface LedgerPageLayoutProps {
   filterBar?: ReactNode
   /** 表格区域 */
   table: ReactNode
+  /** 移动端卡片/列表区域 */
+  mobileTable?: ReactNode
   /** 总条数，显示在标题旁 */
   total?: number
   /** 额外操作（放在新建按钮旁，如导出） */
@@ -44,15 +49,18 @@ export function LedgerPageLayout({
   createLabel = '新建',
   filterBar,
   table,
+  mobileTable,
   total,
   headerExtra,
 }: LedgerPageLayoutProps) {
+  const isMobile = useMobile()
+
   return (
     <div
       style={{
         background: '#fff',
-        borderRadius: 12,
-        padding: '20px 24px 24px',
+        borderRadius: isMobile ? 10 : 12,
+        padding: isMobile ? '14px 14px 16px' : '20px 24px 24px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
       }}
     >
@@ -60,15 +68,16 @@ export function LedgerPageLayout({
       <div
         style={{
           display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
-          flexWrap: 'wrap',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
           gap: 12,
-          marginBottom: 2,
+          marginBottom: isMobile ? 6 : 2,
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
             <Title level={4} style={{ margin: 0 }}>
               {title}
             </Title>
@@ -85,13 +94,22 @@ export function LedgerPageLayout({
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            width: isMobile ? '100%' : 'auto',
+            flexWrap: 'wrap',
+          }}
+        >
           {headerExtra}
           {onCreate && (
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={onCreate}
+              block={isMobile}
             >
               {createLabel}
             </Button>
@@ -104,12 +122,9 @@ export function LedgerPageLayout({
 
       {/* ── 表格 ── */}
       <div style={{ marginTop: 4 }}>
-        {table}
+        {isMobile && mobileTable ? mobileTable : table}
       </div>
     </div>
   )
 }
-
-
-
 

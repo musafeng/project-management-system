@@ -9,6 +9,7 @@ import {
   Modal,
   Form,
   message,
+  ConfigProvider,
   Popconfirm,
   DatePicker,
   InputNumber,
@@ -21,6 +22,8 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import DynamicForm from '@/components/DynamicForm'
 import type { FormFieldConfig } from '@/components/DynamicForm'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 /**
  * 施工立项数据类型
@@ -123,6 +126,7 @@ export default function ConstructionApprovalsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [dynamicFields, setDynamicFields] = useState<FormFieldConfig[]>([])
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -441,103 +445,196 @@ export default function ConstructionApprovalsPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<ConstructionApproval>
+      data={approvals}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      getDescription={(item) => `立项编号：${item.code}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} />}
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'contractCode', label: '合同编号', render: (item) => item.contractCode || '-' },
+        { key: 'budgetAmount', label: '预算金额', render: (item) => formatCurrency(item.budgetAmount) },
+        { key: 'startDate', label: '开始日期', render: (item) => formatDate(item.startDate) },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            disabled={record.approvalStatus !== 'REJECTED'}
+            title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+            onClick={() => handleEditClick(record.id)}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="删除施工立项"
+            description="确定删除该施工立项吗？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            disabled={record.approvalStatus !== 'REJECTED'}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>
+              删除
+            </Button>
+          </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="construction-approvals"
+            isAdmin={isAdmin}
+            onSuccess={() => loadApprovals(projectId, contractId)}
+          />
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无施工立项数据"
+          desc="新增施工立项后，可在此查看预算、开始日期和审批状态。"
+          action={<Button type="primary" onClick={handleAddClick}>新增立项</Button>}
+        />
+      )}
+    />
+  )
+
   return (
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: 8,
-        padding: '20px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#1677ff',
+          borderRadius: 6,
+          fontSize: 14,
+        },
       }}
     >
-      {/* 标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 20,
-            fontWeight: 600,
-            color: '#1d1d1f',
-          }}
-        >
-          施工立项管理
-        </h1>
-      </div>
-
-      {/* 查询区 */}
       <div
         style={{
-          marginBottom: 20,
-          padding: '12px',
-          background: '#fafafa',
-          borderRadius: 6,
-          border: '1px solid #f0f0f0',
+          minHeight: '100vh',
+          background: '#f5f5f5',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
-        <Space wrap style={{ width: '100%' }}>
-          <Select
-            placeholder="选择项目"
-            value={projectId || undefined}
-            onChange={setProjectId}
-            allowClear
-            style={{ width: 200 }}
-            loading={projectsLoading}
-            options={projects.map((project) => ({
-              label: project.name,
-              value: project.id,
-            }))}
-          />
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          }}
+        >
+          {/* 标题 */}
+          <div style={{ marginBottom: 24 }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: isMobile ? 18 : 20,
+                fontWeight: 600,
+                color: '#1d1d1f',
+              }}
+            >
+              施工立项管理
+            </h1>
+          </div>
 
-          <Select
-            placeholder="选择合同"
-            value={contractId || undefined}
-            onChange={setContractId}
-            allowClear
-            style={{ width: 200 }}
-            loading={contractsLoading}
-            options={contracts.map((contract) => ({
-              label: `${contract.code} - ${contract.name}`,
-              value: contract.id,
-            }))}
-          />
-
-          <Button
-            type="primary"
-            icon={<SearchOutlined />}
-            onClick={handleSearch}
-            loading={loading}
+          {/* 查询区 */}
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '12px',
+              background: '#fafafa',
+              borderRadius: 6,
+              border: '1px solid #f0f0f0',
+            }}
           >
-            查询
-          </Button>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                flexWrap: 'wrap',
+                gap: 8,
+                width: '100%',
+              }}
+            >
+              <Select
+                placeholder="选择项目"
+                value={projectId || undefined}
+                onChange={setProjectId}
+                allowClear
+                style={{ width: isMobile ? '100%' : 200 }}
+                loading={projectsLoading}
+                options={projects.map((project) => ({
+                  label: project.name,
+                  value: project.id,
+                }))}
+              />
 
-          <Button onClick={handleReset} loading={loading}>
-            重置
-          </Button>
+              <Select
+                placeholder="选择合同"
+                value={contractId || undefined}
+                onChange={setContractId}
+                allowClear
+                style={{ width: isMobile ? '100%' : 200 }}
+                loading={contractsLoading}
+                options={contracts.map((contract) => ({
+                  label: `${contract.code} - ${contract.name}`,
+                  value: contract.id,
+                }))}
+              />
 
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddClick}
-            style={{ marginLeft: 'auto' }}
-          >
-            新增立项
-          </Button>
-        </Space>
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button
+                  type="primary"
+                  icon={<SearchOutlined />}
+                  onClick={handleSearch}
+                  loading={loading}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  查询
+                </Button>
+
+                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  重置
+                </Button>
+              </div>
+
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAddClick}
+                style={{
+                  marginLeft: isMobile ? 0 : 'auto',
+                  width: isMobile ? '100%' : undefined,
+                }}
+              >
+                新增立项
+              </Button>
+            </div>
+          </div>
+
+          {/* 表格 */}
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<ConstructionApproval>
+              rowKey="id"
+              columns={columns}
+              dataSource={approvals}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1200 }}
+              size="small"
+              locale={{
+                emptyText: '暂无施工立项数据',
+              }}
+            />
+          )}
+        </div>
       </div>
-
-      {/* 表格 */}
-      <Table<ConstructionApproval>
-        rowKey="id"
-        columns={columns}
-        dataSource={approvals}
-        loading={loading}
-        pagination={false}
-        scroll={{ x: 1200 }}
-        size="small"
-        locale={{
-          emptyText: '暂无施工立项数据',
-        }}
-      />
 
       {/* 新增/编辑弹窗 */}
       <Modal
@@ -548,7 +645,7 @@ export default function ConstructionApprovalsPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={600}
+        width={isMobile ? '95vw' : 600}
         okText="确定"
         cancelText="取消"
       >
@@ -623,7 +720,6 @@ export default function ConstructionApprovalsPage() {
           )}
         </Form>
       </Modal>
-    </div>
+    </ConfigProvider>
   )
 }
-

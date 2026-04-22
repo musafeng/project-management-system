@@ -20,6 +20,7 @@ import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
 import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
 import { clientEnv } from '@/lib/env'
+import { MobileProvider, useMobile } from '@/hooks/useMobile'
 
 const { Sider, Header, Content } = Layout
 
@@ -192,17 +193,17 @@ function getPageTitle(pathname: string): string {
   return findTitle(MENU_ITEMS) || '工程项目管理系统'
 }
 
-export default function LayoutProvider({ children }: { children: React.ReactNode }) {
+function LayoutProviderShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [userLoading, setUserLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [regions, setRegions] = useState<{ id: string; name: string; isActive: boolean }[]>([])
   const [currentRegionId, setCurrentRegionId] = useState<string | null>(null)
+  const isMobile = useMobile()
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -227,13 +228,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     }
     loadRegions()
   }, [mounted])
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   useEffect(() => {
     if (!mounted) return
@@ -520,5 +514,13 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
         </Layout>
       </Layout>
     </ConfigProvider>
+  )
+}
+
+export default function LayoutProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <MobileProvider>
+      <LayoutProviderShell>{children}</LayoutProviderShell>
+    </MobileProvider>
   )
 }

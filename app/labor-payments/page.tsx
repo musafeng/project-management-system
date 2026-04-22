@@ -14,6 +14,7 @@ import {
   DatePicker,
   InputNumber,
   Input,
+  Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
@@ -22,6 +23,8 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 /**
  * 劳务付款数据类型
@@ -78,6 +81,8 @@ interface ApiResponse<T> {
   error?: string
 }
 
+const { Text } = Typography
+
 /**
  * 格式化日期
  */
@@ -113,6 +118,7 @@ export default function LaborPaymentsPage() {
   const [form] = Form.useForm()
   const selectedContractId = Form.useWatch('contractId', form)
   const selectedContract = contracts.find((item) => item.id === selectedContractId)
+  const isMobile = useMobile()
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
@@ -348,6 +354,61 @@ export default function LaborPaymentsPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<LaborPayment>
+      data={payments}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.contractName}
+      getDescription={(item) => `合同编号：${item.contractCode}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} />}
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'laborWorkerName', label: '劳务班组', render: (item) => item.laborWorkerName || '-' },
+        { key: 'amount', label: '付款金额', render: (item) => <Text>{formatCurrency(item.amount)}</Text> },
+        { key: 'paymentDate', label: '付款日期', render: (item) => formatDate(item.paymentDate) },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Popconfirm
+            title="删除劳务付款"
+            description="确定删除该劳务付款记录吗？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            disabled={record.approvalStatus !== 'REJECTED'}
+          >
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={record.approvalStatus !== 'REJECTED'}
+              title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+            >
+              删除
+            </Button>
+          </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="labor-payments"
+            isAdmin={isAdmin}
+            onSuccess={() => loadPayments(contractId)}
+          />
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无劳务付款数据"
+          desc="新增付款后，可在此查看劳务付款明细。"
+          action={<Button type="primary" onClick={handleAddClick}>新增付款</Button>}
+        />
+      )}
+    />
+  )
+
   return (
     <ConfigProvider
       theme={{
@@ -362,7 +423,7 @@ export default function LaborPaymentsPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: '16px',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
         <div
@@ -370,8 +431,8 @@ export default function LaborPaymentsPage() {
             maxWidth: '100%',
             margin: '0 auto',
             background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
@@ -380,7 +441,7 @@ export default function LaborPaymentsPage() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 20,
+                fontSize: isMobile ? 18 : 20,
                 fontWeight: 600,
                 color: '#1d1d1f',
               }}
@@ -399,13 +460,21 @@ export default function LaborPaymentsPage() {
               border: '1px solid #f0f0f0',
             }}
           >
-            <Space wrap style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                flexWrap: 'wrap',
+                gap: 8,
+                width: '100%',
+              }}
+            >
               <Select
                 placeholder="选择合同"
                 value={contractId || undefined}
                 onChange={setContractId}
                 allowClear
-                style={{ width: 250 }}
+                style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
                 options={contracts.map((contract) => ({
                   label: `${contract.code} - ${contract.projectName}`,
@@ -413,42 +482,61 @@ export default function LaborPaymentsPage() {
                 }))}
               />
 
-              <Button type="primary" onClick={handleSearch} loading={loading}>
-                查询
-              </Button>
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button type="primary" onClick={handleSearch} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  查询
+                </Button>
 
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
+                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  重置
+                </Button>
+              </div>
 
-              <Button onClick={() => { window.location.href = '/data-exports?resourceType=labor-payments' }}>
-                导出数据
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  width: isMobile ? '100%' : 'auto',
+                  marginLeft: isMobile ? 0 : 'auto',
+                  flexWrap: 'wrap',
+                }}
               >
-                新增付款
-              </Button>
-            </Space>
+                <Button
+                  onClick={() => { window.location.href = '/data-exports?resourceType=labor-payments' }}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  导出数据
+                </Button>
+
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddClick}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  新增付款
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* 表格 */}
-          <Table<LaborPayment>
-            rowKey="id"
-            columns={columns}
-            dataSource={payments}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1200 }}
-            size="small"
-            locale={{
-              emptyText: '暂无劳务付款数据',
-            }}
-          />
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<LaborPayment>
+              rowKey="id"
+              columns={columns}
+              dataSource={payments}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1200 }}
+              size="small"
+              locale={{
+                emptyText: '暂无劳务付款数据',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -461,7 +549,7 @@ export default function LaborPaymentsPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={600}
+        width={isMobile ? '95vw' : 600}
         okText="确定"
         cancelText="取消"
       >

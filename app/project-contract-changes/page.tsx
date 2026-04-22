@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   Button,
+  ConfigProvider,
   DatePicker,
   Form,
   Input,
@@ -20,6 +21,8 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
@@ -100,6 +103,7 @@ export default function ProjectContractChangesPage() {
   const selectedContract = contracts.find((item) => item.id === selectedContractId)
   const originalAmount = editing?.originalAmount ?? Number(selectedContract?.contractAmount ?? 0)
   const totalAmount = originalAmount + increaseAmount
+  const isMobile = useMobile()
 
   const loadContracts = async () => {
     const res = await fetch('/api/project-contracts')
@@ -263,23 +267,120 @@ export default function ProjectContractChangesPage() {
     },
   ]
 
-  return (
-    <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>项目合同变更</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
-          新增
-        </Button>
-      </div>
+  const mobileCards = (
+    <MobileCardList<ProjectContractChange>
+      data={data}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.contractName}
+      getDescription={(item) => `合同编号：${item.contractCode}`}
+      getStatus={(item) => {
+        if (item.approvalStatus === 'APPROVED' && !item.approvedAt) {
+          return <Tag color="blue">待提交</Tag>
+        }
+        return <Tag color={STATUS_MAP[item.approvalStatus]?.color}>{STATUS_MAP[item.approvalStatus]?.label || item.approvalStatus}</Tag>
+      }}
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'changeDate', label: '变更日期', render: (item) => fmtDate(item.changeDate) },
+        { key: 'increaseAmount', label: '增项金额', render: (item) => <span style={{ color: '#1677ff', fontWeight: 600 }}>{fmt(item.increaseAmount)}</span> },
+        { key: 'originalAmount', label: '合同原金额', render: (item) => fmt(item.originalAmount) },
+        { key: 'totalAmount', label: '合同总金额', render: (item) => fmt(item.totalAmount) },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+      ]}
+      actions={(record) => {
+        const locked =
+          record.approvalStatus === 'PENDING' ||
+          (record.approvalStatus === 'APPROVED' && !!record.approvedAt)
 
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 1500 }} size="small" />
+        return (
+          <Space size="small" wrap>
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
+              编辑
+            </Button>
+            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                删除
+              </Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus}
+              resource="project-contract-changes"
+              onSuccess={() => {
+                void load()
+                void loadContracts()
+              }}
+            />
+          </Space>
+        )
+      }}
+      empty={(
+        <EmptyHint
+          title="暂无项目合同变更"
+          desc="新增合同变更后，可在此查看变更金额与审批状态。"
+          action={<Button type="primary" onClick={() => handleOpen()}>新增</Button>}
+        />
+      )}
+    />
+  )
+
+  return (
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#1677ff',
+          borderRadius: 6,
+          fontSize: 14,
+        },
+      }}
+    >
+      <div
+        style={{
+          minHeight: '100vh',
+          background: '#f5f5f5',
+          padding: isMobile ? '12px' : '16px',
+        }}
+      >
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : 20,
+            minHeight: '80vh',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+              alignItems: isMobile ? 'stretch' : 'center',
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: isMobile ? 12 : 0,
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: isMobile ? 18 : 20 }}>项目合同变更</h2>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()} style={{ width: isMobile ? '100%' : undefined }}>
+              新增
+            </Button>
+          </div>
+
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 1500 }} size="small" />
+          )}
+        </div>
+      </div>
 
       <Modal
         title={editing ? '编辑项目合同变更' : '新增项目合同变更'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={620}
+        width={isMobile ? '95vw' : 620}
         okText="确定"
         cancelText="取消"
       >
@@ -330,6 +431,6 @@ export default function ProjectContractChangesPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </ConfigProvider>
   )
 }

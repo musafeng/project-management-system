@@ -21,6 +21,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { requestApi } from '@/lib/client-request'
+import { useMobile } from '@/hooks/useMobile'
 
 interface Project {
   id: string
@@ -133,15 +134,8 @@ export default function ProjectsPage() {
   const [status, setStatus] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
   const [form] = Form.useForm()
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useMobile()
 
   const loadCustomers = async () => {
     setCustomersLoading(true)

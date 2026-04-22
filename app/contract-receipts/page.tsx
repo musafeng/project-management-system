@@ -5,7 +5,6 @@ import {
   Table,
   Button,
   Select,
-  Space,
   Modal,
   Form,
   message,
@@ -15,11 +14,14 @@ import {
   InputNumber,
   Input,
   Tag,
+  Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface DeductionItem {
   type: string
@@ -74,6 +76,8 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   REJECTED: { label: '已拒绝', color: 'red' },
 }
 
+const { Text } = Typography
+
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -106,6 +110,7 @@ export default function ContractReceiptsPage() {
   const selectedContractForFilter = contracts.find((item) => item.id === contractId)
   const deductionTotal = deductionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const actualReceivedAmount = Number(watchedAmount || 0) - deductionTotal
+  const isMobile = useMobile()
 
   const loadContracts = async () => {
     try {
@@ -331,6 +336,68 @@ export default function ContractReceiptsPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<ContractReceipt>
+      data={receipts}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.contractName}
+      getDescription={(item) => `合同编号：${item.contractCode}`}
+      getStatus={(item) =>
+        item.approvalStatus ? <Tag color={STATUS_MAP[item.approvalStatus]?.color}>{STATUS_MAP[item.approvalStatus]?.label || item.approvalStatus}</Tag> : null
+      }
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'amount', label: '收款金额', render: (item) => <Text>{formatCurrency(item.amount)}</Text> },
+        {
+          key: 'actualReceivedAmount',
+          label: '到账金额',
+          render: (item) => (
+            <span style={{ color: '#1677ff', fontWeight: 600 }}>
+              {formatCurrency(item.actualReceivedAmount ?? (item.amount - item.deductionItems.reduce((sum, deduction) => sum + Number(deduction.amount || 0), 0)))}
+            </span>
+          ),
+        },
+        { key: 'receiptDate', label: '收款日期', render: (item) => formatDate(item.receiptDate) },
+        {
+          key: 'deductionItems',
+          label: '扣款明细',
+          render: (item) =>
+            item.deductionItems?.length
+              ? item.deductionItems.map((deduction) => {
+                const parts = [`${deduction.type}:${formatCurrency(deduction.amount)}`]
+                if (deduction.remark) parts.push(`备注:${deduction.remark}`)
+                if (deduction.attachmentUrl) parts.push('有附件')
+                return parts.join(' ')
+              }).join(' / ')
+              : '-',
+          fullWidth: true,
+        },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+      ]}
+      actions={(record) => (
+        <Popconfirm
+          title="删除收款记录"
+          description="确定删除该收款记录吗？"
+          onConfirm={() => handleDelete(record.id)}
+          okText="确定"
+          cancelText="取消"
+        >
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            删除
+          </Button>
+        </Popconfirm>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无收款记录"
+          desc="新增收款后，可在此查看合同收款、扣款与到账情况。"
+          action={<Button type="primary" onClick={handleAddClick}>新增收款</Button>}
+        />
+      )}
+    />
+  )
+
   return (
     <ConfigProvider
       theme={{
@@ -345,7 +412,7 @@ export default function ContractReceiptsPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: '16px',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
         <div
@@ -353,8 +420,8 @@ export default function ContractReceiptsPage() {
             maxWidth: '100%',
             margin: '0 auto',
             background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
@@ -362,7 +429,7 @@ export default function ContractReceiptsPage() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 20,
+                fontSize: isMobile ? 18 : 20,
                 fontWeight: 600,
                 color: '#1d1d1f',
               }}
@@ -374,19 +441,27 @@ export default function ContractReceiptsPage() {
           <div
             style={{
               marginBottom: 20,
-              padding: '12px',
+              padding: 12,
               background: '#fafafa',
               borderRadius: 6,
               border: '1px solid #f0f0f0',
             }}
           >
-            <Space wrap style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                flexWrap: 'wrap',
+                gap: 8,
+                width: '100%',
+              }}
+            >
               <Select
                 placeholder="选择合同"
                 value={contractId || undefined}
                 onChange={setContractId}
                 allowClear
-                style={{ width: 250 }}
+                style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
                 options={contracts.map((contract) => ({
                   label: `${contract.code} - ${contract.name}`,
@@ -394,36 +469,49 @@ export default function ContractReceiptsPage() {
                 }))}
               />
 
-              <Button type="primary" onClick={handleSearch} loading={loading}>
-                查询
-              </Button>
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button type="primary" onClick={handleSearch} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  查询
+                </Button>
 
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
+                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  重置
+                </Button>
+              </div>
 
-              <Button
-                icon={<DownloadOutlined />}
-                onClick={() => {
-                  const params = new URLSearchParams({ resourceType: 'contract-receipts' })
-                  if (selectedContractForFilter?.projectId) {
-                    params.set('projectId', selectedContractForFilter.projectId)
-                  }
-                  window.location.href = `/data-exports?${params.toString()}`
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  width: isMobile ? '100%' : 'auto',
+                  marginLeft: isMobile ? 0 : 'auto',
+                  flexWrap: 'wrap',
                 }}
               >
-                导出数据
-              </Button>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    const params = new URLSearchParams({ resourceType: 'contract-receipts' })
+                    if (selectedContractForFilter?.projectId) {
+                      params.set('projectId', selectedContractForFilter.projectId)
+                    }
+                    window.location.href = `/data-exports?${params.toString()}`
+                  }}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  导出数据
+                </Button>
 
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
-              >
-                新增收款
-              </Button>
-            </Space>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddClick}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  新增收款
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -435,7 +523,8 @@ export default function ContractReceiptsPage() {
               <div
                 key={item.label}
                 style={{
-                  minWidth: 160,
+                  minWidth: isMobile ? 'calc(50% - 6px)' : 160,
+                  flex: isMobile ? '1 1 calc(50% - 6px)' : undefined,
                   background: '#fafafa',
                   border: '1px solid #f0f0f0',
                   borderRadius: 8,
@@ -448,18 +537,22 @@ export default function ContractReceiptsPage() {
             ))}
           </div>
 
-          <Table<ContractReceipt>
-            rowKey="id"
-            columns={columns}
-            dataSource={receipts}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1400 }}
-            size="small"
-            locale={{
-              emptyText: '暂无收款记录',
-            }}
-          />
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<ContractReceipt>
+              rowKey="id"
+              columns={columns}
+              dataSource={receipts}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1400 }}
+              size="small"
+              locale={{
+                emptyText: '暂无收款记录',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -472,7 +565,7 @@ export default function ContractReceiptsPage() {
           form.resetFields()
           setDeductionItems([])
         }}
-        width={640}
+        width={isMobile ? '95vw' : 640}
         okText="确定"
         cancelText="取消"
       >
