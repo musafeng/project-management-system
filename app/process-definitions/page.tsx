@@ -26,6 +26,7 @@ import {
   SettingOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons'
+import { normalizeSystemUsersPayload } from '@/lib/system-users-response'
 
 const { Title, Text } = Typography
 
@@ -137,7 +138,9 @@ export default function ProcessDefinitionsPage() {
     try {
       const res = await fetch('/api/system-users', { credentials: 'include' })
       const json = await res.json()
-      if (json.success) setSystemUsers(json.data ?? [])
+      if (json.success) {
+        setSystemUsers(normalizeSystemUsersPayload(json.data))
+      }
     } catch {
       // 忽略
     }
