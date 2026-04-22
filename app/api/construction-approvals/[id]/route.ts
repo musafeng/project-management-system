@@ -89,7 +89,7 @@ const handler = apiHandlerWithMethod({
 
     // 审批状态锁定校验
     try {
-      assertEditable(existingApproval.approvalStatus)
+      assertEditable(existingApproval.approvalStatus, existingApproval.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
@@ -193,7 +193,7 @@ const handler = apiHandlerWithMethod({
 
     // 审批状态锁定校验
     try {
-      assertEditable(approval.approvalStatus)
+      assertEditable(approval.approvalStatus, approval.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

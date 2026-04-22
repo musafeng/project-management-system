@@ -529,6 +529,11 @@ model Project {
   bidMethod            String?
   location             String?
   projectType          String?
+  approvalStatus       String                 @default("APPROVED")
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  rejectedReason       String?
+  submittedAt          DateTime?
   ConstructionApproval ConstructionApproval[]
   LaborContract        LaborContract[]
   LaborPayment         LaborPayment[]
@@ -547,6 +552,7 @@ model Project {
   SubcontractContract  SubcontractContract[]
   SubcontractPayment   SubcontractPayment[]
 
+  @@index([approvalStatus])
   @@index([code])
   @@index([customerId])
   @@index([status])
@@ -577,6 +583,11 @@ model ProjectContract {
   paymentMethod         String?
   retentionAmount       Decimal?                @db.Decimal(18, 2)
   retentionRate         Decimal?                @db.Decimal(5, 2)
+  approvalStatus        String                  @default("APPROVED")
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+  rejectedReason        String?
+  submittedAt           DateTime?
   ConstructionApproval  ConstructionApproval[]
   ContractReceipt       ContractReceipt[]
   Customer              Customer                @relation(fields: [customerId], references: [id])
@@ -584,6 +595,7 @@ model ProjectContract {
   Region                Region?                 @relation(fields: [regionId], references: [id])
   ProjectContractChange ProjectContractChange[]
 
+  @@index([approvalStatus])
   @@index([code])
   @@index([customerId])
   @@index([projectId])

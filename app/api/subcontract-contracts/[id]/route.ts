@@ -180,7 +180,7 @@ const handler = apiHandlerWithMethod({
     if (!existingContract) throw new NotFoundError('分包合同不存在')
 
     try {
-      assertEditable(existingContract.approvalStatus)
+      assertEditable(existingContract.approvalStatus, existingContract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
@@ -308,7 +308,7 @@ const handler = apiHandlerWithMethod({
     if (!contract) throw new NotFoundError('分包合同不存在')
 
     try {
-      assertEditable(contract.approvalStatus)
+      assertEditable(contract.approvalStatus, contract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

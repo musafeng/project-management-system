@@ -8,7 +8,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import {
   EditOutlined, DeleteOutlined, EyeOutlined,
-  SendOutlined, DownloadOutlined, FileTextOutlined,
+  DownloadOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import {
@@ -56,6 +56,9 @@ interface ProjectContract {
   createdAt: string
   updatedAt?: string
   approvalStatus?: string
+  approvedAt?: string | null
+  submittedAt?: string | null
+  rejectedAt?: string | null
 }
 
 interface ProjectContractDetail extends ProjectContract {
@@ -67,6 +70,30 @@ interface Project {
   id: string
   name: string
   code: string
+}
+
+function getApprovalTag(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
+  if (contract.approvalStatus === 'APPROVED' && !contract.approvedAt) {
+    return <StatusTag status="待提交" map={{ 待提交: { label: '待提交', color: 'blue' } }} size="small" />
+  }
+
+  const map = {
+    PENDING: { label: '审批中', color: 'orange' },
+    APPROVED: { label: '已通过', color: 'green' },
+    REJECTED: { label: '已驳回', color: 'red' },
+  }
+
+  return (
+    <StatusTag
+      status={contract.approvalStatus || '-'}
+      map={map}
+      size="small"
+    />
+  )
+}
+
+function isApprovalLocked(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
+  return contract.approvalStatus === 'PENDING' || (contract.approvalStatus === 'APPROVED' && !!contract.approvedAt)
 }
 
 // ============================================================
@@ -295,21 +322,30 @@ export default function ProjectContractsPage() {
       render: (v: string) => <StatusTag status={v} map={CONTRACT_STATUS} size="small" />,
     },
     {
+      title: '审批状态',
+      key: 'approvalStatus',
+      width: 100,
+      render: (_: unknown, row: ProjectContract) => getApprovalTag(row),
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 250,
       fixed: 'right',
-      render: (_: unknown, row: ProjectContract) => (
-        <Space size={2}>
+      render: (_: unknown, row: ProjectContract) => {
+        const locked = isApprovalLocked(row)
+        return (
+        <Space size={2} wrap>
           <Button type="link" size="small" icon={<EyeOutlined />}
             onClick={() => message.info(`查看 ${row.code}`)}
           >查看</Button>
           <Button type="link" size="small" icon={<EditOutlined />}
+            disabled={locked}
             onClick={() => handleEditClick(row.id)}
           >编辑</Button>
           <ApprovalActions
             id={row.id}
-            approvalStatus={row.approvalStatus || 'PENDING'}
+            approvalStatus={row.approvalStatus || 'APPROVED'}
             resource="project-contracts"
             onSuccess={() => loadContracts(lastFilter)}
           />
@@ -318,10 +354,11 @@ export default function ProjectContractsPage() {
             onConfirm={() => handleDelete(row.id)}
             okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
           </Popconfirm>
         </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -446,7 +483,12 @@ export default function ProjectContractsPage() {
         getKey={(item) => item.id}
         getTitle={(item) => item.name}
         getDescription={(item) => `合同编号：${item.code}`}
-        getStatus={(item) => <StatusTag status={item.status} map={CONTRACT_STATUS} size="small" />}
+        getStatus={(item) => (
+          <Space size={4}>
+            <StatusTag status={item.status} map={CONTRACT_STATUS} size="small" />
+            {getApprovalTag(item)}
+          </Space>
+        )}
         fields={[
           { key: 'projectName', label: '所属项目', render: (item) => item.projectName || '-' },
           { key: 'customerName', label: '客户', render: (item) => item.customerName || '-' },
@@ -460,12 +502,12 @@ export default function ProjectContractsPage() {
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => message.info(`查看 ${item.code}`)}>
               查看
             </Button>
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(item.id)}>
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={isApprovalLocked(item)} onClick={() => handleEditClick(item.id)}>
               编辑
             </Button>
             <ApprovalActions
               id={item.id}
-              approvalStatus={item.approvalStatus || 'PENDING'}
+              approvalStatus={item.approvalStatus || 'APPROVED'}
               resource="project-contracts"
               onSuccess={() => loadContracts(lastFilter)}
             />
@@ -477,7 +519,7 @@ export default function ProjectContractsPage() {
               cancelText="取消"
               okButtonProps={{ danger: true }}
             >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalLocked(item)}>
                 删除
               </Button>
             </Popconfirm>

@@ -1,5 +1,6 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertEditable } from '@/lib/approval'
 import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,11 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
+        rejectedReason: true,
         contractType: true,
         paymentMethod: true,
         hasRetention: true,
@@ -71,6 +77,11 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      approvalStatus: contract.approvalStatus,
+      approvedAt: contract.approvedAt,
+      submittedAt: contract.submittedAt,
+      rejectedAt: contract.rejectedAt,
+      rejectedReason: contract.rejectedReason,
       contractType: contract.contractType,
       paymentMethod: contract.paymentMethod,
       hasRetention: contract.hasRetention,
@@ -101,6 +112,12 @@ const handler = apiHandlerWithMethod({
 
     if (!existingContract) {
       throw new NotFoundError('合同不存在')
+    }
+
+    try {
+      assertEditable(existingContract.approvalStatus, existingContract.approvedAt)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 构建更新数据
@@ -183,6 +200,11 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
+        rejectedReason: true,
         contractType: true,
         paymentMethod: true,
         hasRetention: true,
@@ -211,6 +233,11 @@ const handler = apiHandlerWithMethod({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      approvalStatus: contract.approvalStatus,
+      approvedAt: contract.approvedAt,
+      submittedAt: contract.submittedAt,
+      rejectedAt: contract.rejectedAt,
+      rejectedReason: contract.rejectedReason,
       contractType: contract.contractType,
       paymentMethod: contract.paymentMethod,
       hasRetention: contract.hasRetention,
@@ -240,6 +267,12 @@ const handler = apiHandlerWithMethod({
 
     if (!contract) {
       throw new NotFoundError('合同不存在')
+    }
+
+    try {
+      assertEditable(contract.approvalStatus, contract.approvedAt)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法删除')
     }
 
     // 检查是否存在收款记录

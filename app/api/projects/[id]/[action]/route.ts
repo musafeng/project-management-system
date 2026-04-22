@@ -5,9 +5,8 @@ import { toChineseErrorMessage } from '@/lib/api/error-message'
 
 export const dynamic = 'force-dynamic'
 
-
-const MODEL = 'subcontractPayment' as const
-const BASE = '/api/subcontract-payments'
+const MODEL = 'project' as const
+const BASE = '/api/projects'
 
 export async function POST(
   req: Request,
@@ -27,6 +26,7 @@ export async function POST(
     } else {
       return NextResponse.json({ success: false, error: '无效的操作' }, { status: 400 })
     }
+
     return NextResponse.json(success(null))
   } catch (err) {
     const msg = toChineseErrorMessage(err instanceof Error ? err.message : '操作失败')
@@ -34,6 +34,3 @@ export async function POST(
     return NextResponse.json({ success: false, error: msg }, { status })
   }
 }
-
-
-

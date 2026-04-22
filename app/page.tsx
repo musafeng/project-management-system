@@ -13,6 +13,8 @@ import type { AuthUser } from '@/lib/auth-client'
 import type { WorkbenchData, PendingTask, RecentSubmission, BusinessAlert } from '@/lib/workbench'
 
 const RESOURCE_ROUTE: Record<string, string> = {
+  'projects': '/projects',
+  'project-contracts': '/project-contracts',
   'construction-approvals': '/construction-approvals',
   'project-contract-changes': '/project-contract-changes',
   'procurement-contracts': '/procurement-contracts',
@@ -24,6 +26,8 @@ const RESOURCE_ROUTE: Record<string, string> = {
 }
 
 const RESOURCE_COLOR: Record<string, string> = {
+  'projects': '#1677ff',
+  'project-contracts': '#0958d9',
   'construction-approvals': '#1677ff',
   'project-contract-changes': '#2f54eb',
   'procurement-contracts': '#faad14',
@@ -77,7 +81,7 @@ function WelcomeBar({ user, pendingCount, rejectedCount, onNav }: {
       <div style={{ display: 'flex', gap: 10 }}>
         {pendingCount > 0 && (
           <Tooltip title="点击查看待审批">
-            <div onClick={() => onNav('/construction-approvals')} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, padding: '8px 16px', textAlign: 'center', cursor: 'pointer', minWidth: 64 }}>
+            <div onClick={() => onNav('/approval')} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, padding: '8px 16px', textAlign: 'center', cursor: 'pointer', minWidth: 64 }}>
               <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{pendingCount}</div>
               <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>待审批</div>
             </div>

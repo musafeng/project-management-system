@@ -34,6 +34,7 @@ export interface ApprovalItem {
   startedAt: string
   taskCreatedAt: string
   canApprove?: boolean
+  canUrge?: boolean
   canRevoke?: boolean
 }
 
@@ -46,6 +47,8 @@ const MOBILE_PAGE_SIZE = 20
 
 const RESOURCE_TYPES = [
   { label: '全部类型', value: '' },
+  { label: '项目新增', value: 'projects' },
+  { label: '项目合同', value: 'project-contracts' },
   { label: '施工立项', value: 'construction-approvals' },
   { label: '项目合同变更', value: 'project-contract-changes' },
   { label: '采购合同', value: 'procurement-contracts' },
@@ -57,6 +60,8 @@ const RESOURCE_TYPES = [
 ]
 
 const RESOURCE_ROUTE: Record<string, string> = {
+  'projects': '/projects',
+  'project-contracts': '/project-contracts',
   'construction-approvals': '/construction-approvals',
   'project-contract-changes': '/project-contract-changes',
   'procurement-contracts': '/procurement-contracts',
@@ -68,6 +73,8 @@ const RESOURCE_ROUTE: Record<string, string> = {
 }
 
 const RESOURCE_COLOR: Record<string, string> = {
+  'projects': '#1677ff',
+  'project-contracts': '#0958d9',
   'construction-approvals': '#1677ff',
   'project-contract-changes': '#2f54eb',
   'procurement-contracts': '#faad14',
@@ -339,6 +346,20 @@ export default function ApprovalCenterPage() {
     })
   }
 
+  const handleUrge = async (row: ApprovalItem) => {
+    const result = await requestApi(`/api/${row.resourceType}/${row.resourceId}/urge`, {
+      method: 'POST',
+      credentials: 'include',
+      fallbackError: '催办失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success('已发送催办')
+      load()
+    } else {
+      message.error(result.error || '催办失败，请稍后重试')
+    }
+  }
+
   const renderActions = (row: ApprovalItem) => (
     <Space size={4} wrap>
       <Button
@@ -360,9 +381,16 @@ export default function ApprovalCenterPage() {
         </>
       )}
       {tab === 'mine' && row.canRevoke && (
-        <Button type="link" size="small" icon={<RollbackOutlined />} danger onClick={() => handleRevoke(row)}>
-          撤回
-        </Button>
+        <>
+          {row.canUrge && (
+            <Button type="link" size="small" onClick={() => handleUrge(row)}>
+              催办
+            </Button>
+          )}
+          <Button type="link" size="small" icon={<RollbackOutlined />} danger onClick={() => handleRevoke(row)}>
+            撤回
+          </Button>
+        </>
       )}
     </Space>
   )

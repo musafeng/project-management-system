@@ -22,6 +22,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { requestApi } from '@/lib/client-request'
 import { useMobile } from '@/hooks/useMobile'
+import { ApprovalActions } from '@/components/ApprovalActions'
 
 interface Project {
   id: string
@@ -30,6 +31,10 @@ interface Project {
   customerId: string
   customerName: string
   status: string
+  approvalStatus: string
+  approvedAt?: string | null
+  submittedAt?: string | null
+  rejectedAt?: string | null
   startDate: string | null
   endDate: string | null
   budget?: number
@@ -40,6 +45,7 @@ interface ProjectDetail extends Project {
   customer?: { id: string; name: string }
   remark?: string | null
   updatedAt?: string
+  rejectedReason?: string | null
 }
 
 interface Customer {
@@ -80,16 +86,38 @@ function formatCurrency(value: number | undefined): string {
   return `¥${value.toLocaleString('zh-CN')}`
 }
 
+function getApprovalTag(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
+  if (project.approvalStatus === 'APPROVED' && !project.approvedAt) {
+    return <Tag color="blue">待提交</Tag>
+  }
+
+  const map: Record<string, { label: string; color: string }> = {
+    PENDING: { label: '审批中', color: 'orange' },
+    APPROVED: { label: '已通过', color: 'green' },
+    REJECTED: { label: '已驳回', color: 'red' },
+  }
+  const current = map[project.approvalStatus] || { label: project.approvalStatus, color: 'default' }
+  return <Tag color={current.color}>{current.label}</Tag>
+}
+
+function isApprovalLocked(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
+  return project.approvalStatus === 'PENDING' || (project.approvalStatus === 'APPROVED' && !!project.approvedAt)
+}
+
 // 移动端单项目卡片
 function MobileProjectCard({
   item,
   onEdit,
   onDelete,
+  onRefresh,
 }: {
   item: Project
   onEdit: (id: string) => void
   onDelete: (id: string) => void
+  onRefresh: () => void
 }) {
+  const locked = isApprovalLocked(item)
+
   return (
     <Card
       size="small"
@@ -97,20 +125,29 @@ function MobileProjectCard({
       title={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</span>
-          {getStatusTag(item.status)}
+          <Space size={4}>
+            {getStatusTag(item.status)}
+            {getApprovalTag(item)}
+          </Space>
         </div>
       }
       extra={
-        <Space size="small">
+        <Space size="small" wrap>
           <Button type="link" size="small" onClick={() => window.location.href = `/projects/${item.id}`}>详情</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(item.id)}>编辑</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => onEdit(item.id)}>编辑</Button>
+          <ApprovalActions
+            id={item.id}
+            approvalStatus={item.approvalStatus}
+            resource="projects"
+            onSuccess={onRefresh}
+          />
           <Popconfirm
             title="确定删除该项目吗？"
             onConfirm={() => onDelete(item.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
           </Popconfirm>
         </Space>
       }
@@ -250,22 +287,32 @@ export default function ProjectsPage() {
     { title: '项目名称', dataIndex: 'name', key: 'name', width: 180 },
     { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150 },
     { title: '项目状态', dataIndex: 'status', key: 'status', width: 100, render: (s: string) => getStatusTag(s) },
+    { title: '审批状态', key: 'approvalStatus', width: 100, render: (_, record) => getApprovalTag(record) },
     { title: '预算', dataIndex: 'budget', key: 'budget', width: 120, align: 'right', render: (v: number | undefined) => formatCurrency(v) },
     { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (text: string) => formatDate(text) },
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 250,
       fixed: 'right',
-      render: (_, record) => (
-        <Space size="small">
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        return (
+        <Space size="small" wrap>
           <Button type="link" size="small" onClick={() => window.location.href = `/projects/${record.id}`}>详情</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            resource="projects"
+            onSuccess={() => loadProjects(keyword, status)}
+          />
           <Popconfirm title="删除项目" description="确定删除该项目吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
           </Popconfirm>
         </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -369,7 +416,13 @@ export default function ProjectsPage() {
             <div style={{ textAlign: 'center', color: '#bbb', padding: '40px 0', fontSize: 15 }}>暂无项目数据</div>
           ) : (
             projects.map((item) => (
-              <MobileProjectCard key={item.id} item={item} onEdit={handleEditClick} onDelete={handleDelete} />
+              <MobileProjectCard
+                key={item.id}
+                item={item}
+                onEdit={handleEditClick}
+                onDelete={handleDelete}
+                onRefresh={() => loadProjects(keyword, status)}
+              />
             ))
           )}
         </div>

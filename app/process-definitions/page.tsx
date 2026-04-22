@@ -537,6 +537,8 @@ export default function ProcessDefinitionsPage() {
               placeholder="请选择对应的业务模块"
               disabled={!!editingDef}
               options={[
+                { label: '项目新增（projects）', value: 'projects' },
+                { label: '项目合同（project-contracts）', value: 'project-contracts' },
                 { label: '施工立项（construction-approvals）', value: 'construction-approvals' },
                 { label: '项目合同变更（project-contract-changes）', value: 'project-contract-changes' },
                 { label: '采购合同（procurement-contracts）', value: 'procurement-contracts' },

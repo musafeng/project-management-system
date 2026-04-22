@@ -13,6 +13,7 @@ import {
   sendApprovalSubmittedNotification,
   sendApprovalApprovedNotification,
   sendApprovalRejectedNotification,
+  sendApprovalUrgedNotification,
 } from './dingtalk-notify'
 import { assertResourceInCurrentRegion } from './region'
 
@@ -25,6 +26,8 @@ export const ApprovalStatus = {
 export type ApprovalStatusType = keyof typeof ApprovalStatus
 
 export type ApprovalModel =
+  | 'project'
+  | 'projectContract'
   | 'constructionApproval'
   | 'projectContractChange'
   | 'procurementContract'
@@ -44,6 +47,8 @@ const ALL_SUBMIT_ROLES: SystemUserRole[] = [
 ] as SystemUserRole[]
 
 export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
+  project: ALL_SUBMIT_ROLES,
+  projectContract: ALL_SUBMIT_ROLES,
   constructionApproval: ALL_SUBMIT_ROLES,
   projectContractChange: ALL_SUBMIT_ROLES,
   procurementContract: ALL_SUBMIT_ROLES,
@@ -56,6 +61,8 @@ export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
 
 /** 各模块资源类型（对应 ProcessDefinition.resourceType） */
 export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
+  project: 'projects',
+  projectContract: 'project-contracts',
   constructionApproval: 'construction-approvals',
   projectContractChange: 'project-contract-changes',
   procurementContract: 'procurement-contracts',
@@ -67,6 +74,8 @@ export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
 }
 
 const MODEL_LABEL: Record<ApprovalModel, string> = {
+  project: '项目新增',
+  projectContract: '项目合同',
   constructionApproval: '施工立项',
   projectContractChange: '项目合同变更',
   procurementContract: '采购合同',
@@ -78,6 +87,8 @@ const MODEL_LABEL: Record<ApprovalModel, string> = {
 }
 
 const MODEL_TABLE: Record<ApprovalModel, string> = {
+  project: 'Project',
+  projectContract: 'ProjectContract',
   constructionApproval: 'ConstructionApproval',
   projectContractChange: 'ProjectContractChange',
   procurementContract: 'ProcurementContract',
@@ -98,6 +109,16 @@ async function getApprovalStatus(model: ApprovalModel, id: string): Promise<stri
     select: { approvalStatus: true },
   })
   return record?.approvalStatus ?? null
+}
+
+async function getLatestInstance(model: ApprovalModel, resourceId: string) {
+  return db.processInstance.findFirst({
+    where: {
+      resourceType: MODEL_RESOURCE_TYPE[model],
+      resourceId,
+    },
+    orderBy: { startedAt: 'desc' },
+  })
 }
 
 async function updateApprovalStatus(
@@ -188,11 +209,11 @@ async function assertApprover(task: {
 // 公共 API
 // ============================================================================
 
-export function assertEditable(approvalStatus: string): void {
+export function assertEditable(approvalStatus: string, approvedAt?: Date | string | null): void {
   if (approvalStatus === ApprovalStatus.PENDING) {
     throw new Error('当前单据审批中，无法修改')
   }
-  if (approvalStatus === ApprovalStatus.APPROVED) {
+  if (approvalStatus === ApprovalStatus.APPROVED && approvedAt) {
     throw new Error('当前单据已审批通过，无法修改')
   }
 }
@@ -213,7 +234,14 @@ export async function handleSubmit(
 
   const currentStatus = await getApprovalStatus(model, id)
   if (currentStatus === null) throw new Error('记录不存在')
-  if (currentStatus === ApprovalStatus.PENDING) throw new Error('该记录已在审批中，请勿重复提交')
+
+  const latestInstance = await getLatestInstance(model, id)
+  if (latestInstance?.status === 'PENDING' || currentStatus === ApprovalStatus.PENDING) {
+    throw new Error('该记录已在审批中，请勿重复提交')
+  }
+  if (latestInstance?.status === 'APPROVED') {
+    throw new Error('该记录审批流程已结束，无需再次提交审批')
+  }
 
   // 查流程定义
   const resourceType = MODEL_RESOURCE_TYPE[model]
@@ -419,4 +447,55 @@ export async function handleReject(
       reason,
     }).catch((err) => console.error('[钉钉通知] reject 通知异常:', err))
   }
+}
+
+/**
+ * 审批催办
+ * - 仅流程发起人可催办
+ * - 仅最新流程实例仍在审批中时可催办
+ */
+export async function handleUrge(
+  model: ApprovalModel,
+  id: string,
+  resourcePath: string
+): Promise<void> {
+  await assertResourceInCurrentRegion(MODEL_RESOURCE_TYPE[model], id)
+
+  const currentStatus = await getApprovalStatus(model, id)
+  if (currentStatus === null) throw new Error('记录不存在')
+
+  const { instance, task } = await getPendingTask(model, id)
+  if (!instance || !task) {
+    throw new Error('当前单据不在审批中，无法催办')
+  }
+
+  const currentUser = await getCurrentUser()
+  if (instance.submitterUserId !== currentUser.userid) {
+    throw new Error('只有审批发起人可以催办')
+  }
+
+  const node = await db.processNode.findUnique({
+    where: { id: task.nodeId },
+    select: { name: true },
+  })
+
+  await createActionLog({
+    action: ActionType.UPDATE,
+    resource: MODEL_LABEL[model],
+    resourceId: id,
+    method: 'POST',
+    path: resourcePath,
+    detail: `催办审批：${MODEL_LABEL[model]}（ID: ${id}）`,
+  })
+
+  await sendApprovalUrgedNotification({
+    submitterName: instance.submitterName,
+    submitterDingUserId: instance.submitterUserId,
+    modelLabel: MODEL_LABEL[model],
+    resourceId: id,
+    nodeName: node?.name ?? `节点${task.nodeOrder}`,
+    approverType: task.approverType,
+    approverRole: task.approverRole ?? undefined,
+    approverUserId: task.approverUserId ?? undefined,
+  })
 }
