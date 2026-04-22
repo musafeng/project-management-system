@@ -4,6 +4,7 @@
  */
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, ConflictError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
+import { normalizeProcessDefinition, normalizeProcessDefinitions } from '@/lib/process-definitions'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
       orderBy: { createdAt: 'asc' },
     })
-    return success(defs)
+    return success(normalizeProcessDefinitions(defs))
   },
 
   POST: async (req) => {
@@ -38,7 +39,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       },
       include: { ProcessNode: true },
     })
-    return success(def)
+    return success(normalizeProcessDefinition(def))
   },
 }, {
   resource: 'process-definitions',

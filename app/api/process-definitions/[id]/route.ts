@@ -4,6 +4,7 @@
  */
 import { apiHandlerWithPermissionAndLog, success, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
+import { normalizeProcessDefinition } from '@/lib/process-definitions'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export const { GET, PUT } = apiHandlerWithPermissionAndLog({
       include: { ProcessNode: { orderBy: { order: 'asc' } } },
     })
     if (!def) throw new NotFoundError('流程定义不存在')
-    return success(def)
+    return success(normalizeProcessDefinition(def))
   },
 
   PUT: async (req) => {
@@ -35,7 +36,7 @@ export const { GET, PUT } = apiHandlerWithPermissionAndLog({
       },
       include: { ProcessNode: { orderBy: { order: 'asc' } } },
     })
-    return success(updated)
+    return success(normalizeProcessDefinition(updated))
   },
 }, {
   resource: 'process-definitions',

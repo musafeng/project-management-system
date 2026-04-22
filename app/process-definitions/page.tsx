@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Table,
   Button,
@@ -52,6 +52,7 @@ interface ProcessDefinition {
   isActive: boolean
   createdAt: string
   nodes: ProcessNode[]
+  ProcessNode?: ProcessNode[]
 }
 
 interface SystemUser {
@@ -105,23 +106,34 @@ export default function ProcessDefinitionsPage() {
   const [approverType, setApproverType] = useState<'ROLE' | 'USER'>('ROLE')
   const [ccMode, setCcMode] = useState<'NONE' | 'SUBMITTER' | 'ROLE' | 'USER'>('NONE')
 
+  const getDefinitionNodes = (definition: ProcessDefinition | null | undefined) => {
+    return definition?.nodes ?? definition?.ProcessNode ?? []
+  }
+
   // ─── 数据加载 ──────────────────────────────────────────────────────────────
 
-  const loadDefinitions = async () => {
+  const loadDefinitions = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/process-definitions', { credentials: 'include' })
       const json = await res.json()
-      if (json.success) setDefinitions(json.data)
+      if (json.success) {
+        setDefinitions(
+          (json.data ?? []).map((definition: ProcessDefinition) => ({
+            ...definition,
+            nodes: getDefinitionNodes(definition),
+          }))
+        )
+      }
       else message.error(json.error || '加载失败')
     } catch {
       message.error('加载失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const loadSystemUsers = async () => {
+  const loadSystemUsers = useCallback(async () => {
     try {
       const res = await fetch('/api/system-users', { credentials: 'include' })
       const json = await res.json()
@@ -129,12 +141,12 @@ export default function ProcessDefinitionsPage() {
     } catch {
       // 忽略
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadDefinitions()
     loadSystemUsers()
-  }, [])
+  }, [loadDefinitions, loadSystemUsers])
 
   // 当进入详情时同步 selectedDef 的节点数据
   useEffect(() => {
@@ -227,12 +239,12 @@ export default function ProcessDefinitionsPage() {
         ccUserId: node.ccUserId,
       })
     } else {
-      const nextOrder = (selectedDef?.nodes.length ?? 0) + 1
+      const nextNodes = getDefinitionNodes(selectedDef)
       setApproverType('ROLE')
       setCcMode('NONE')
       nodeForm.setFieldsValue({
         name: '审批',
-        order: nextOrder,
+        order: nextNodes.length + 1,
         approverType: 'ROLE',
         ccMode: 'NONE',
       })
@@ -323,7 +335,7 @@ export default function ProcessDefinitionsPage() {
       key: 'nodeCount',
       width: 80,
       align: 'center',
-      render: (_, r) => <Badge count={r.nodes.length} showZero color="#595959" />,
+      render: (_, r) => <Badge count={getDefinitionNodes(r).length} showZero color="#595959" />,
     },
     {
       title: '状态',
@@ -481,7 +493,7 @@ export default function ProcessDefinitionsPage() {
             </div>
           </div>
 
-          {selectedDef.nodes.length === 0 && (
+          {getDefinitionNodes(selectedDef).length === 0 && (
             <div style={{
               textAlign: 'center', padding: '40px 0',
               color: '#999', border: '1px dashed #d9d9d9', borderRadius: 6, marginBottom: 16,
@@ -490,11 +502,11 @@ export default function ProcessDefinitionsPage() {
             </div>
           )}
 
-          {selectedDef.nodes.length > 0 && (
+          {getDefinitionNodes(selectedDef).length > 0 && (
             <Table<ProcessNode>
               rowKey="id"
               columns={nodeColumns}
-              dataSource={[...selectedDef.nodes].sort((a, b) => a.order - b.order)}
+              dataSource={[...getDefinitionNodes(selectedDef)].sort((a, b) => a.order - b.order)}
               pagination={false}
               size="small"
               locale={{ emptyText: '暂无节点' }}
