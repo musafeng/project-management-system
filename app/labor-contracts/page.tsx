@@ -24,6 +24,7 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 劳务合同数据类型
@@ -41,6 +42,7 @@ interface LaborContract {
   unpaidAmount: number
   signDate: string | null
   approvalStatus: string
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -476,28 +478,33 @@ export default function LaborContractsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) => <ApprovalStatusTag status={status} />,
+      render: (_: string, record) => <ApprovalStatusTag status={record.approvalStatus} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
       width: 200,
       fixed: 'right',
-      render: (_, record) => (
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <Popconfirm title="删除劳务合同" description="确定删除该劳务合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={record.approvalStatus !== 'REJECTED'}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>删除</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} title={lockReason} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Popconfirm title="删除劳务合同" description="确定删除该劳务合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="labor-contracts"
             isAdmin={isAdmin}
             onSuccess={() => loadContracts(keyword, projectId)}
           />
         </Space>
-      ),
+      )},
     },
   ]
 
@@ -508,7 +515,7 @@ export default function LaborContractsPage() {
       getKey={(item) => item.id}
       getTitle={(item) => item.name}
       getDescription={(item) => `合同编号：${item.code}`}
-      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} />}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
       fields={[
         { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
         { key: 'constructionName', label: '施工立项', render: (item) => item.constructionName || '-' },
@@ -518,14 +525,18 @@ export default function LaborContractsPage() {
         { key: 'unpaidAmount', label: '未付金额', render: (item) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{formatCurrency(item.unpaidAmount)}</span> },
         { key: 'signDate', label: '签订日期', render: (item) => formatDate(item.signDate), fullWidth: true },
       ]}
-      actions={(record) => (
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small" wrap>
           <Button
             type="link"
             size="small"
             icon={<EditOutlined />}
-            disabled={record.approvalStatus !== 'REJECTED'}
-            title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+            disabled={locked}
+            title={lockReason}
             onClick={() => handleEditClick(record.id)}
           >
             编辑
@@ -536,21 +547,22 @@ export default function LaborContractsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={record.approvalStatus !== 'REJECTED'}
+            disabled={locked}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
               删除
             </Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="labor-contracts"
             isAdmin={isAdmin}
             onSuccess={() => loadContracts(keyword, projectId)}
           />
         </Space>
-      )}
+      )}}
       empty={(
         <EmptyHint
           title="暂无劳务合同数据"

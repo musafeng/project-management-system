@@ -22,6 +22,7 @@ import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
 import { useMobile } from '@/hooks/useMobile'
+import { getApprovalStatusMeta, isApprovalLocked as isApprovalRecordLocked } from '@/lib/approval-status'
 
 const { Text } = Typography
 const MOBILE_PAGE_SIZE = 20
@@ -73,27 +74,19 @@ interface Project {
 }
 
 function getApprovalTag(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
-  if (contract.approvalStatus === 'APPROVED' && !contract.approvedAt) {
-    return <StatusTag status="待提交" map={{ 待提交: { label: '待提交', color: 'blue' } }} size="small" />
-  }
-
-  const map = {
-    PENDING: { label: '审批中', color: 'orange' },
-    APPROVED: { label: '已通过', color: 'green' },
-    REJECTED: { label: '已驳回', color: 'red' },
-  }
+  const statusMeta = getApprovalStatusMeta(contract)
 
   return (
     <StatusTag
-      status={contract.approvalStatus || '-'}
-      map={map}
+      status={statusMeta.label}
+      map={{ [statusMeta.label]: statusMeta }}
       size="small"
     />
   )
 }
 
 function isApprovalLocked(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
-  return contract.approvalStatus === 'PENDING' || (contract.approvalStatus === 'APPROVED' && !!contract.approvedAt)
+  return isApprovalRecordLocked(contract)
 }
 
 // ============================================================
@@ -346,6 +339,7 @@ export default function ProjectContractsPage() {
           <ApprovalActions
             id={row.id}
             approvalStatus={row.approvalStatus || 'APPROVED'}
+            approvedAt={row.approvedAt}
             resource="project-contracts"
             onSuccess={() => loadContracts(lastFilter)}
           />
@@ -508,6 +502,7 @@ export default function ProjectContractsPage() {
             <ApprovalActions
               id={item.id}
               approvalStatus={item.approvalStatus || 'APPROVED'}
+              approvedAt={item.approvedAt}
               resource="project-contracts"
               onSuccess={() => loadContracts(lastFilter)}
             />

@@ -4,6 +4,7 @@
  */
 import { apiHandler, success } from '@/lib/api'
 import { checkAuth } from '@/lib/api'
+import { canSubmitApproval } from '@/lib/approval-status'
 import { db } from '@/lib/db'
 import { assertResourceInCurrentRegion } from '@/lib/region'
 import { findSystemUserByDingUserId } from '@/lib/system-user'
@@ -26,8 +27,9 @@ export const GET = apiHandler(async (req) => {
     return success({ canApprove: false, canSubmit: false, canUrge: false, latestStatus: null, task: null })
   }
 
+  let record: { approvalStatus?: string | null; approvedAt?: Date | null } | null = null
   try {
-    await assertResourceInCurrentRegion(resource, resourceId)
+    record = await assertResourceInCurrentRegion(resource, resourceId)
   } catch {
     return success({ canApprove: false, canSubmit: false, canUrge: false, latestStatus: null, task: null })
   }
@@ -65,7 +67,7 @@ export const GET = apiHandler(async (req) => {
   }
 
   const latestStatus = instance?.status ?? null
-  const canSubmit = latestStatus !== 'PENDING' && latestStatus !== 'APPROVED'
+  const canSubmit = canSubmitApproval(record ?? {}, latestStatus)
   const canUrge = latestStatus === 'PENDING' && instance?.submitterUserId === authUser.userid
 
   return success({

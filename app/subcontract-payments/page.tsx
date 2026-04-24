@@ -25,6 +25,7 @@ import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 分包付款数据类型
@@ -46,6 +47,7 @@ interface SubcontractPayment {
   paymentDate: string
   attachmentUrl?: string | null
   approvalStatus: string
+  approvedAt?: string | null
   remark: string | null
   createdAt: string
 }
@@ -330,27 +332,32 @@ export default function SubcontractPaymentsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) => <ApprovalStatusTag status={status} />,
+      render: (_: string, record) => <ApprovalStatusTag status={record.approvalStatus} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
       width: 180,
       fixed: 'right',
-      render: (_, record) => (
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small">
-          <Popconfirm title="删除分包付款" description="确定删除该分包付款记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={record.approvalStatus !== 'REJECTED'}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}>删除</Button>
+          <Popconfirm title="删除分包付款" description="确定删除该分包付款记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="subcontract-payments"
             isAdmin={isAdmin}
             onSuccess={() => loadPayments(contractId)}
           />
         </Space>
-      ),
+      )},
     },
   ]
 
@@ -361,7 +368,7 @@ export default function SubcontractPaymentsPage() {
       getKey={(item) => item.id}
       getTitle={(item) => item.contractName}
       getDescription={(item) => `合同编号：${item.contractCode}`}
-      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} />}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
       fields={[
         { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
         { key: 'subcontractWorkerName', label: '分包人员', render: (item) => item.subcontractWorkerName || '-' },
@@ -369,7 +376,11 @@ export default function SubcontractPaymentsPage() {
         { key: 'paymentDate', label: '付款日期', render: (item) => formatDate(item.paymentDate) },
         { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
       ]}
-      actions={(record) => (
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small" wrap>
           <Popconfirm
             title="删除分包付款"
@@ -377,15 +388,15 @@ export default function SubcontractPaymentsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={record.approvalStatus !== 'REJECTED'}
+            disabled={locked}
           >
             <Button
               type="link"
               size="small"
               danger
               icon={<DeleteOutlined />}
-              disabled={record.approvalStatus !== 'REJECTED'}
-              title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+              disabled={locked}
+              title={lockReason}
             >
               删除
             </Button>
@@ -393,12 +404,13 @@ export default function SubcontractPaymentsPage() {
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="subcontract-payments"
             isAdmin={isAdmin}
             onSuccess={() => loadPayments(contractId)}
           />
         </Space>
-      )}
+      )}}
       empty={(
         <EmptyHint
           title="暂无分包付款数据"

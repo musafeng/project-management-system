@@ -25,6 +25,7 @@ import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { getApprovalStatusMeta, isApprovalLocked } from '@/lib/approval-status'
 
 interface ProjectContract {
   id: string
@@ -57,12 +58,6 @@ interface ApiResponse<T> {
   success: boolean
   data?: T
   error?: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
 }
 
 function fmt(value: number) {
@@ -224,11 +219,9 @@ export default function ProjectContractChangesPage() {
       title: '审批状态',
       dataIndex: 'approvalStatus',
       width: 100,
-      render: (value, record) => {
-        if (value === 'APPROVED' && !record.approvedAt) {
-          return <Tag color="blue">待提交</Tag>
-        }
-        return <Tag color={STATUS_MAP[value]?.color}>{STATUS_MAP[value]?.label || value}</Tag>
+      render: (_, record) => {
+        const statusMeta = getApprovalStatusMeta(record)
+        return <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
       },
     },
     { title: '备注', dataIndex: 'remark', width: 180, render: (value) => value || '-' },
@@ -238,9 +231,7 @@ export default function ProjectContractChangesPage() {
       width: 220,
       fixed: 'right',
       render: (_, record) => {
-        const locked =
-          record.approvalStatus === 'PENDING' ||
-          (record.approvalStatus === 'APPROVED' && !!record.approvedAt)
+        const locked = isApprovalLocked(record)
 
         return (
         <Space size="small">
@@ -255,6 +246,7 @@ export default function ProjectContractChangesPage() {
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="project-contract-changes"
             onSuccess={() => {
               void load()
@@ -275,10 +267,8 @@ export default function ProjectContractChangesPage() {
       getTitle={(item) => item.contractName}
       getDescription={(item) => `合同编号：${item.contractCode}`}
       getStatus={(item) => {
-        if (item.approvalStatus === 'APPROVED' && !item.approvedAt) {
-          return <Tag color="blue">待提交</Tag>
-        }
-        return <Tag color={STATUS_MAP[item.approvalStatus]?.color}>{STATUS_MAP[item.approvalStatus]?.label || item.approvalStatus}</Tag>
+        const statusMeta = getApprovalStatusMeta(item)
+        return <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
       }}
       fields={[
         { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
@@ -289,9 +279,7 @@ export default function ProjectContractChangesPage() {
         { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
       ]}
       actions={(record) => {
-        const locked =
-          record.approvalStatus === 'PENDING' ||
-          (record.approvalStatus === 'APPROVED' && !!record.approvedAt)
+        const locked = isApprovalLocked(record)
 
         return (
           <Space size="small" wrap>
@@ -306,6 +294,7 @@ export default function ProjectContractChangesPage() {
             <ApprovalActions
               id={record.id}
               approvalStatus={record.approvalStatus}
+              approvedAt={record.approvedAt}
               resource="project-contract-changes"
               onSuccess={() => {
                 void load()

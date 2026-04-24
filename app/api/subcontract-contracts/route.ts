@@ -86,6 +86,7 @@ function toResponse(contract: {
   subcontractType?: string | null
   remark?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
 }) {
   const workerName = contract.LaborWorker?.name ?? contract.SubcontractVendor?.name ?? ''
@@ -113,6 +114,7 @@ function toResponse(contract: {
     subcontractType: contract.subcontractType ?? null,
     remark: contract.remark ?? null,
     approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
   }
 }
@@ -153,6 +155,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -247,6 +250,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
     })

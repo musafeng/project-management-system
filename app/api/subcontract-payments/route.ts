@@ -29,6 +29,7 @@ function toResponse(payment: {
   paymentNumber: string | null
   attachmentUrl?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   status: string
   remark: string | null
   createdAt: Date
@@ -58,6 +59,7 @@ function toResponse(payment: {
     paymentNumber: payment.paymentNumber,
     attachmentUrl: payment.attachmentUrl,
     approvalStatus: payment.approvalStatus,
+    approvedAt: payment.approvedAt,
     status: payment.status,
     remark: payment.remark,
     createdAt: payment.createdAt,
@@ -106,6 +108,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -201,6 +204,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,

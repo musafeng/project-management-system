@@ -24,6 +24,7 @@ import DynamicForm from '@/components/DynamicForm'
 import type { FormFieldConfig } from '@/components/DynamicForm'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 施工立项数据类型
@@ -37,6 +38,7 @@ interface ConstructionApproval {
   budgetAmount: number
   startDate: string | null
   approvalStatus: string
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -402,21 +404,25 @@ export default function ConstructionApprovalsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) => <ApprovalStatusTag status={status} />,
+      render: (_: string, record) => <ApprovalStatusTag status={record.approvalStatus} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
       width: 200,
       fixed: 'right',
-      render: (_, record) => (
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small">
           <Button
             type="link"
             size="small"
             icon={<EditOutlined />}
-            disabled={record.approvalStatus !== 'REJECTED'}
-            title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+            disabled={locked}
+            title={lockReason}
             onClick={() => handleEditClick(record.id)}
           >
             编辑
@@ -427,21 +433,22 @@ export default function ConstructionApprovalsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={record.approvalStatus !== 'REJECTED'}
+            disabled={locked}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
               删除
             </Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="construction-approvals"
             isAdmin={isAdmin}
             onSuccess={() => loadApprovals(projectId, contractId)}
           />
         </Space>
-      ),
+      )},
     },
   ]
 
@@ -452,21 +459,25 @@ export default function ConstructionApprovalsPage() {
       getKey={(item) => item.id}
       getTitle={(item) => item.name}
       getDescription={(item) => `立项编号：${item.code}`}
-      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} />}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
       fields={[
         { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
         { key: 'contractCode', label: '合同编号', render: (item) => item.contractCode || '-' },
         { key: 'budgetAmount', label: '预算金额', render: (item) => formatCurrency(item.budgetAmount) },
         { key: 'startDate', label: '开始日期', render: (item) => formatDate(item.startDate) },
       ]}
-      actions={(record) => (
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small" wrap>
           <Button
             type="link"
             size="small"
             icon={<EditOutlined />}
-            disabled={record.approvalStatus !== 'REJECTED'}
-            title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}
+            disabled={locked}
+            title={lockReason}
             onClick={() => handleEditClick(record.id)}
           >
             编辑
@@ -477,21 +488,22 @@ export default function ConstructionApprovalsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={record.approvalStatus !== 'REJECTED'}
+            disabled={locked}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
               删除
             </Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="construction-approvals"
             isAdmin={isAdmin}
             onSuccess={() => loadApprovals(projectId, contractId)}
           />
         </Space>
-      )}
+      )}}
       empty={(
         <EmptyHint
           title="暂无施工立项数据"

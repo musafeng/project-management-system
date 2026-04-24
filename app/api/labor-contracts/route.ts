@@ -36,6 +36,7 @@ function toResponse(contract: {
   laborType?: string | null
   remark?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
 }) {
   return {
@@ -61,6 +62,7 @@ function toResponse(contract: {
     laborType: contract.laborType ?? null,
     remark: contract.remark ?? null,
     approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
   }
 }
@@ -98,6 +100,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -184,6 +187,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
     })

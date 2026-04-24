@@ -92,6 +92,8 @@ function toResponse(contract: {
   attachmentUrl: string | null
   subcontractType: string | null
   remark: string | null
+  approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -123,6 +125,8 @@ function toResponse(contract: {
     attachmentUrl: contract.attachmentUrl,
     subcontractType: contract.subcontractType,
     remark: contract.remark,
+    approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   }
@@ -161,6 +165,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         subcontractType: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -291,6 +297,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         subcontractType: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },

@@ -1,4 +1,5 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
@@ -9,18 +10,6 @@ export const dynamic = 'force-dynamic'
 
 function getIdFromRequest(req: Request) {
   return new URL(req.url).pathname.split('/').pop() ?? ''
-}
-
-function assertEditableChange(change: {
-  approvalStatus: string
-  approvedAt: Date | null
-}) {
-  if (change.approvalStatus === 'PENDING') {
-    throw new ForbiddenError('当前单据审批中，无法修改')
-  }
-  if (change.approvalStatus === 'APPROVED' && change.approvedAt) {
-    throw new ForbiddenError('当前单据已审批通过，无法修改')
-  }
 }
 
 function toResponse(change: {
@@ -115,7 +104,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const existing = await assertDirectRecordInCurrentRegion('projectContractChange', id)
       if (!existing) throw new NotFoundError('合同变更不存在')
-      assertEditableChange(existing)
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
 
       const contractId = String(body.contractId ?? existing.contractId).trim()
       const contract = await db.projectContract.findUnique({
@@ -197,7 +190,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('projectContractChange', id)
       if (!existing) throw new NotFoundError('合同变更不存在')
-      assertEditableChange(existing)
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
 
       await deleteCompatRecord('ProjectContractChange', id)
       return success({ id })

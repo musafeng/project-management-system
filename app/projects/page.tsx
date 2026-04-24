@@ -23,6 +23,7 @@ import dayjs from 'dayjs'
 import { requestApi } from '@/lib/client-request'
 import { useMobile } from '@/hooks/useMobile'
 import { ApprovalActions } from '@/components/ApprovalActions'
+import { getApprovalStatusMeta, isApprovalLocked as isApprovalRecordLocked } from '@/lib/approval-status'
 
 interface Project {
   id: string
@@ -87,21 +88,12 @@ function formatCurrency(value: number | undefined): string {
 }
 
 function getApprovalTag(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
-  if (project.approvalStatus === 'APPROVED' && !project.approvedAt) {
-    return <Tag color="blue">待提交</Tag>
-  }
-
-  const map: Record<string, { label: string; color: string }> = {
-    PENDING: { label: '审批中', color: 'orange' },
-    APPROVED: { label: '已通过', color: 'green' },
-    REJECTED: { label: '已驳回', color: 'red' },
-  }
-  const current = map[project.approvalStatus] || { label: project.approvalStatus, color: 'default' }
-  return <Tag color={current.color}>{current.label}</Tag>
+  const statusMeta = getApprovalStatusMeta(project)
+  return <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
 }
 
 function isApprovalLocked(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
-  return project.approvalStatus === 'PENDING' || (project.approvalStatus === 'APPROVED' && !!project.approvedAt)
+  return isApprovalRecordLocked(project)
 }
 
 // 移动端单项目卡片
@@ -138,6 +130,7 @@ function MobileProjectCard({
           <ApprovalActions
             id={item.id}
             approvalStatus={item.approvalStatus}
+            approvedAt={item.approvedAt}
             resource="projects"
             onSuccess={onRefresh}
           />
@@ -304,6 +297,7 @@ export default function ProjectsPage() {
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="projects"
             onSuccess={() => loadProjects(keyword, status)}
           />

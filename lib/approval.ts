@@ -15,6 +15,7 @@ import {
   sendApprovalRejectedNotification,
   sendApprovalUrgedNotification,
 } from './dingtalk-notify'
+import { getApprovalLockReason } from './approval-status'
 import { assertResourceInCurrentRegion } from './region'
 
 export const ApprovalStatus = {
@@ -210,11 +211,9 @@ async function assertApprover(task: {
 // ============================================================================
 
 export function assertEditable(approvalStatus: string, approvedAt?: Date | string | null): void {
-  if (approvalStatus === ApprovalStatus.PENDING) {
-    throw new Error('当前单据审批中，无法修改')
-  }
-  if (approvalStatus === ApprovalStatus.APPROVED && approvedAt) {
-    throw new Error('当前单据已审批通过，无法修改')
+  const reason = getApprovalLockReason({ approvalStatus, approvedAt })
+  if (reason) {
+    throw new Error(reason)
   }
 }
 
