@@ -1,0 +1,97 @@
+# 代码审查建议（第一轮）
+
+> 范围：全仓库体检 + 核心链路（审批/工作流）+ 安全专项
+>
+> 说明：本建议基于仓库当前实现抽样深读关键文件（如 `lib/approval.ts`、`app/api/approval/route.ts`、`app/api/process-definitions/*`、`app/api/process-tasks/pending/route.ts`、`lib/api/handler-with-log.ts`、`lib/region.ts`、`app/approval/page.tsx`、`app/api/upload/route.ts`、`prisma/schema.prisma` 等）给出的可执行问题清单。
+
+---
+
+## P0（必须尽快处理）
+
+### 1）仓库里提交了数据库备份 SQL（潜在泄露/合规风险）
+- 证据：仓库内存在并被 git 跟踪的备份文件：
+  - `backup_20260403_191325.sql`
+  - `backup_20260403_191514.sql`
+  - `backup_20260403_191539.sql`
+- 风险：可能包含真实数据/表结构/约束/迁移信息等，泄露后影响面极大；即使不含数据也会显著扩大攻击面。
+- 建议：
+  1. 立即从仓库移除这些备份文件（并将规则加入 `.gitignore`，例如 `backup_*.sql`）。
+  2. 若该仓库会共享/对外，请评估是否需要清理 git 历史，避免备份仍可从历史中恢复。
+
+### 2）审批聚合列表接口存在 N+1 与内存过滤（性能 + 侧信道风险）
+- 文件：`app/api/approval/route.ts`
+- 现状：
+  - 先取 `take: 100` 的 tasks/instances；
+  - 再做 `filterResourceItemsByCurrentRegion(instances)`（内部对每条调用 `assertResourceInCurrentRegion` -> DB 查询）；
+  - 关键词 `keyword` 在内存做过滤。
+- 风险：
+  - 高并发/数据量时容易造成 DB 压力（最多 100 条 * 每条 1 次甚至多次查询）；
+  - “先取再过滤”会形成可观察的时延差异（某些资源是否存在/是否跨区域），属于潜在侧信道。
+- 建议：
+  - 将 region / keyword 过滤尽量下推到 DB；
+  - 对区域校验避免逐条查询，建议按 `resourceType` 分组批量校验后再过滤。
+
+### 3）上传接口放行 `application/octet-stream` 且扩展名兜底（类型伪装风险）
+- 文件：`app/api/upload/route.ts`
+- 现状：`ALLOWED_TYPES` 包含 `application/octet-stream`；`isAllowedFile()` 在 mime 命中时直接放行，否则使用扩展名白名单兜底。
+- 风险：攻击者可上传“内容与扩展名不一致”的文件，尤其在 OSS/自定义域名 `inline` 展示时风险更高。
+- 建议：
+  - 不要将 `application/octet-stream` 作为直接允许项；
+  - 更严格的校验策略：mime + 扩展名同时满足（或引入内容嗅探/签名校验）；
+  - `Content-Disposition` 建议默认 `attachment`（除非明确需要在线预览）。
+
+---
+
+## P1（高优先级改进）
+
+### 1）`process-tasks/pending` 的动作判定（`canSubmit`）可能误导前端
+- 文件：`app/api/process-tasks/pending/route.ts`
+- 现状：`canSubmit = latestStatus !== 'PENDING' && latestStatus !== 'APPROVED'`
+- 风险：`REJECTED/CANCELLED/null` 都会被视为可提交，但未结合提交权限（角色、是否允许提交、是否重复提交等）统一判断；导致 UI 展示“可提交”，但点击后端再报错。
+- 建议：由后端统一给出更精确的动作能力（结合 `SUBMIT_ROLES` 与流程状态），避免前端做过于粗糙的推断。
+
+### 2）审批列表 pending 查询中 `systemUserId=''` 可能导致误匹配
+- 文件：`app/api/approval/route.ts`
+- 现状：当 `findSystemUserByDingUserId()` 未找到时，`systemUserId` 会变成空字符串 `''`；pending 查询的 OR 条件包含 `{ approverType=USER, approverUserId: systemUserId }`。
+- 风险：若数据里出现 `approverUserId=''`（错误数据/兼容写入等），可能将任务错误暴露给不该看到的人。
+- 建议：当 `sysUser` 不存在时，USER 分支不要参与 OR（只保留 ROLE 匹配）。
+
+### 3）审批推进缺少并发/幂等保障（双击、重试、并发请求）
+- 文件：`lib/approval.ts`（`handleApprove` / `handleReject`）
+- 现状：先读 pending task，再 update；未做“状态仍为 PENDING”的条件更新，也未用事务绑定“完成当前 task + 创建下一 task/结束 instance”。
+- 风险：并发 approve 可能导致重复创建下一节点 task、instance 状态不一致等。
+- 建议：
+  - 使用 Prisma transaction；
+  - 对 task 更新使用条件更新（例如 `updateMany where id & status=PENDING`）或引入乐观锁；
+  - 必要时配合 DB 约束保证不会出现重复 pending task。
+
+### 4）审批中心“查看”跳转可能丢失 resourceId
+- 文件：`app/approval/page.tsx`
+- 现状：`router.push(RESOURCE_ROUTE[row.resourceType])` 未携带 `row.resourceId`。
+- 风险：无法直达对应单据详情，只能回到列表页；影响审批效率。
+- 建议：按资源类型拼接详情路由（如 `/projects/[id]` 等）或以 query 参数携带 id。
+
+### 5）区域过滤工具函数对聚合接口不友好（逐条校验）
+- 文件：`lib/region.ts`（`filterResourceItemsByCurrentRegion`）
+- 现状：逐条调用 `assertResourceInCurrentRegion`。
+- 风险：聚合列表类接口（审批中心、工作台等）会形成明显 N+1。
+- 建议：针对聚合接口，改为按 `resourceType` 批量校验 / 批量查询。
+
+---
+
+## P2（工程化/一致性/可维护性）
+
+### 1）锁文件策略不统一（`bun.lock` 与 `package-lock.json` 并存）
+- 风险：不同环境 install 依赖树不一致，出现“本地可跑、线上不行”的概率上升。
+- 建议：明确单一包管理器（npm/bun/pnpm/yarn 选一个）并在 CI 强制。
+
+### 2）API 权限与日志接入风格不一致
+- 现状：部分 API 使用 `apiHandlerWithPermissionAndLog`（统一权限与错误处理），部分如 `app/api/approval/route.ts` 使用 `apiHandler` + `checkAuth`。
+- 风险：敏感接口的权限/错误码/日志策略不一致，后续治理困难。
+- 建议：对审批中心这类聚合敏感接口，优先统一到同一套 handler（至少保证鉴权/权限/日志一致）。
+
+### 3）环境变量存在硬编码默认回调域名
+- 文件：`lib/env.ts`
+- 现状：`webLoginRedirectUri` 有默认值 `https://hhyb.cc/...`。
+- 风险：多环境下容易误用生产配置。
+- 建议：默认值改为空并要求显式配置，或按 `NODE_ENV` 做环境隔离。
