@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,6 +121,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const contract = await assertProcurementContractInCurrentRegion(body.contractId)
     if (!contract) throw new NotFoundError('采购合同不存在')
+    assertApprovedUpstream(contract, '采购合同')
 
     const regionId = await requireCurrentRegionId()
     const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
@@ -134,6 +136,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       ...(supportsAttachmentUrl ? { attachmentUrl: body.attachmentUrl?.trim() || null } : {}),
       status: 'PAID',
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

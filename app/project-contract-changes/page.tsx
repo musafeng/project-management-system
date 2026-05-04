@@ -25,7 +25,7 @@ import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
-import { getApprovalStatusMeta, isApprovalLocked } from '@/lib/approval-status'
+import { canUseAsApprovedUpstream, getApprovalStatusMeta, isApprovalLocked } from '@/lib/approval-status'
 
 interface ProjectContract {
   id: string
@@ -34,6 +34,8 @@ interface ProjectContract {
   projectId: string
   projectName: string
   contractAmount: number
+  approvalStatus?: string | null
+  approvedAt?: string | null
 }
 
 interface ProjectContractChange {
@@ -384,7 +386,7 @@ export default function ProjectContractChangesPage() {
           <Form.Item label="项目合同名称" name="contractId" rules={[{ required: true, message: '请选择项目合同' }]}>
             <Select
               placeholder="请选择项目合同"
-              options={contracts.map((item) => ({
+              options={contracts.filter((item) => canUseAsApprovedUpstream(item)).map((item) => ({
                 label: `${item.code} / ${item.name}`,
                 value: item.id,
               }))}

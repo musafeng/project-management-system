@@ -4,6 +4,7 @@
  */
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
+import { requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic'
 export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   PUT: async (req) => {
     await requireSystemManager()
+    const regionId = await requireCurrentRegionId()
     const parts = req.url.split('/process-definitions/')
     const sub = parts[1] ?? ''
     const nodeId = sub.split('/nodes/')[1]?.split('?')[0]
@@ -18,7 +20,9 @@ export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
 
     const body = await req.json()
 
-    const node = await db.processNode.findUnique({ where: { id: nodeId } })
+    const node = await db.processNode.findFirst({
+      where: { id: nodeId, ProcessDefinition: { regionId } },
+    })
     if (!node) throw new NotFoundError('节点不存在')
 
     if (body.approverType === 'ROLE' && !body.approverRole) {
@@ -46,12 +50,15 @@ export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
 
   DELETE: async (req) => {
     await requireSystemManager()
+    const regionId = await requireCurrentRegionId()
     const parts = req.url.split('/process-definitions/')
     const sub = parts[1] ?? ''
     const nodeId = sub.split('/nodes/')[1]?.split('?')[0]
     if (!nodeId) throw new NotFoundError('缺少节点 ID')
 
-    const node = await db.processNode.findUnique({ where: { id: nodeId } })
+    const node = await db.processNode.findFirst({
+      where: { id: nodeId, ProcessDefinition: { regionId } },
+    })
     if (!node) throw new NotFoundError('节点不存在')
 
     await db.processNode.delete({ where: { id: nodeId } })
@@ -61,4 +68,3 @@ export const { PUT, DELETE } = apiHandlerWithPermissionAndLog({
   resource: 'process-definitions',
   resourceIdExtractor: (_req, result) => result?.data?.id || null,
 })
-

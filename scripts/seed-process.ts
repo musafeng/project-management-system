@@ -205,68 +205,80 @@ async function main() {
 
   console.log(`找到系统用户：${systemUsers.map(u => u.name).join('、')}\n`)
 
-  // 找抄送人卢海霞的 ID
-  const luHaixiaId = userMap.get('卢海霞')
+  const regions = await db.region.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: [{ code: 'asc' }, { createdAt: 'asc' }],
+  })
 
-  for (const def of PROCESS_DEFINITIONS) {
-    // 检查是否已存在
-    const existing = await db.processDefinition.findUnique({
-      where: { resourceType: def.resourceType },
-      include: { ProcessNode: true },
-    })
+  if (regions.length === 0) {
+    throw new Error('未找到可用区域，请先初始化区域')
+  }
 
-    if (existing) {
-      // 先删除关联的 ProcessTask，再删除节点
-      const nodeIds = existing.ProcessNode.map((n: any) => n.id)
-      if (nodeIds.length > 0) {
-        await db.processTask.deleteMany({ where: { nodeId: { in: nodeIds } } })
-        await db.processNode.deleteMany({ where: { definitionId: existing.id } })
-      }
-      console.log(`♻️  更新流程：${def.name}`)
-    } else {
-      console.log(`✅ 创建流程：${def.name}`)
-    }
+  for (const region of regions) {
+    console.log(`\n初始化区域流程：${region.name}`)
 
-    // 构建节点数据
-    const nodeData = def.nodes.map((node: any) => {
-      const approverId = userMap.get(node.approverName)
-      // 确定抄送配置（仅最后一个节点且有抄送人时生效）
-      const isLastNode = node.order === def.nodes.length
-      const ccUserId = isLastNode && def.ccName ? (userMap.get(def.ccName) ?? null) : null
-
-      return {
-        id: randomUUID(),
-        order: node.order,
-        name: node.name,
-        approverType: approverId ? ('USER' as const) : ('ROLE' as const),
-        approverUserId: approverId ?? null,
-        approverRole: approverId ? null : 'ADMIN',
-        ccMode: ccUserId ? ('USER' as const) : ('NONE' as const),
-        ccUserId: ccUserId,
-        updatedAt: new Date(),
-      }
-    })
-
-    if (existing) {
-      await db.processDefinition.update({
-        where: { resourceType: def.resourceType },
-        data: {
-          name: def.name,
-          updatedAt: new Date(),
-          ProcessNode: { create: nodeData },
-        },
+    for (const def of PROCESS_DEFINITIONS) {
+      // 检查当前区域是否已存在
+      const existing = await db.processDefinition.findFirst({
+        where: { regionId: region.id, resourceType: def.resourceType },
+        include: { ProcessNode: true },
       })
-    } else {
-      await db.processDefinition.create({
-        data: {
+
+      if (existing) {
+        // 先删除关联的 ProcessTask，再删除节点
+        const nodeIds = existing.ProcessNode.map((n: any) => n.id)
+        if (nodeIds.length > 0) {
+          await db.processTask.deleteMany({ where: { nodeId: { in: nodeIds } } })
+          await db.processNode.deleteMany({ where: { definitionId: existing.id } })
+        }
+        console.log(`♻️  更新流程：${def.name}`)
+      } else {
+        console.log(`✅ 创建流程：${def.name}`)
+      }
+
+      // 构建节点数据
+      const nodeData = def.nodes.map((node: any) => {
+        const approverId = userMap.get(node.approverName)
+        // 确定抄送配置（仅最后一个节点且有抄送人时生效）
+        const isLastNode = node.order === def.nodes.length
+        const ccUserId = isLastNode && def.ccName ? (userMap.get(def.ccName) ?? null) : null
+
+        return {
           id: randomUUID(),
-          resourceType: def.resourceType,
-          name: def.name,
-          isActive: true,
+          order: node.order,
+          name: node.name,
+          approverType: approverId ? ('USER' as const) : ('ROLE' as const),
+          approverUserId: approverId ?? null,
+          approverRole: approverId ? null : 'ADMIN',
+          ccMode: ccUserId ? ('USER' as const) : ('NONE' as const),
+          ccUserId: ccUserId,
           updatedAt: new Date(),
-          ProcessNode: { create: nodeData },
-        },
+        }
       })
+
+      if (existing) {
+        await db.processDefinition.update({
+          where: { id: existing.id },
+          data: {
+            name: def.name,
+            updatedAt: new Date(),
+            ProcessNode: { create: nodeData },
+          },
+        })
+      } else {
+        await db.processDefinition.create({
+          data: {
+            id: randomUUID(),
+            regionId: region.id,
+            resourceType: def.resourceType,
+            name: def.name,
+            isActive: true,
+            updatedAt: new Date(),
+            ProcessNode: { create: nodeData },
+          },
+        })
+      }
     }
   }
 

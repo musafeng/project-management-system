@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -143,6 +144,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const contract = await assertSubcontractContractInCurrentRegion(body.contractId)
     if (!contract) throw new NotFoundError('分包合同不存在')
+    assertApprovedUpstream(contract, '分包合同')
     const contractData = contract as unknown as {
       projectId: string
       paidAmount: Prisma.Decimal | number
@@ -173,6 +175,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       ...(supportsAttachmentUrl ? { attachmentUrl: body.attachmentUrl?.trim() || null } : {}),
       status: 'PAID',
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

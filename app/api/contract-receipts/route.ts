@@ -2,6 +2,7 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,7 @@ function toResponse(receipt: {
   deductionItems: string | null
   attachmentUrl: string | null
   approvalStatus: string
+  approvedAt: Date | null
   remark: string | null
   createdAt: Date
 }) {
@@ -79,6 +81,7 @@ function toResponse(receipt: {
     deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
     attachmentUrl: receipt.attachmentUrl,
     approvalStatus: receipt.approvalStatus,
+    approvedAt: receipt.approvedAt,
     remark: receipt.remark,
     createdAt: receipt.createdAt,
   }
@@ -122,6 +125,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         deductionItems: true,
         attachmentUrl: true,
         approvalStatus: true,
+        approvedAt: true,
         remark: true,
         createdAt: true,
       },
@@ -155,6 +159,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (!contract) {
       throw new NotFoundError('合同不存在')
     }
+    assertApprovedUpstream(contract, '项目合同')
 
     const deductionItems = normalizeDeductionItems(body.deductionItems)
     const regionId = await requireCurrentRegionId()
@@ -168,7 +173,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
       status: 'RECEIVED',
-      approvalStatus: 'PENDING',
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -192,6 +197,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         deductionItems: true,
         attachmentUrl: true,
         approvalStatus: true,
+        approvedAt: true,
         remark: true,
         createdAt: true,
       },

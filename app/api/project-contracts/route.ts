@@ -2,6 +2,7 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -139,6 +140,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (!project) {
       throw new NotFoundError('项目不存在')
     }
+    assertApprovedUpstream(project, '项目')
 
     // 生成合同编码
     const code = `CONTRACT${Date.now()}`
@@ -166,6 +168,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       retentionAmount,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

@@ -6,6 +6,7 @@ import {
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -103,6 +104,7 @@ const handlers = apiHandlerWithPermissionAndLog({
     if (!project) {
       throw new NotFoundError('项目不存在')
     }
+    assertApprovedUpstream(project, '项目')
 
     // 验证合同是否存在
     const contract = await assertProjectContractInCurrentRegion(body.contractId)
@@ -110,6 +112,7 @@ const handlers = apiHandlerWithPermissionAndLog({
     if (!contract) {
       throw new NotFoundError('合同不存在')
     }
+    assertApprovedUpstream(contract, '项目合同')
 
     // 验证合同属于该项目
     if (contract.projectId !== body.projectId) {
@@ -131,6 +134,7 @@ const handlers = apiHandlerWithPermissionAndLog({
       startDate: body.startDate ? new Date(body.startDate) : null,
       status: 'active',
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

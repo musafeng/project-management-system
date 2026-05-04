@@ -13,15 +13,17 @@ import {
   DatePicker,
   InputNumber,
   Input,
-  Tag,
+  Space,
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
 
 interface DeductionItem {
   type: string
@@ -42,6 +44,7 @@ interface ContractReceipt {
   deductionItems: DeductionItem[]
   attachmentUrl?: string | null
   approvalStatus?: string
+  approvedAt?: string | null
   remark: string | null
   createdAt: string
 }
@@ -59,6 +62,8 @@ interface ProjectContract {
   unreceivedAmount: number
   signDate: string | null
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -69,12 +74,6 @@ interface ApiResponse<T> {
 }
 
 const DEDUCTION_TYPES = ['税金', '手续费', '管理费', '其他']
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
-}
 
 const { Text } = Typography
 
@@ -298,8 +297,9 @@ export default function ContractReceiptsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) =>
-        status ? <Tag color={STATUS_MAP[status]?.color}>{STATUS_MAP[status]?.label || status}</Tag> : '-',
+      render: (status: string, record) => (
+        <ApprovalStatusTag status={status || 'DRAFT'} approvedAt={record.approvedAt} />
+      ),
     },
     {
       title: '备注',
@@ -318,21 +318,37 @@ export default function ContractReceiptsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 240,
       fixed: 'right',
-      render: (_, record) => (
-        <Popconfirm
-          title="删除收款记录"
-          description="确定删除该收款记录吗？"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-            删除
-          </Button>
-        </Popconfirm>
-      ),
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+
+        return (
+          <Space size="small" wrap>
+            <Popconfirm
+              title="删除收款记录"
+              description="确定删除该收款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                删除
+              </Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="contract-receipts"
+              onSuccess={() => {
+                void loadReceipts(contractId)
+                void loadContracts()
+              }}
+            />
+          </Space>
+        )
+      },
     },
   ]
 
@@ -344,7 +360,7 @@ export default function ContractReceiptsPage() {
       getTitle={(item) => item.contractName}
       getDescription={(item) => `合同编号：${item.contractCode}`}
       getStatus={(item) =>
-        item.approvalStatus ? <Tag color={STATUS_MAP[item.approvalStatus]?.color}>{STATUS_MAP[item.approvalStatus]?.label || item.approvalStatus}</Tag> : null
+        <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />
       }
       fields={[
         { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
@@ -375,19 +391,35 @@ export default function ContractReceiptsPage() {
         },
         { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
       ]}
-      actions={(record) => (
-        <Popconfirm
-          title="删除收款记录"
-          description="确定删除该收款记录吗？"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-            删除
-          </Button>
-        </Popconfirm>
-      )}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+
+        return (
+          <Space size="small" wrap>
+            <Popconfirm
+              title="删除收款记录"
+              description="确定删除该收款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                删除
+              </Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="contract-receipts"
+              onSuccess={() => {
+                void loadReceipts(contractId)
+                void loadContracts()
+              }}
+            />
+          </Space>
+        )
+      }}
       empty={(
         <EmptyHint
           title="暂无收款记录"
@@ -463,7 +495,7 @@ export default function ContractReceiptsPage() {
                 allowClear
                 style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
-                options={contracts.map((contract) => ({
+                options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                   label: `${contract.code} - ${contract.name}`,
                   value: contract.id,
                 }))}
@@ -583,7 +615,7 @@ export default function ContractReceiptsPage() {
             <Select
               placeholder="请选择合同"
               loading={contractsLoading}
-              options={contracts.map((contract) => ({
+              options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                 label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}

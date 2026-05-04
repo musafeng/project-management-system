@@ -1,0 +1,35 @@
+import { NextResponse } from 'next/server'
+import { handleSubmit, handleApprove, handleReject, handleUrge } from '@/lib/approval'
+import type { ApprovalModel } from '@/lib/approval'
+import { success } from '@/lib/api'
+import { toChineseErrorMessage } from '@/lib/api/error-message'
+
+export async function handleApprovalActionRequest(
+  req: Request,
+  params: { id: string; action: string },
+  model: ApprovalModel,
+  basePath: string
+) {
+  const { id, action } = params
+
+  try {
+    if (action === 'submit') {
+      await handleSubmit(model, id, `${basePath}/${id}/submit`)
+    } else if (action === 'approve') {
+      await handleApprove(model, id, `${basePath}/${id}/approve`)
+    } else if (action === 'reject') {
+      const body = await req.json().catch(() => ({}))
+      await handleReject(model, id, body.reason, `${basePath}/${id}/reject`)
+    } else if (action === 'urge') {
+      await handleUrge(model, id, `${basePath}/${id}/urge`)
+    } else {
+      return NextResponse.json({ success: false, error: '无效的操作' }, { status: 400 })
+    }
+
+    return NextResponse.json(success(null))
+  } catch (err) {
+    const msg = toChineseErrorMessage(err instanceof Error ? err.message : '操作失败')
+    const status = msg.includes('未登录') ? 401 : msg.includes('无权限') ? 403 : 400
+    return NextResponse.json({ success: false, error: msg }, { status })
+  }
+}

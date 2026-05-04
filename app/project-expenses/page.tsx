@@ -1,11 +1,13 @@
 'use client'
 
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
+import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface ExpenseItem {
@@ -27,6 +29,7 @@ interface Expense {
   expenseDate: string
   attachmentUrl?: string
   approvalStatus: string
+  approvedAt?: string | null
   remark?: string
   createdAt: string
 }
@@ -36,12 +39,7 @@ interface ConstructionApproval {
   name: string
   projectName: string
   approvalStatus: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
+  approvedAt?: string | null
 }
 
 function fmt(v: number) {
@@ -83,7 +81,7 @@ export default function ProjectExpensesPage() {
     const json = await res.json()
     if (json.success) {
       setConstructions(
-        (json.data || []).filter((item: ConstructionApproval) => item.approvalStatus === 'APPROVED')
+        (json.data || []).filter((item: ConstructionApproval) => canUseAsApprovedUpstream(item))
       )
     }
   }
@@ -178,17 +176,33 @@ export default function ProjectExpensesPage() {
     { title: '报销人', dataIndex: 'submitter', width: 100 },
     { title: '总金额', dataIndex: 'totalAmount', width: 120, align: 'right', render: v => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(v)}</span> },
     { title: '日期', dataIndex: 'expenseDate', width: 110, render: fmtDate },
-    { title: '审批状态', dataIndex: 'approvalStatus', width: 100, render: v => <Tag color={STATUS_MAP[v]?.color}>{STATUS_MAP[v]?.label || v}</Tag> },
     {
-      title: '操作', key: 'action', width: 120, fixed: 'right',
-      render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)}>编辑</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      width: 100,
+      render: (value, record) => <ApprovalStatusTag status={value || 'DRAFT'} approvedAt={record.approvedAt} />,
+    },
+    {
+      title: '操作', key: 'action', width: 260, fixed: 'right',
+      render: (_, r) => {
+        const locked = isApprovalLocked(r)
+
+        return (
+          <Space size="small" wrap>
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(r)}>编辑</Button>
+            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={r.id}
+              approvalStatus={r.approvalStatus || 'DRAFT'}
+              approvedAt={r.approvedAt}
+              resource="project-expenses"
+              onSuccess={() => void load()}
+            />
+          </Space>
+        )
+      },
     },
   ]
 

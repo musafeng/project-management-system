@@ -125,6 +125,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       bidMethod: body.bidMethod?.trim() || null,
       area: body.area ?? null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

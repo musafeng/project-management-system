@@ -1,9 +1,11 @@
 import {
   apiHandlerWithPermissionAndLog,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
   success,
 } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
 import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
@@ -51,6 +53,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const existing = await assertDirectRecordInCurrentRegion('pettyCash', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
 
       const projectId =
         body.projectId === undefined
@@ -115,6 +122,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const existing = await assertDirectRecordInCurrentRegion('pettyCash', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
+      }
 
       await deleteCompatRecord('PettyCash', id)
       return success({ id })

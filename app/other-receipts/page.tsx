@@ -9,16 +9,16 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Select,
   Space,
   Table,
-  Tag,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface OtherReceipt {
@@ -30,13 +30,8 @@ interface OtherReceipt {
   receiptDate: string
   attachmentUrl?: string
   approvalStatus: string
+  approvedAt?: string | null
   remark?: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
 }
 
 function fmt(value: number) {
@@ -153,26 +148,37 @@ export default function OtherReceiptsPage() {
       title: '审批状态',
       dataIndex: 'approvalStatus',
       width: 100,
-      render: (value) => <Tag color={STATUS_MAP[value]?.color}>{STATUS_MAP[value]?.label || value}</Tag>,
+      render: (value, record) => <ApprovalStatusTag status={value || 'DRAFT'} approvedAt={record.approvedAt} />,
     },
     { title: '备注', dataIndex: 'remark', width: 180, render: (value) => value || '-' },
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 260,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(record)}>
-            编辑
-          </Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+
+        return (
+          <Space size="small" wrap>
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
+              编辑
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                删除
+              </Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="other-receipts"
+              onSuccess={() => void load()}
+            />
+          </Space>
+        )
+      },
     },
   ]
 

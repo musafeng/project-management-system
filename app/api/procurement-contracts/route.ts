@@ -7,6 +7,7 @@ import {
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,9 +127,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const project = await assertProjectInCurrentRegion(body.projectId)
     if (!project) throw new NotFoundError('项目不存在')
+    assertApprovedUpstream(project, '项目')
 
     const construction = await assertConstructionApprovalInCurrentRegion(body.constructionId)
     if (!construction) throw new NotFoundError('施工立项不存在')
+    assertApprovedUpstream(construction, '施工立项')
     if (construction.projectId !== body.projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
@@ -155,6 +158,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       materialCategory: body.materialCategory?.trim() || null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }

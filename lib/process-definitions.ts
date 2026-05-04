@@ -15,6 +15,7 @@ type ProcessNodeRecord = {
 
 type ProcessDefinitionRecord = {
   id: string
+  regionId?: string | null
   resourceType: string
   name: string
   isActive: boolean

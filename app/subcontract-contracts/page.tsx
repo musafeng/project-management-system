@@ -25,7 +25,7 @@ import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
-import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
+import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 分包合同数据类型
@@ -74,6 +74,8 @@ interface Project {
   customerId: string
   customerName: string
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -87,6 +89,8 @@ interface ConstructionApproval {
   projectId: string
   budget: number
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -654,7 +658,7 @@ export default function SubcontractContractsPage() {
                 allowClear
                 style={{ width: isMobile ? '100%' : 200 }}
                 loading={projectsLoading}
-                options={projects.map((project) => ({
+                options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
                   label: project.name,
                   value: project.id,
                 }))}
@@ -761,7 +765,7 @@ export default function SubcontractContractsPage() {
             <Select
               placeholder="请选择项目"
               loading={projectsLoading}
-              options={projects.map((project) => ({
+              options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
                 label: project.name,
                 value: project.id,
               }))}
@@ -777,7 +781,11 @@ export default function SubcontractContractsPage() {
               placeholder="请选择施工立项"
               loading={constructionsLoading}
               options={constructions
-                .filter((construction) => !selectedProjectId || construction.projectId === selectedProjectId)
+                .filter(
+                  (construction) =>
+                    canUseAsApprovedUpstream(construction) &&
+                    (!selectedProjectId || construction.projectId === selectedProjectId)
+                )
                 .map((construction) => ({
                   label: construction.name,
                   value: construction.id,

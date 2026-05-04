@@ -16,9 +16,10 @@ import {
   sendApprovalUrgedNotification,
 } from './dingtalk-notify'
 import { getApprovalLockReason } from './approval-status'
-import { assertResourceInCurrentRegion } from './region'
+import { assertResourceInCurrentRegion, requireCurrentRegionId } from './region'
 
 export const ApprovalStatus = {
+  DRAFT: 'DRAFT',
   APPROVED: 'APPROVED',
   PENDING: 'PENDING',
   REJECTED: 'REJECTED',
@@ -37,6 +38,13 @@ export type ApprovalModel =
   | 'laborPayment'
   | 'subcontractContract'
   | 'subcontractPayment'
+  | 'contractReceipt'
+  | 'otherReceipt'
+  | 'otherPayment'
+  | 'projectExpense'
+  | 'managementExpense'
+  | 'salesExpense'
+  | 'pettyCash'
 
 /** 各模块 submit 允许的角色。与当前业务菜单保持一致，避免创建后无法提交审批。 */
 const ALL_SUBMIT_ROLES: SystemUserRole[] = [
@@ -58,6 +66,13 @@ export const SUBMIT_ROLES: Record<ApprovalModel, SystemUserRole[]> = {
   laborPayment: ALL_SUBMIT_ROLES,
   subcontractContract: ALL_SUBMIT_ROLES,
   subcontractPayment: ALL_SUBMIT_ROLES,
+  contractReceipt: ALL_SUBMIT_ROLES,
+  otherReceipt: ALL_SUBMIT_ROLES,
+  otherPayment: ALL_SUBMIT_ROLES,
+  projectExpense: ALL_SUBMIT_ROLES,
+  managementExpense: ALL_SUBMIT_ROLES,
+  salesExpense: ALL_SUBMIT_ROLES,
+  pettyCash: ALL_SUBMIT_ROLES,
 }
 
 /** 各模块资源类型（对应 ProcessDefinition.resourceType） */
@@ -72,6 +87,13 @@ export const MODEL_RESOURCE_TYPE: Record<ApprovalModel, string> = {
   laborPayment: 'labor-payments',
   subcontractContract: 'subcontract-contracts',
   subcontractPayment: 'subcontract-payments',
+  contractReceipt: 'contract-receipts',
+  otherReceipt: 'other-receipts',
+  otherPayment: 'other-payments',
+  projectExpense: 'project-expenses',
+  managementExpense: 'management-expenses',
+  salesExpense: 'sales-expenses',
+  pettyCash: 'petty-cashes',
 }
 
 const MODEL_LABEL: Record<ApprovalModel, string> = {
@@ -85,6 +107,13 @@ const MODEL_LABEL: Record<ApprovalModel, string> = {
   laborPayment: '劳务付款',
   subcontractContract: '分包合同',
   subcontractPayment: '分包付款',
+  contractReceipt: '项目合同收款',
+  otherReceipt: '其他收款',
+  otherPayment: '其他付款',
+  projectExpense: '项目费用报销',
+  managementExpense: '管理费用报销',
+  salesExpense: '销售费用报销',
+  pettyCash: '备用金申请',
 }
 
 const MODEL_TABLE: Record<ApprovalModel, string> = {
@@ -98,7 +127,21 @@ const MODEL_TABLE: Record<ApprovalModel, string> = {
   laborPayment: 'LaborPayment',
   subcontractContract: 'SubcontractContract',
   subcontractPayment: 'SubcontractPayment',
+  contractReceipt: 'ContractReceipt',
+  otherReceipt: 'OtherReceipt',
+  otherPayment: 'OtherPayment',
+  projectExpense: 'ProjectExpense',
+  managementExpense: 'ManagementExpense',
+  salesExpense: 'SalesExpense',
+  pettyCash: 'PettyCash',
 }
+
+const CONTRACT_STATUS_MODELS = new Set<ApprovalModel>([
+  'projectContract',
+  'procurementContract',
+  'laborContract',
+  'subcontractContract',
+])
 
 // ============================================================================
 // 内部工具函数
@@ -128,6 +171,17 @@ async function updateApprovalStatus(
   data: Record<string, any>
 ): Promise<void> {
   await updateCompatRecord(MODEL_TABLE[model], id, data)
+}
+
+async function updateBusinessStatusForApproval(
+  model: ApprovalModel,
+  id: string,
+  event: 'submit' | 'approve' | 'reject'
+): Promise<void> {
+  if (!CONTRACT_STATUS_MODELS.has(model)) return
+
+  const status = event === 'submit' ? 'PENDING' : event === 'approve' ? 'APPROVED' : 'DRAFT'
+  await updateCompatRecord(MODEL_TABLE[model], id, { status })
 }
 
 async function getSubmitterDingUserId(
@@ -244,8 +298,9 @@ export async function handleSubmit(
 
   // 查流程定义
   const resourceType = MODEL_RESOURCE_TYPE[model]
-  const definition = await db.processDefinition.findUnique({
-    where: { resourceType },
+  const regionId = await requireCurrentRegionId()
+  const definition = await db.processDefinition.findFirst({
+    where: { resourceType, regionId },
     include: { ProcessNode: { orderBy: { order: 'asc' } } },
   })
 
@@ -286,6 +341,7 @@ export async function handleSubmit(
     submittedAt: new Date(),
     rejectedReason: null,
   })
+  await updateBusinessStatusForApproval(model, id, 'submit')
 
   await createActionLog({
     action: ActionType.UPDATE,
@@ -369,6 +425,7 @@ export async function handleApprove(
       approvalStatus: ApprovalStatus.APPROVED,
       approvedAt: new Date(),
     })
+    await updateBusinessStatusForApproval(model, id, 'approve')
   }
 
   await createActionLog({
@@ -427,6 +484,7 @@ export async function handleReject(
     rejectedAt: new Date(),
     rejectedReason: reason ?? null,
   })
+  await updateBusinessStatusForApproval(model, id, 'reject')
 
   await createActionLog({
     action: ActionType.UPDATE,

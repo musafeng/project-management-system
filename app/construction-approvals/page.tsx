@@ -24,7 +24,7 @@ import DynamicForm from '@/components/DynamicForm'
 import type { FormFieldConfig } from '@/components/DynamicForm'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
-import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
+import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 施工立项数据类型
@@ -64,6 +64,8 @@ interface Project {
   customerId: string
   customerName: string
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -78,6 +80,8 @@ interface ProjectContract {
   customerId: string
   contractAmount: number
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -579,10 +583,10 @@ export default function ConstructionApprovalsPage() {
                 allowClear
                 style={{ width: isMobile ? '100%' : 200 }}
                 loading={projectsLoading}
-                options={projects.map((project) => ({
-                  label: project.name,
-                  value: project.id,
-                }))}
+            options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
+              label: project.name,
+              value: project.id,
+            }))}
               />
 
               <Select
@@ -592,10 +596,10 @@ export default function ConstructionApprovalsPage() {
                 allowClear
                 style={{ width: isMobile ? '100%' : 200 }}
                 loading={contractsLoading}
-                options={contracts.map((contract) => ({
-                  label: `${contract.code} - ${contract.name}`,
-                  value: contract.id,
-                }))}
+            options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
+              label: `${contract.code} - ${contract.name}`,
+              value: contract.id,
+            }))}
               />
 
               <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
@@ -675,7 +679,7 @@ export default function ConstructionApprovalsPage() {
             <Select
               placeholder="请选择项目"
               loading={projectsLoading}
-              options={projects.map((project) => ({
+              options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
                 label: project.name,
                 value: project.id,
               }))}
@@ -690,7 +694,7 @@ export default function ConstructionApprovalsPage() {
             <Select
               placeholder="请选择合同"
               loading={contractsLoading}
-              options={contracts.map((contract) => ({
+              options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                 label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}

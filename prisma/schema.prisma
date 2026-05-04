@@ -375,14 +375,18 @@ model PettyCash {
 
 model ProcessDefinition {
   id              String            @id
-  resourceType    String            @unique
+  regionId        String?
+  resourceType    String
   name            String
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime
+  Region          Region?           @relation(fields: [regionId], references: [id])
   ProcessInstance ProcessInstance[]
   ProcessNode     ProcessNode[]
 
+  @@unique([regionId, resourceType])
+  @@index([regionId])
   @@index([resourceType])
 }
 
@@ -696,6 +700,7 @@ model Region {
   Project              Project[]
   ProjectContractChange ProjectContractChange[]
   ProjectContract      ProjectContract[]
+  ProcessDefinition    ProcessDefinition[]
   SalesExpense         SalesExpense[]
   SubcontractContract  SubcontractContract[]
   SubcontractPayment   SubcontractPayment[]

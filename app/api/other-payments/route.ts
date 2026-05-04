@@ -12,6 +12,7 @@ import {
   parseOtherPaymentRemark,
   serializeOtherPaymentRemark,
 } from '@/lib/other-payment-supplier'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           paymentMethod: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
@@ -74,6 +76,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+        assertApprovedUpstream(project, '项目')
       }
 
       let supplierName: string | null = null
@@ -111,6 +114,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           bankAccount,
           bankName,
         }),
+        approvalStatus: 'DRAFT',
         updatedAt: now,
       })
 

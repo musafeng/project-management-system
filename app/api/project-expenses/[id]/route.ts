@@ -1,9 +1,12 @@
 import {
   apiHandlerWithPermissionAndLog,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
   success,
 } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
@@ -60,9 +63,7 @@ function normalizeExpenseItems(items: unknown) {
 async function resolveApprovedConstruction(constructionId: string) {
   const construction = await assertConstructionApprovalInCurrentRegion(constructionId)
   if (!construction) throw new NotFoundError('施工立项不存在')
-  if (construction.approvalStatus !== 'APPROVED') {
-    throw new BadRequestError('只能选择已审批通过的施工立项')
-  }
+  assertApprovedUpstream(construction, '施工立项')
   return construction
 }
 
@@ -97,6 +98,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const body = await req.json()
       const existing = await assertProjectScopedRecordInCurrentRegion('projectExpense', id)
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
       const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
 
       const constructionId = String(body.constructionId ?? existing.constructionId ?? '').trim()
@@ -143,6 +149,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const id = getIdFromRequest(req)
       const existing = await assertProjectScopedRecordInCurrentRegion('projectExpense', id)
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
+      }
       await deleteCompatRecord('ProjectExpense', id)
       return success({ id })
     },

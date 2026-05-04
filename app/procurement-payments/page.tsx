@@ -25,6 +25,7 @@ import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
+import { canUseAsApprovedUpstream } from '@/lib/approval-status'
 
 /**
  * 采购付款数据类型
@@ -71,6 +72,8 @@ interface ProcurementContract {
   unpaidAmount: number
   signDate: string | null
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -492,7 +495,7 @@ export default function ProcurementPaymentsPage() {
                 style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
                 size={isMobile ? 'middle' : 'middle'}
-                options={contracts.map((contract) => ({
+                options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                   label: `${contract.code} - ${contract.name}`,
                   value: contract.id,
                 }))}
@@ -590,7 +593,7 @@ export default function ProcurementPaymentsPage() {
             <Select
               placeholder="请选择合同"
               loading={contractsLoading}
-              options={contracts.map((contract) => ({
+              options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                 label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}

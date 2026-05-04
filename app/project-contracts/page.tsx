@@ -22,7 +22,12 @@ import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
 import { useMobile } from '@/hooks/useMobile'
-import { getApprovalStatusMeta, isApprovalLocked as isApprovalRecordLocked } from '@/lib/approval-status'
+import {
+  canUseAsApprovedUpstream,
+  getApprovalStatusMeta,
+  getContractDisplayStatus,
+  isApprovalLocked as isApprovalRecordLocked,
+} from '@/lib/approval-status'
 
 const { Text } = Typography
 const MOBILE_PAGE_SIZE = 20
@@ -71,6 +76,8 @@ interface Project {
   id: string
   name: string
   code: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
 }
 
 function getApprovalTag(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
@@ -312,7 +319,9 @@ export default function ProjectContractsPage() {
       dataIndex: 'status',
       key: 'status',
       width: 90,
-      render: (v: string) => <StatusTag status={v} map={CONTRACT_STATUS} size="small" />,
+      render: (v: string, row) => (
+        <StatusTag status={getContractDisplayStatus(v, row)} map={CONTRACT_STATUS} size="small" />
+      ),
     },
     {
       title: '审批状态',
@@ -591,7 +600,9 @@ export default function ProjectContractsPage() {
               placeholder="请选择项目"
               showSearch
               optionFilterProp="label"
-              options={projects.map((p) => ({ label: `${p.name}（${p.code}）`, value: p.id }))}
+              options={projects
+                .filter((project) => canUseAsApprovedUpstream(project))
+                .map((p) => ({ label: `${p.name}（${p.code}）`, value: p.id }))}
             />
           </Form.Item>
           <Form.Item name="contractAmount" label="合同金额（元）" rules={[{ required: true, message: '请输入合同金额' }]}>

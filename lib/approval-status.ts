@@ -16,7 +16,7 @@ const APPROVAL_STATUS_META: Record<string, ApprovalStatusMeta> = {
 }
 
 export function isApprovalDraft(record: ApprovalStateLike): boolean {
-  return record.approvalStatus === 'APPROVED' && !record.approvedAt
+  return record.approvalStatus === 'DRAFT' || (record.approvalStatus === 'APPROVED' && !record.approvedAt)
 }
 
 export function isApprovalPending(record: ApprovalStateLike): boolean {
@@ -73,4 +73,34 @@ export function canSubmitApproval(
   }
 
   return isApprovalEditable(record)
+}
+
+export function canUseAsApprovedUpstream(record: ApprovalStateLike): boolean {
+  return isApprovalApproved(record)
+}
+
+export function getContractDisplayStatus(
+  status: string | null | undefined,
+  record: ApprovalStateLike
+): string {
+  if (isApprovalPending(record)) {
+    return 'PENDING'
+  }
+
+  if (isApprovalApproved(record) && (!status || status === 'DRAFT' || status === 'PENDING')) {
+    return 'APPROVED'
+  }
+
+  return status || 'DRAFT'
+}
+
+export function getIssuanceDisplayStatus(
+  status: string | null | undefined,
+  record: ApprovalStateLike
+): string {
+  if (isApprovalApproved(record)) {
+    return status || 'ISSUED'
+  }
+
+  return 'PENDING_ISSUE'
 }

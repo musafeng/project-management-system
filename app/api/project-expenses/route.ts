@@ -13,6 +13,7 @@ import {
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import type { ExpenseCategory } from '@prisma/client'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,9 +61,7 @@ function normalizeExpenseItems(items: unknown) {
 async function resolveApprovedConstruction(constructionId: string) {
   const construction = await assertConstructionApprovalInCurrentRegion(constructionId)
   if (!construction) throw new NotFoundError('施工立项不存在')
-  if (construction.approvalStatus !== 'APPROVED') {
-    throw new BadRequestError('只能选择已审批通过的施工立项')
-  }
+  assertApprovedUpstream(construction, '施工立项')
   return construction
 }
 
@@ -89,6 +88,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           expenseDate: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
@@ -141,7 +141,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         expenseItems: JSON.stringify(items),
         attachmentUrl: body.attachmentUrl?.trim() || null,
         remark: body.remark?.trim() || null,
-        approvalStatus: 'PENDING',
+        approvalStatus: 'DRAFT',
         updatedAt: new Date(),
       })
       return success({ id })

@@ -3,6 +3,8 @@ import { getDbTableColumns, hasDbColumn } from './db-column-compat'
 import { db } from './db'
 import { insertCompatRecord } from './db-write-compat'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from './region'
+import { assertApprovedUpstream } from './approval-gates'
+import { canUseAsApprovedUpstream } from './approval-status'
 
 async function getProjectContractChangeSelect() {
   const columns = await getDbTableColumns('ProjectContractChange')
@@ -54,6 +56,7 @@ export async function createProjectContractChangeRecord(input: {
 
   const contract = await assertProjectContractInCurrentRegion(contractId)
   if (!contract) throw new NotFoundError('项目合同不存在')
+  assertApprovedUpstream(contract, '项目合同')
 
   const originalAmount = Number(contract.contractAmount)
   const totalAmount = originalAmount + increaseAmount
@@ -74,7 +77,7 @@ export async function createProjectContractChangeRecord(input: {
     changeReason: remark,
     remark,
     attachmentUrl,
-    approvalStatus: 'APPROVED',
+    approvalStatus: 'DRAFT',
     updatedAt: new Date(),
   })
 
@@ -95,6 +98,7 @@ export async function applyApprovedProjectContractChange(id: string) {
       id: true,
       contractId: true,
       approvalStatus: true,
+      approvedAt: true,
       increaseAmount: true,
       totalAmount: true,
       ProjectContract: {
@@ -106,7 +110,7 @@ export async function applyApprovedProjectContractChange(id: string) {
     },
   })
 
-  if (!change || change.approvalStatus !== 'APPROVED' || change.totalAmount === null) {
+  if (!change || !canUseAsApprovedUpstream(change) || change.totalAmount === null) {
     return
   }
 
