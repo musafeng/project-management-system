@@ -16,7 +16,11 @@ echo "[3/8] 清理旧构建"
 rm -rf .next
 
 echo "[4/8] 安装依赖"
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
+git diff --exit-code -- package-lock.json >/dev/null || {
+  echo "错误：依赖安装修改了 package-lock.json，请先在本地提交锁文件变化后再部署。"
+  exit 1
+}
 
 echo "[5/8] 同步数据库结构"
 npx prisma db push
