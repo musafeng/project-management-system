@@ -22,6 +22,7 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
@@ -351,6 +352,7 @@ export default function ProcurementPaymentsPage() {
 
         return (
         <Space size="small">
+          <ViewRecordButton resource="procurement-payments" id={record.id} />
           <Popconfirm
             title="删除付款记录"
             description="确定删除该付款记录吗？"
@@ -395,6 +397,7 @@ export default function ProcurementPaymentsPage() {
 
         return (
         <Space size="small" wrap>
+          <ViewRecordButton resource="procurement-payments" id={record.id} />
           <Popconfirm
             title="删除付款记录"
             description="确定删除该付款记录吗？"

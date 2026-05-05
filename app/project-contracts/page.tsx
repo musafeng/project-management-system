@@ -7,7 +7,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  EditOutlined, DeleteOutlined, EyeOutlined,
+  EditOutlined, DeleteOutlined,
   DownloadOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -18,6 +18,7 @@ import {
 import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
@@ -251,12 +252,14 @@ export default function ProjectContractsPage() {
       width: 180,
       render: (v: string, row) => (
         <Tooltip title="点击查看详情">
-          <a
+          <ViewRecordButton
+            resource="project-contracts"
+            id={row.id}
+            label={v}
+            type="link"
+            icon={null}
             style={{ color: '#1677ff', fontWeight: 500, cursor: 'pointer' }}
-            onClick={() => message.info(`即将跳转到合同 ${row.code} 详情`)}
-          >
-            {v}
-          </a>
+          />
         </Tooltip>
       ),
     },
@@ -338,9 +341,7 @@ export default function ProjectContractsPage() {
         const locked = isApprovalLocked(row)
         return (
         <Space size={2} wrap>
-          <Button type="link" size="small" icon={<EyeOutlined />}
-            onClick={() => message.info(`查看 ${row.code}`)}
-          >查看</Button>
+          <ViewRecordButton resource="project-contracts" id={row.id} />
           <Button type="link" size="small" icon={<EditOutlined />}
             disabled={locked}
             onClick={() => handleEditClick(row.id)}
@@ -502,9 +503,7 @@ export default function ProjectContractsPage() {
         ]}
         actions={(item) => (
           <Space size={2} wrap>
-            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => message.info(`查看 ${item.code}`)}>
-              查看
-            </Button>
+            <ViewRecordButton resource="project-contracts" id={item.id} />
             <Button type="link" size="small" icon={<EditOutlined />} disabled={isApprovalLocked(item)} onClick={() => handleEditClick(item.id)}>
               编辑
             </Button>

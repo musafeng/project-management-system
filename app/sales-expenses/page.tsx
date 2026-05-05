@@ -19,6 +19,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
@@ -184,6 +185,7 @@ export default function SalesExpensesPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="sales-expenses" id={record.id} />
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
               编辑
             </Button>

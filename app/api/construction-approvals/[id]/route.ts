@@ -39,6 +39,7 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         remark: true,
+        formDataJson: true,
         approvalStatus: true,
         approvedAt: true,
         createdAt: true,
@@ -64,6 +65,7 @@ const handler = apiHandlerWithMethod({
       startDate: approval.startDate,
       endDate: approval.endDate,
       remark: approval.remark,
+      formDataJson: approval.formDataJson,
       approvalStatus: approval.approvalStatus,
       approvedAt: approval.approvedAt,
       createdAt: approval.createdAt,
@@ -131,6 +133,10 @@ const handler = apiHandlerWithMethod({
       updateData.remark = body.remark?.trim() || null
     }
 
+    if (body.formDataJson !== undefined) {
+      updateData.formDataJson = body.formDataJson || null
+    }
+
     // 更新立项
     const approval = await db.constructionApproval.update({
       where: { id },
@@ -152,6 +158,7 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         remark: true,
+        formDataJson: true,
         approvalStatus: true,
         approvedAt: true,
         createdAt: true,
@@ -173,6 +180,7 @@ const handler = apiHandlerWithMethod({
       startDate: approval.startDate,
       endDate: approval.endDate,
       remark: approval.remark,
+      formDataJson: approval.formDataJson,
       approvalStatus: approval.approvalStatus,
       approvedAt: approval.approvedAt,
       createdAt: approval.createdAt,

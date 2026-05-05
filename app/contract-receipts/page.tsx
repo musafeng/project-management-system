@@ -21,6 +21,7 @@ import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icon
 import dayjs from 'dayjs'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
@@ -325,6 +326,7 @@ export default function ContractReceiptsPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="contract-receipts" id={record.id} />
             <Popconfirm
               title="删除收款记录"
               description="确定删除该收款记录吗？"
@@ -396,6 +398,7 @@ export default function ContractReceiptsPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="contract-receipts" id={record.id} />
             <Popconfirm
               title="删除收款记录"
               description="确定删除该收款记录吗？"

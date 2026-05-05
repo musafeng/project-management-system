@@ -21,6 +21,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
@@ -237,6 +238,7 @@ export default function ProjectContractChangesPage() {
 
         return (
         <Space size="small">
+          <ViewRecordButton resource="project-contract-changes" id={record.id} />
           <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
             编辑
           </Button>
@@ -285,6 +287,7 @@ export default function ProjectContractChangesPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="project-contract-changes" id={record.id} />
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
               编辑
             </Button>

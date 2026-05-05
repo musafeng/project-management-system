@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Table, Tabs, Tag, Space, Button, Input, Select,
   Modal, message, Tooltip, Badge, Pagination,
@@ -9,10 +8,11 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import {
   SearchOutlined, CheckOutlined, CloseOutlined,
-  EyeOutlined, RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
+  RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
 } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
 import { MobileCardList } from '@/components/ledger'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { useMobile } from '@/hooks/useMobile'
 
 // ============================================================
@@ -57,20 +57,14 @@ const RESOURCE_TYPES = [
   { label: '劳务付款', value: 'labor-payments' },
   { label: '分包合同', value: 'subcontract-contracts' },
   { label: '分包付款', value: 'subcontract-payments' },
+  { label: '项目合同收款', value: 'contract-receipts' },
+  { label: '其他收款', value: 'other-receipts' },
+  { label: '其他付款', value: 'other-payments' },
+  { label: '项目费用报销', value: 'project-expenses' },
+  { label: '管理费用报销', value: 'management-expenses' },
+  { label: '销售费用报销', value: 'sales-expenses' },
+  { label: '备用金申请', value: 'petty-cashes' },
 ]
-
-const RESOURCE_ROUTE: Record<string, string> = {
-  'projects': '/projects',
-  'project-contracts': '/project-contracts',
-  'construction-approvals': '/construction-approvals',
-  'project-contract-changes': '/project-contract-changes',
-  'procurement-contracts': '/procurement-contracts',
-  'procurement-payments': '/procurement-payments',
-  'labor-contracts': '/labor-contracts',
-  'labor-payments': '/labor-payments',
-  'subcontract-contracts': '/subcontract-contracts',
-  'subcontract-payments': '/subcontract-payments',
-}
 
 const RESOURCE_COLOR: Record<string, string> = {
   'projects': '#1677ff',
@@ -83,6 +77,13 @@ const RESOURCE_COLOR: Record<string, string> = {
   'labor-payments': '#722ed1',
   'subcontract-contracts': '#13c2c2',
   'subcontract-payments': '#fa8c16',
+  'contract-receipts': '#52c41a',
+  'other-receipts': '#13c2c2',
+  'other-payments': '#ff4d4f',
+  'project-expenses': '#fa541c',
+  'management-expenses': '#722ed1',
+  'sales-expenses': '#eb2f96',
+  'petty-cashes': '#fa8c16',
 }
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -249,7 +250,6 @@ function buildColumns(
 // ============================================================
 
 export default function ApprovalCenterPage() {
-  const router = useRouter()
   const isMobile = useMobile()
   const [tab, setTab] = useState<TabKey>('pending')
   const [items, setItems] = useState<ApprovalItem[]>([])
@@ -362,14 +362,7 @@ export default function ApprovalCenterPage() {
 
   const renderActions = (row: ApprovalItem) => (
     <Space size={4} wrap>
-      <Button
-        type="link"
-        size="small"
-        icon={<EyeOutlined />}
-        onClick={() => router.push(RESOURCE_ROUTE[row.resourceType] || '/')}
-      >
-        查看
-      </Button>
+      <ViewRecordButton resource={row.resourceType} id={row.resourceId} />
       {tab === 'pending' && row.canApprove && (
         <>
           <Button type="link" size="small" icon={<CheckOutlined />} style={{ color: '#52c41a' }} onClick={() => handleApprove(row)}>

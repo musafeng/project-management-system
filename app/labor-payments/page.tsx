@@ -23,6 +23,7 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
@@ -355,6 +356,7 @@ export default function LaborPaymentsPage() {
 
         return (
         <Space size="small">
+          <ViewRecordButton resource="labor-payments" id={record.id} />
           <Popconfirm title="删除劳务付款" description="确定删除该劳务付款记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
           </Popconfirm>
@@ -392,6 +394,7 @@ export default function LaborPaymentsPage() {
 
         return (
         <Space size="small" wrap>
+          <ViewRecordButton resource="labor-payments" id={record.id} />
           <Popconfirm
             title="删除劳务付款"
             description="确定删除该劳务付款记录吗？"

@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
@@ -170,6 +171,7 @@ export default function OtherReceiptsPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="other-receipts" id={record.id} />
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
               编辑
             </Button>

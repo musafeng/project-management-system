@@ -134,6 +134,7 @@ const handlers = apiHandlerWithPermissionAndLog({
       startDate: body.startDate ? new Date(body.startDate) : null,
       status: 'active',
       remark: body.remark?.trim() || null,
+      formDataJson: body.formDataJson || null,
       approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),

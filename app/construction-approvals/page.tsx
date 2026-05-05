@@ -22,6 +22,7 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import DynamicForm from '@/components/DynamicForm'
 import type { FormFieldConfig } from '@/components/DynamicForm'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
@@ -51,6 +52,7 @@ interface ConstructionApprovalDetail extends ConstructionApproval {
   status?: string
   endDate?: string | null
   remark?: string | null
+  formDataJson?: string | null
   updatedAt?: string
 }
 
@@ -145,8 +147,8 @@ export default function ConstructionApprovalsPage() {
     try {
       const res = await fetch('/api/form-definitions?code=construction-approvals')
       const result = await res.json()
-      if (result.success && result.data?.fields) {
-        setDynamicFields(result.data.fields)
+      if (result.success) {
+        setDynamicFields(result.data?.FormField || result.data?.fields || [])
       }
     } catch (err) {
       console.error('加载表单配置失败:', err)
@@ -269,6 +271,14 @@ export default function ConstructionApprovalsPage() {
 
       if (result.success && result.data) {
         setEditingId(id)
+        let formData = {}
+        if (result.data.formDataJson) {
+          try {
+            formData = JSON.parse(result.data.formDataJson)
+          } catch {
+            formData = {}
+          }
+        }
         form.setFieldsValue({
           projectId: result.data.projectId,
           contractId: result.data.contractId,
@@ -276,6 +286,7 @@ export default function ConstructionApprovalsPage() {
           budgetAmount: result.data.budgetAmount,
           startDate: result.data.startDate ? dayjs(result.data.startDate) : undefined,
           remark: result.data.remark || undefined,
+          formData,
         })
         setIsModalVisible(true)
       } else {
@@ -421,6 +432,7 @@ export default function ConstructionApprovalsPage() {
 
         return (
         <Space size="small">
+          <ViewRecordButton resource="construction-approvals" id={record.id} />
           <Button
             type="link"
             size="small"
@@ -476,6 +488,7 @@ export default function ConstructionApprovalsPage() {
 
         return (
         <Space size="small" wrap>
+          <ViewRecordButton resource="construction-approvals" id={record.id} />
           <Button
             type="link"
             size="small"

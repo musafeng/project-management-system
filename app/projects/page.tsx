@@ -23,6 +23,7 @@ import dayjs from 'dayjs'
 import { requestApi } from '@/lib/client-request'
 import { useMobile } from '@/hooks/useMobile'
 import { ApprovalActions } from '@/components/ApprovalActions'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { getApprovalStatusMeta, isApprovalLocked as isApprovalRecordLocked } from '@/lib/approval-status'
 
 interface Project {
@@ -125,6 +126,7 @@ function MobileProjectCard({
       }
       extra={
         <Space size="small" wrap>
+          <ViewRecordButton resource="projects" id={item.id} />
           <Button type="link" size="small" onClick={() => window.location.href = `/projects/${item.id}`}>详情</Button>
           <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => onEdit(item.id)}>编辑</Button>
           <ApprovalActions
@@ -292,6 +294,7 @@ export default function ProjectsPage() {
         const locked = isApprovalLocked(record)
         return (
         <Space size="small" wrap>
+          <ViewRecordButton resource="projects" id={record.id} />
           <Button type="link" size="small" onClick={() => window.location.href = `/projects/${record.id}`}>详情</Button>
           <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleEditClick(record.id)}>编辑</Button>
           <ApprovalActions

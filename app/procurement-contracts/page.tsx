@@ -23,6 +23,7 @@ import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
@@ -499,6 +500,7 @@ export default function ProcurementContractsPage() {
 
         return (
         <Space size="small">
+          <ViewRecordButton resource="procurement-contracts" id={record.id} />
           <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} title={lockReason} onClick={() => handleEditClick(record.id)}>编辑</Button>
           <Popconfirm title="删除采购合同" description="确定删除该采购合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
@@ -539,6 +541,7 @@ export default function ProcurementContractsPage() {
 
         return (
         <Space size="small" wrap>
+          <ViewRecordButton resource="procurement-contracts" id={record.id} />
           <Button
             type="link"
             size="small"

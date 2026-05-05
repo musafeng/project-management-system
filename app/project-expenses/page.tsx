@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
@@ -194,6 +195,7 @@ export default function ProjectExpensesPage() {
 
         return (
           <Space size="small" wrap>
+            <ViewRecordButton resource="project-expenses" id={r.id} />
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(r)}>编辑</Button>
             <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
               <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>

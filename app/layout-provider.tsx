@@ -269,7 +269,8 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     const key = e.key as string
-    if (MENU_ITEMS.some((item) => item.key === key)) return
+    const topLevelItem = MENU_ITEMS.find((item) => item.key === key)
+    if (topLevelItem?.children?.length) return
     if (isMobile) setDrawerOpen(false)
     router.push(key)
   }
