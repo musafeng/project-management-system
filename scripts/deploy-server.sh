@@ -5,6 +5,13 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$PROJECT_DIR"
 
+restore_lockfile_if_changed() {
+  if ! git diff --quiet -- package-lock.json; then
+    echo "提示：检测到服务器 npm 改写了 package-lock.json 元数据，已按仓库版本恢复。"
+    git checkout -- package-lock.json
+  fi
+}
+
 echo "[1/8] 停止服务"
 pm2 stop project-manager >/dev/null 2>&1 || true
 
@@ -17,16 +24,15 @@ rm -rf .next
 
 echo "[4/8] 安装依赖"
 npm ci --no-audit --no-fund
-git diff --exit-code -- package-lock.json >/dev/null || {
-  echo "错误：依赖安装修改了 package-lock.json，请先在本地提交锁文件变化后再部署。"
-  exit 1
-}
+restore_lockfile_if_changed
 
 echo "[5/8] 同步数据库结构"
-npx prisma db push
+npx --no-install prisma db push
+restore_lockfile_if_changed
 
 echo "[6/8] 构建生产版本"
 npm run build:server
+restore_lockfile_if_changed
 
 echo "[7/8] 启动服务"
 pm2 startOrRestart ecosystem.config.cjs
