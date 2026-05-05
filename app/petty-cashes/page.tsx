@@ -4,8 +4,9 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { getIssuanceDisplayStatus, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
@@ -51,22 +52,27 @@ export default function PettyCashesPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PettyCash | null>(null)
+  const [holder, setHolder] = useState('')
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
 
-  const load = async () => {
+  const load = useCallback(async (searchHolder: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
     try {
-      const response = await fetch('/api/petty-cashes')
+      const params = new URLSearchParams()
+      if (searchHolder.trim()) params.set('holder', searchHolder.trim())
+      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
+      const response = await fetch(`/api/petty-cashes${params.toString() ? `?${params.toString()}` : ''}`)
       const json = await response.json()
       if (json.success) setData(json.data)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load('', null)
+  }, [load])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -109,7 +115,7 @@ export default function PettyCashesPage() {
       if (json.success) {
         message.success(editing ? '更新成功' : '创建成功')
         setModalOpen(false)
-        void load()
+        void load(holder, month)
         return
       }
 
@@ -126,7 +132,7 @@ export default function PettyCashesPage() {
 
     if (json.success) {
       message.success('已删除')
-      void load()
+      void load(holder, month)
       return
     }
 
@@ -185,7 +191,7 @@ export default function PettyCashesPage() {
               approvalStatus={record.approvalStatus || 'DRAFT'}
               approvedAt={record.approvedAt}
               resource="petty-cashes"
-              onSuccess={() => void load()}
+              onSuccess={() => void load(holder, month)}
             />
           </Space>
         )
@@ -198,13 +204,18 @@ export default function PettyCashesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>备用金申请</h2>
         <Space>
-          <span style={{ color: '#fa8c16', fontWeight: 600 }}>合计发放：{fmt(total)}</span>
+          <Input placeholder="筛选申请人" value={holder} onChange={(event) => setHolder(event.target.value)} style={{ width: 140 }} />
+          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
+          <Button type="primary" onClick={() => void load(holder, month)} loading={loading}>查询</Button>
+          <Button onClick={() => { setHolder(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
           <Button onClick={() => { window.location.href = '/data-exports?resourceType=petty-cashes' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
           </Button>
         </Space>
       </div>
+
+      <AmountSummaryCards items={[{ label: '总金额', value: fmt(total), color: '#fa8c16' }]} />
 
       <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
 

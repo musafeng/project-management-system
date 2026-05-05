@@ -21,6 +21,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
@@ -153,6 +154,7 @@ export default function LaborContractsPage() {
   const [laborWorkersLoading, setLaborWorkersLoading] = useState(true)
   const [keyword, setKeyword] = useState('')
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -230,11 +232,12 @@ export default function LaborContractsPage() {
   /**
    * 加载劳务合同列表
    */
-  const loadContracts = async (searchKeyword?: string, searchProjectId?: string) => {
+  const loadContracts = async (searchKeyword?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchProjectId) params.append('projectId', searchProjectId)
+      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
 
       const url = `/api/labor-contracts${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
@@ -280,7 +283,7 @@ export default function LaborContractsPage() {
    * 查询处理
    */
   const handleSearch = () => {
-    loadContracts(keyword, projectId)
+    loadContracts(keyword, projectId, month)
   }
 
   /**
@@ -289,7 +292,8 @@ export default function LaborContractsPage() {
   const handleReset = () => {
     setKeyword('')
     setProjectId(undefined)
-    loadContracts('', undefined)
+    setMonth(null)
+    loadContracts('', undefined, null)
   }
 
   /**
@@ -343,7 +347,7 @@ export default function LaborContractsPage() {
 
       if (result.success) {
         message.success('劳务合同已删除')
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '删除失败')
       }
@@ -386,7 +390,7 @@ export default function LaborContractsPage() {
         message.success(editingId ? '劳务合同已更新' : '劳务合同已创建')
         setIsModalVisible(false)
         form.resetFields()
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '操作失败')
       }
@@ -505,7 +509,7 @@ export default function LaborContractsPage() {
             approvedAt={record.approvedAt}
             resource="labor-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
           />
         </Space>
       )},
@@ -563,7 +567,7 @@ export default function LaborContractsPage() {
             approvedAt={record.approvedAt}
             resource="labor-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
           />
         </Space>
       )}}
@@ -576,6 +580,24 @@ export default function LaborContractsPage() {
       )}
     />
   )
+
+  const summaryItems = [
+    {
+      label: '合同总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
+      color: '#1677ff',
+    },
+    {
+      label: '已付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0)),
+      color: '#52c41a',
+    },
+    {
+      label: '未付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
+      color: '#f5222d',
+    },
+  ]
 
   return (
     <ConfigProvider
@@ -659,6 +681,15 @@ export default function LaborContractsPage() {
                 }))}
               />
 
+              <DatePicker
+                picker="month"
+                placeholder="选择月份"
+                value={month}
+                onChange={setMonth}
+                allowClear
+                style={{ width: isMobile ? '100%' : 150 }}
+              />
+
               <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
                 <Button
                   type="primary"
@@ -702,6 +733,8 @@ export default function LaborContractsPage() {
               </div>
             </div>
           </div>
+
+          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
 
           {/* 表格 */}
           {isMobile ? (

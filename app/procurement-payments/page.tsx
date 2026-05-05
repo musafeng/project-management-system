@@ -20,6 +20,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
@@ -114,6 +115,8 @@ export default function ProcurementPaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [contractsLoading, setContractsLoading] = useState(true)
   const [contractId, setContractId] = useState<string | undefined>(undefined)
+  const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
@@ -149,11 +152,13 @@ export default function ProcurementPaymentsPage() {
   /**
    * 加载采购付款列表
    */
-  const loadPayments = async (searchContractId?: string) => {
+  const loadPayments = async (searchContractId?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchContractId) params.append('contractId', searchContractId)
+      if (searchProjectId) params.append('projectId', searchProjectId)
+      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
 
       const url = `/api/procurement-payments${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
@@ -186,7 +191,7 @@ export default function ProcurementPaymentsPage() {
    * 查询处理
    */
   const handleSearch = () => {
-    loadPayments(contractId)
+    loadPayments(contractId, projectId, month)
   }
 
   /**
@@ -194,7 +199,9 @@ export default function ProcurementPaymentsPage() {
    */
   const handleReset = () => {
     setContractId(undefined)
-    loadPayments('')
+    setProjectId(undefined)
+    setMonth(null)
+    loadPayments('', undefined, null)
   }
 
   /**
@@ -217,7 +224,7 @@ export default function ProcurementPaymentsPage() {
 
       if (result.success) {
         message.success('付款记录已删除')
-        loadPayments(contractId)
+        loadPayments(contractId, projectId, month)
       } else {
         message.error(result.error || '删除失败')
       }
@@ -254,7 +261,7 @@ export default function ProcurementPaymentsPage() {
         message.success('付款记录已创建')
         setIsModalVisible(false)
         form.resetFields()
-        loadPayments(contractId)
+        loadPayments(contractId, projectId, month)
       } else {
         message.error(result.error || '操作失败')
       }
@@ -360,7 +367,7 @@ export default function ProcurementPaymentsPage() {
             approvedAt={record.approvedAt}
             resource="procurement-payments"
             isAdmin={isAdmin}
-            onSuccess={() => loadPayments(contractId)}
+            onSuccess={() => loadPayments(contractId, projectId, month)}
           />
         </Space>
       )},
@@ -413,7 +420,7 @@ export default function ProcurementPaymentsPage() {
             approvedAt={record.approvedAt}
             resource="procurement-payments"
             isAdmin={isAdmin}
-            onSuccess={() => loadPayments(contractId)}
+            onSuccess={() => loadPayments(contractId, projectId, month)}
           />
         </Space>
       )}}
@@ -426,6 +433,34 @@ export default function ProcurementPaymentsPage() {
       )}
     />
   )
+
+  const projectOptions = Array.from(
+    new Map(contracts.map((contract) => [contract.projectId, contract.projectName])).entries()
+  ).map(([value, label]) => ({ value, label }))
+  const paymentContractIds = new Set(payments.map((payment) => payment.contractId))
+  const summaryContracts = contracts.filter((contract) => {
+    if (contractId) return contract.id === contractId
+    if (projectId) return contract.projectId === projectId
+    if (month) return paymentContractIds.has(contract.id)
+    return true
+  })
+  const summaryItems = [
+    {
+      label: '合同总金额',
+      value: formatCurrency(summaryContracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
+      color: '#1677ff',
+    },
+    {
+      label: '已付款总金额',
+      value: formatCurrency(payments.reduce((sum, item) => sum + Number(item.amount || 0), 0)),
+      color: '#52c41a',
+    },
+    {
+      label: '未付款总金额',
+      value: formatCurrency(summaryContracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
+      color: '#f5222d',
+    },
+  ]
 
   return (
     <ConfigProvider
@@ -488,6 +523,19 @@ export default function ProcurementPaymentsPage() {
               }}
             >
               <Select
+                placeholder="选择项目"
+                value={projectId || undefined}
+                onChange={(value) => {
+                  setProjectId(value)
+                  setContractId(undefined)
+                }}
+                allowClear
+                style={{ width: isMobile ? '100%' : 200 }}
+                loading={contractsLoading}
+                options={projectOptions}
+              />
+
+              <Select
                 placeholder="选择合同"
                 value={contractId || undefined}
                 onChange={setContractId}
@@ -495,10 +543,19 @@ export default function ProcurementPaymentsPage() {
                 style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
                 size={isMobile ? 'middle' : 'middle'}
-                options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
+                options={contracts.filter((contract) => canUseAsApprovedUpstream(contract) && (!projectId || contract.projectId === projectId)).map((contract) => ({
                   label: `${contract.code} - ${contract.name}`,
                   value: contract.id,
                 }))}
+              />
+
+              <DatePicker
+                picker="month"
+                placeholder="选择月份"
+                value={month}
+                onChange={setMonth}
+                allowClear
+                style={{ width: isMobile ? '100%' : 150 }}
               />
 
               <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
@@ -543,6 +600,8 @@ export default function ProcurementPaymentsPage() {
               </div>
             </div>
           </div>
+
+          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
 
           {/* 表格 */}
           {isMobile ? (

@@ -14,6 +14,7 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import type { ExpenseCategory } from '@prisma/client'
 import { assertApprovedUpstream } from '@/lib/approval-gates'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,8 +71,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
+      const submitter = searchParams.get('submitter')?.trim()
       const regionId = await requireCurrentRegionId()
       const where: any = buildProjectRelationRegionWhere(regionId, projectId || undefined)
+      if (submitter) where.submitter = { contains: submitter }
+      applyMonthDateFilter(where, 'expenseDate', searchParams)
       const supportsConstructionId = await hasDbColumn('ProjectExpense', 'constructionId')
 
       const records = await db.projectExpense.findMany({

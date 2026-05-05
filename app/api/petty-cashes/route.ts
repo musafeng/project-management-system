@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 import { assertApprovedUpstream } from '@/lib/approval-gates'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,14 +19,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
+      const holder = searchParams.get('holder')?.trim()
       const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
+      const where: any = {
+        ...(supportsRegionId ? { regionId } : {}),
+        ...(projectId ? { projectId } : {}),
+        ...(holder ? { holder: { contains: holder } } : {}),
+      }
+      applyMonthDateFilter(where, 'issueDate', searchParams)
 
       const records = await db.pettyCash.findMany({
-        where: {
-          ...(supportsRegionId ? { regionId } : {}),
-          ...(projectId ? { projectId } : {}),
-        },
+        where,
         select: {
           id: true,
           ...(supportsRegionId ? { regionId: true } : {}),

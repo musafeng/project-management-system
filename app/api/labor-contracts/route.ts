@@ -1,6 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertMasterRecordInCurrentRegion,
@@ -79,6 +80,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
+    applyMonthDateFilter(where, 'signDate', searchParams)
 
     const contracts = await db.laborContract.findMany({
       where,

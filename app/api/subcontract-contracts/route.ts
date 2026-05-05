@@ -3,6 +3,7 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertMasterRecordInCurrentRegion,
@@ -131,6 +132,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
+    applyMonthDateFilter(where, 'signDate', searchParams)
 
     const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const contracts = await db.subcontractContract.findMany({

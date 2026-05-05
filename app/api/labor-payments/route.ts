@@ -3,6 +3,7 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import { assertLaborContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 import { assertApprovedUpstream } from '@/lib/approval-gates'
 
@@ -73,6 +74,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (contractId) where.contractId = contractId
     if (projectId) where.projectId = projectId
+    applyMonthDateFilter(where, 'paymentDate', searchParams)
 
     const supportsAttachmentUrl = await hasDbColumn('LaborPayment', 'attachmentUrl')
     const payments = await db.laborPayment.findMany({

@@ -16,7 +16,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { isApprovalLocked } from '@/lib/approval-status'
@@ -63,22 +63,27 @@ export default function ManagementExpensesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [items, setItems] = useState<ExpenseItem[]>([{ type: '办公费', amount: 0 }])
+  const [submitter, setSubmitter] = useState('')
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
 
-  const load = async () => {
+  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
     try {
-      const response = await fetch('/api/management-expenses')
+      const params = new URLSearchParams()
+      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
+      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
+      const response = await fetch(`/api/management-expenses${params.toString() ? `?${params.toString()}` : ''}`)
       const json = await response.json()
       if (json.success) setData(json.data)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load('', null)
+  }, [load])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -129,7 +134,7 @@ export default function ManagementExpensesPage() {
       if (json.success) {
         message.success(editing ? '更新成功' : '创建成功')
         setModalOpen(false)
-        void load()
+        void load(submitter, month)
         return
       }
 
@@ -146,7 +151,7 @@ export default function ManagementExpensesPage() {
 
     if (json.success) {
       message.success('已删除')
-      void load()
+      void load(submitter, month)
       return
     }
 
@@ -192,7 +197,7 @@ export default function ManagementExpensesPage() {
               approvalStatus={record.approvalStatus || 'DRAFT'}
               approvedAt={record.approvedAt}
               resource="management-expenses"
-              onSuccess={() => void load()}
+              onSuccess={() => void load(submitter, month)}
             />
           </Space>
         )
@@ -205,6 +210,10 @@ export default function ManagementExpensesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>管理费用报销</h2>
         <Space>
+          <Input placeholder="筛选报销人" value={submitter} onChange={(event) => setSubmitter(event.target.value)} style={{ width: 140 }} />
+          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
+          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
+          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
           <Button onClick={() => { window.location.href = '/data-exports?resourceType=management-expenses' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增

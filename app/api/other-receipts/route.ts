@@ -7,6 +7,8 @@ import {
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
+import { resolveRecordSubmitterNames } from '@/lib/api/record-submitter'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 import { assertApprovedUpstream } from '@/lib/approval-gates'
 
@@ -19,12 +21,14 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
       const keyword = searchParams.get('keyword')
+      const submitter = searchParams.get('submitter')?.trim()
       const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const where: any = supportsRegionId ? { regionId } : {}
 
       if (projectId) where.projectId = projectId
       if (keyword) where.receiptType = { contains: keyword }
+      applyMonthDateFilter(where, 'receiptDate', searchParams)
 
       const records = await db.otherReceipt.findMany({
         where,
@@ -46,11 +50,22 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         orderBy: { receiptDate: 'desc' },
       })
 
+      const submitterMap = await resolveRecordSubmitterNames({
+        ids: records.map((record) => record.id),
+        resourceType: 'other-receipts',
+        actionLogResource: 'other-receipts',
+      })
+      const normalizedSubmitter = submitter?.toLocaleLowerCase()
+
       return success(
         records.map((record) => ({
           ...record,
           projectName: record.Project?.name ?? null,
-        }))
+          submitterName: submitterMap.get(record.id) ?? null,
+        })).filter((record) => (
+          !normalizedSubmitter ||
+          record.submitterName?.toLocaleLowerCase().includes(normalizedSubmitter)
+        ))
       )
     },
 

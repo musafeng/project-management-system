@@ -21,6 +21,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
@@ -153,6 +154,7 @@ export default function ProcurementContractsPage() {
   const [suppliersLoading, setSuppliersLoading] = useState(true)
   const [keyword, setKeyword] = useState('')
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -230,11 +232,12 @@ export default function ProcurementContractsPage() {
   /**
    * 加载采购合同列表
    */
-  const loadContracts = async (searchKeyword?: string, searchProjectId?: string) => {
+  const loadContracts = async (searchKeyword?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchProjectId) params.append('projectId', searchProjectId)
+      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
 
       const url = `/api/procurement-contracts${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
@@ -280,7 +283,7 @@ export default function ProcurementContractsPage() {
    * 查询处理
    */
   const handleSearch = () => {
-    loadContracts(keyword, projectId)
+    loadContracts(keyword, projectId, month)
   }
 
   /**
@@ -289,7 +292,8 @@ export default function ProcurementContractsPage() {
   const handleReset = () => {
     setKeyword('')
     setProjectId(undefined)
-    loadContracts('', undefined)
+    setMonth(null)
+    loadContracts('', undefined, null)
   }
 
   /**
@@ -343,7 +347,7 @@ export default function ProcurementContractsPage() {
 
       if (result.success) {
         message.success('采购合同已删除')
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '删除失败')
       }
@@ -386,7 +390,7 @@ export default function ProcurementContractsPage() {
         message.success(editingId ? '采购合同已更新' : '采购合同已创建')
         setIsModalVisible(false)
         form.resetFields()
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '操作失败')
       }
@@ -505,7 +509,7 @@ export default function ProcurementContractsPage() {
             approvedAt={record.approvedAt}
             resource="procurement-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
           />
         </Space>
       )},
@@ -569,7 +573,7 @@ export default function ProcurementContractsPage() {
             approvedAt={record.approvedAt}
             resource="procurement-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
           />
         </Space>
       )}}
@@ -582,6 +586,24 @@ export default function ProcurementContractsPage() {
       )}
     />
   )
+
+  const summaryItems = [
+    {
+      label: '合同总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
+      color: '#1677ff',
+    },
+    {
+      label: '已付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0)),
+      color: '#52c41a',
+    },
+    {
+      label: '未付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
+      color: '#f5222d',
+    },
+  ]
 
   return (
     <ConfigProvider
@@ -667,6 +689,15 @@ export default function ProcurementContractsPage() {
                 }))}
               />
 
+              <DatePicker
+                picker="month"
+                placeholder="选择月份"
+                value={month}
+                onChange={setMonth}
+                allowClear
+                style={{ width: isMobile ? '100%' : 150 }}
+              />
+
               <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
                 <Button
                   type="primary"
@@ -710,6 +741,8 @@ export default function ProcurementContractsPage() {
               </div>
             </div>
           </div>
+
+          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
 
           {/* 表格 */}
           {isMobile ? (
