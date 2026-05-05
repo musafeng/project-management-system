@@ -6,6 +6,7 @@ import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
   getAttachmentDisplayName,
+  getAttachmentOpenUrl,
   parseAttachmentUrls,
   serializeAttachmentUrls,
 } from '@/lib/attachments'
@@ -97,7 +98,7 @@ export default function AttachmentUploadField({
     return attachments.length > 0 ? (
       <Space direction="vertical" size={4}>
         {attachments.map((url) => (
-          <a key={url} href={url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+          <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
             {getAttachmentDisplayName(url) || url}
           </a>
         ))}
@@ -133,7 +134,7 @@ export default function AttachmentUploadField({
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           {attachments.map((url) => (
             <Space key={url} size={4} wrap>
-              <a href={url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+              <a href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
                 {getAttachmentDisplayName(url) || '查看附件'}
               </a>
               <Button

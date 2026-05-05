@@ -10,6 +10,10 @@ export function getAttachmentDisplayName(url?: string | null) {
   }
 }
 
+export function getAttachmentOpenUrl(url: string): string {
+  return `/api/attachments/open?url=${encodeURIComponent(url)}`
+}
+
 function normalizeUrl(url: unknown): string | null {
   const value = typeof url === 'string' ? url.trim() : ''
   return value || null

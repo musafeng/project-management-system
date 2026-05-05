@@ -67,7 +67,9 @@ const handler = apiHandlerWithMethod({
       name: contract.name,
       projectId: contract.projectId,
       project: contract.Project,
+      projectName: contract.Project.name,
       customerId: contract.customerId,
+      customerName: contract.Project.Customer.name,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
       receivableAmount: contract.receivableAmount,
@@ -223,7 +225,9 @@ const handler = apiHandlerWithMethod({
       name: contract.name,
       projectId: contract.projectId,
       project: contract.Project,
+      projectName: contract.Project.name,
       customerId: contract.customerId,
+      customerName: contract.Project.Customer.name,
       contractAmount: contract.contractAmount,
       changedAmount: contract.changedAmount,
       receivableAmount: contract.receivableAmount,
@@ -306,3 +310,7 @@ const handler = apiHandlerWithMethod({
     return success({ message: '合同已删除' })
   },
 })
+
+export const GET = handler
+export const PUT = handler
+export const DELETE = handler

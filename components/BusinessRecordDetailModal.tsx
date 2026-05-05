@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Descriptions, Divider, Modal, Space, Spin, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { FileTextOutlined } from '@ant-design/icons'
-import { getAttachmentDisplayName, parseAttachmentUrls } from '@/lib/attachments'
+import { getAttachmentDisplayName, getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
 import { requestApi } from '@/lib/client-request'
 import { fmtDate, fmtMoney } from '@/lib/utils/format'
 
@@ -323,7 +323,7 @@ function AttachmentLinks({ urls }: { urls: string[] }) {
   return (
     <Space direction="vertical" size={4}>
       {urls.map((url) => (
-        <a key={url} href={url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+        <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
           {getAttachmentDisplayName(url) || url}
         </a>
       ))}
