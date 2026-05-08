@@ -2,6 +2,7 @@ import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         startDate: true,
         endDate: true,
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
         contractType: true,
         paymentMethod: true,
         hasRetention: true,
@@ -82,6 +87,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      approvalStatus: contract.approvalStatus,
+      approvedAt: contract.approvedAt,
+      submittedAt: contract.submittedAt,
+      rejectedAt: contract.rejectedAt,
       contractType: contract.contractType,
       paymentMethod: contract.paymentMethod,
       hasRetention: contract.hasRetention,
@@ -131,6 +140,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     if (!project) {
       throw new NotFoundError('项目不存在')
     }
+    assertApprovedUpstream(project, '项目')
 
     // 生成合同编码
     const code = `CONTRACT${Date.now()}`
@@ -158,6 +168,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       retentionAmount,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -180,6 +191,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         startDate: true,
         endDate: true,
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
         contractType: true,
         paymentMethod: true,
         hasRetention: true,
@@ -208,6 +223,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       startDate: contract.startDate,
       endDate: contract.endDate,
       status: contract.status,
+      approvalStatus: contract.approvalStatus,
+      approvedAt: contract.approvedAt,
+      submittedAt: contract.submittedAt,
+      rejectedAt: contract.rejectedAt,
       contractType: contract.contractType,
       paymentMethod: contract.paymentMethod,
       hasRetention: contract.hasRetention,

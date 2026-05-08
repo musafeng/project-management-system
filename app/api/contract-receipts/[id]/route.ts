@@ -1,4 +1,5 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError, requireDeletePermission } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
 import { db } from '@/lib/db'
 import {
   assertDirectRecordInCurrentRegion,
@@ -23,6 +24,7 @@ function toResponse(receipt: {
   receiptNumber: string | null
   status: string
   approvalStatus?: string
+  approvedAt: Date | null
   deductionItems: string | null
   attachmentUrl: string | null
   remark: string | null
@@ -50,6 +52,7 @@ function toResponse(receipt: {
     receiptNumber: receipt.receiptNumber,
     status: receipt.status,
     approvalStatus: receipt.approvalStatus,
+    approvedAt: receipt.approvedAt,
     deductionItems: receipt.deductionItems ? JSON.parse(receipt.deductionItems) : [],
     attachmentUrl: receipt.attachmentUrl,
     remark: receipt.remark,
@@ -88,6 +91,7 @@ const handler = apiHandlerWithMethod({
         receiptNumber: true,
         status: true,
         approvalStatus: true,
+        approvedAt: true,
         deductionItems: true,
         attachmentUrl: true,
         remark: true,
@@ -104,6 +108,7 @@ const handler = apiHandlerWithMethod({
   },
 
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {
@@ -113,6 +118,11 @@ const handler = apiHandlerWithMethod({
     const receipt = await assertDirectRecordInCurrentRegion('contractReceipt', id)
     if (!receipt) {
       throw new NotFoundError('收款记录不存在')
+    }
+    try {
+      assertEditable(receipt.approvalStatus, receipt.approvedAt)
+    } catch (error) {
+      throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
     }
 
     const contract = await assertProjectContractInCurrentRegion(receipt.contractId)

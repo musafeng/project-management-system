@@ -126,6 +126,7 @@ const handler = apiHandlerWithMethod({
         contractId: true,
         paymentAmount: true,
         approvalStatus: true,
+        approvedAt: true,
       },
     })
 
@@ -134,7 +135,7 @@ const handler = apiHandlerWithMethod({
     }
 
     try {
-      assertEditable(payment.approvalStatus)
+      assertEditable(payment.approvalStatus, payment.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

@@ -6,7 +6,9 @@
  */
 
 import { apiHandlerWithPermissionAndLog, success, BadRequestError } from '@/lib/api'
+import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
+import { requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,9 +36,11 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
   GET: async (req) => {
     const { searchParams } = new URL(req.url)
     const keyword = searchParams.get('keyword') || undefined
+    const supportsRegionId = await hasDbColumn('Supplier', 'regionId')
+    const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
     // 构建查询条件
-    const where: any = {}
+    const where: any = supportsRegionId ? { regionId } : {}
 
     if (keyword) {
       where.name = {
@@ -99,6 +103,8 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
    */
   POST: async (req) => {
     const body = await req.json()
+    const supportsRegionId = await hasDbColumn('Supplier', 'regionId')
+    const regionId = supportsRegionId ? await requireCurrentRegionId() : null
 
     // 验证必填字段
     if (!body.name || typeof body.name !== 'string') {
@@ -139,6 +145,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: body.remark?.trim() || null,
         status: 'active',
+        ...(supportsRegionId ? { regionId } : {}),
         updatedAt: new Date(),
       },
       select: {

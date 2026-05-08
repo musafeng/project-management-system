@@ -39,6 +39,9 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         remark: true,
+        formDataJson: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -62,6 +65,9 @@ const handler = apiHandlerWithMethod({
       startDate: approval.startDate,
       endDate: approval.endDate,
       remark: approval.remark,
+      formDataJson: approval.formDataJson,
+      approvalStatus: approval.approvalStatus,
+      approvedAt: approval.approvedAt,
       createdAt: approval.createdAt,
       updatedAt: approval.updatedAt,
     })
@@ -89,7 +95,7 @@ const handler = apiHandlerWithMethod({
 
     // 审批状态锁定校验
     try {
-      assertEditable(existingApproval.approvalStatus)
+      assertEditable(existingApproval.approvalStatus, existingApproval.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
@@ -127,6 +133,10 @@ const handler = apiHandlerWithMethod({
       updateData.remark = body.remark?.trim() || null
     }
 
+    if (body.formDataJson !== undefined) {
+      updateData.formDataJson = body.formDataJson || null
+    }
+
     // 更新立项
     const approval = await db.constructionApproval.update({
       where: { id },
@@ -148,6 +158,9 @@ const handler = apiHandlerWithMethod({
         startDate: true,
         endDate: true,
         remark: true,
+        formDataJson: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -167,6 +180,9 @@ const handler = apiHandlerWithMethod({
       startDate: approval.startDate,
       endDate: approval.endDate,
       remark: approval.remark,
+      formDataJson: approval.formDataJson,
+      approvalStatus: approval.approvalStatus,
+      approvedAt: approval.approvedAt,
       createdAt: approval.createdAt,
       updatedAt: approval.updatedAt,
     })
@@ -193,7 +209,7 @@ const handler = apiHandlerWithMethod({
 
     // 审批状态锁定校验
     try {
-      assertEditable(approval.approvalStatus)
+      assertEditable(approval.approvalStatus, approval.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

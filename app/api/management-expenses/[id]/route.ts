@@ -1,9 +1,12 @@
 import {
   apiHandlerWithPermissionAndLog,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
+  requireDeletePermission,
   success,
 } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
 import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
@@ -78,6 +81,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const existing = await assertDirectRecordInCurrentRegion('managementExpense', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
 
       const projectId =
         body.projectId === undefined
@@ -134,10 +142,16 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
     },
 
     DELETE: async (req) => {
+      await requireDeletePermission()
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('managementExpense', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
+      }
 
       await deleteCompatRecord('ManagementExpense', id)
       return success({ id })

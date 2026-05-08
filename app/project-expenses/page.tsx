@@ -1,11 +1,14 @@
 'use client'
 
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
+import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
+import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 
 interface ExpenseItem {
@@ -27,6 +30,7 @@ interface Expense {
   expenseDate: string
   attachmentUrl?: string
   approvalStatus: string
+  approvedAt?: string | null
   remark?: string
   createdAt: string
 }
@@ -36,12 +40,7 @@ interface ConstructionApproval {
   name: string
   projectName: string
   approvalStatus: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
+  approvedAt?: string | null
 }
 
 function fmt(v: number) {
@@ -65,33 +64,38 @@ export default function ProjectExpensesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [items, setItems] = useState<ExpenseItem[]>([{ type: '材料', amount: 0 }])
+  const [submitter, setSubmitter] = useState('')
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
 
-  const load = async () => {
+  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/project-expenses')
+      const params = new URLSearchParams()
+      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
+      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
+      const res = await fetch(`/api/project-expenses${params.toString() ? `?${params.toString()}` : ''}`)
       const j = await res.json()
       if (j.success) setData(j.data)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const loadConstructions = async () => {
     const res = await fetch('/api/construction-approvals')
     const json = await res.json()
     if (json.success) {
       setConstructions(
-        (json.data || []).filter((item: ConstructionApproval) => item.approvalStatus === 'APPROVED')
+        (json.data || []).filter((item: ConstructionApproval) => canUseAsApprovedUpstream(item))
       )
     }
   }
 
   useEffect(() => {
-    load()
+    load('', null)
     loadConstructions()
-  }, [])
+  }, [load])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -151,7 +155,7 @@ export default function ProjectExpensesPage() {
       if (json.success) {
         message.success(editing ? '更新成功' : '创建成功')
         setModalOpen(false)
-        void load()
+        void load(submitter, month)
       } else {
         message.error(json.error || '操作失败')
       }
@@ -166,7 +170,7 @@ export default function ProjectExpensesPage() {
     const j = await res.json()
     if (j.success) {
       message.success('已删除')
-      void load()
+      void load(submitter, month)
     } else {
       message.error(j.error || '删除失败')
     }
@@ -178,17 +182,34 @@ export default function ProjectExpensesPage() {
     { title: '报销人', dataIndex: 'submitter', width: 100 },
     { title: '总金额', dataIndex: 'totalAmount', width: 120, align: 'right', render: v => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(v)}</span> },
     { title: '日期', dataIndex: 'expenseDate', width: 110, render: fmtDate },
-    { title: '审批状态', dataIndex: 'approvalStatus', width: 100, render: v => <Tag color={STATUS_MAP[v]?.color}>{STATUS_MAP[v]?.label || v}</Tag> },
     {
-      title: '操作', key: 'action', width: 120, fixed: 'right',
-      render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(r)}>编辑</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
+      title: '审批状态',
+      dataIndex: 'approvalStatus',
+      width: 100,
+      render: (value, record) => <ApprovalStatusTag status={value || 'DRAFT'} approvedAt={record.approvedAt} />,
+    },
+    {
+      title: '操作', key: 'action', width: 260, fixed: 'right',
+      render: (_, r) => {
+        const locked = isApprovalLocked(r)
+
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="project-expenses" id={r.id} />
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(r)}>编辑</Button>
+            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={r.id}
+              approvalStatus={r.approvalStatus || 'DRAFT'}
+              approvedAt={r.approvedAt}
+              resource="project-expenses"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      },
     },
   ]
 
@@ -197,6 +218,10 @@ export default function ProjectExpensesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>项目费用报销</h2>
         <Space>
+          <Input placeholder="筛选报销人" value={submitter} onChange={(event) => setSubmitter(event.target.value)} style={{ width: 140 }} />
+          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
+          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
+          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
           <Button onClick={() => { window.location.href = '/data-exports?resourceType=project-expenses' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>新增</Button>
         </Space>

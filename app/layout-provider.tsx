@@ -19,7 +19,8 @@ import {
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
 import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
-import { clientEnv } from '@/lib/env'
+import { MobileProvider, useMobile } from '@/hooks/useMobile'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 const { Sider, Header, Content } = Layout
 
@@ -114,16 +115,6 @@ const MENU_ITEMS: MenuItem[] = [
   },
 ]
 
-/** 判断用户是否为系统管理员（ADMIN 角色 或 dingUserId 在白名单中） */
-function checkIsSystemManager(user: AuthUser | null): boolean {
-  if (!user) return false
-  if (user.systemRole === 'ADMIN') return true
-  if (user.userid && clientEnv.systemManagerIds.length > 0) {
-    return clientEnv.systemManagerIds.includes(user.userid)
-  }
-  return false
-}
-
 /** 系统管理分组 key，其下子菜单仅系统管理员可见 */
 const ADMIN_ONLY_GROUP = 'system-mgmt'
 
@@ -192,17 +183,17 @@ function getPageTitle(pathname: string): string {
   return findTitle(MENU_ITEMS) || '工程项目管理系统'
 }
 
-export default function LayoutProvider({ children }: { children: React.ReactNode }) {
+function LayoutProviderShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [userLoading, setUserLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [regions, setRegions] = useState<{ id: string; name: string; isActive: boolean }[]>([])
   const [currentRegionId, setCurrentRegionId] = useState<string | null>(null)
+  const isMobile = useMobile()
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -227,13 +218,6 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     }
     loadRegions()
   }, [mounted])
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   useEffect(() => {
     if (!mounted) return
@@ -267,7 +251,7 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
     loadCurrentUser()
   }, [mounted])
 
-  const filteredMenuItems = filterMenuItemsByRole(MENU_ITEMS, checkIsSystemManager(currentUser))
+  const filteredMenuItems = filterMenuItemsByRole(MENU_ITEMS, isSystemManagerClientUser(currentUser))
 
   const selectedKey = getSelectedKey(pathname)
   const openKeys = getOpenKeys(pathname)
@@ -275,7 +259,8 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     const key = e.key as string
-    if (MENU_ITEMS.some((item) => item.key === key)) return
+    const topLevelItem = MENU_ITEMS.find((item) => item.key === key)
+    if (topLevelItem?.children?.length) return
     if (isMobile) setDrawerOpen(false)
     router.push(key)
   }
@@ -292,6 +277,10 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
       if (json.success) {
         setCurrentRegionId(regionId)
         message.success(`已切换到：${json.data.regionName}`)
+        if (typeof window !== 'undefined') {
+          window.location.reload()
+          return
+        }
         router.refresh()
       } else {
         message.error(json.error || '切换失败')
@@ -516,5 +505,13 @@ export default function LayoutProvider({ children }: { children: React.ReactNode
         </Layout>
       </Layout>
     </ConfigProvider>
+  )
+}
+
+export default function LayoutProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <MobileProvider>
+      <LayoutProviderShell>{children}</LayoutProviderShell>
+    </MobileProvider>
   )
 }

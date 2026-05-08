@@ -1,6 +1,7 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
-import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertEditable } from '@/lib/approval'
+import { assertDirectRecordInCurrentRegion, assertMasterRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,11 @@ const handler = apiHandlerWithMethod({
           select: { name: true },
         },
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
+        rejectedReason: true,
         startDate: true,
         endDate: true,
         budget: true,
@@ -54,6 +60,11 @@ const handler = apiHandlerWithMethod({
       customer: project.Customer,
       regionName: project.Region?.name ?? null,
       status: project.status,
+      approvalStatus: project.approvalStatus,
+      approvedAt: project.approvedAt,
+      submittedAt: project.submittedAt,
+      rejectedAt: project.rejectedAt,
+      rejectedReason: project.rejectedReason,
       startDate: project.startDate,
       endDate: project.endDate,
       budget: project.budget,
@@ -83,11 +94,15 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('项目不存在')
     }
 
+    try {
+      assertEditable(existingProject.approvalStatus, existingProject.approvedAt)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
+    }
+
     // 如果更新客户，验证客户是否存在
     if (body.customerId && body.customerId !== existingProject.customerId) {
-      const customer = await db.customer.findUnique({
-        where: { id: body.customerId },
-      })
+      const customer = await assertMasterRecordInCurrentRegion('customer', body.customerId)
 
       if (!customer) {
         throw new NotFoundError('客户不存在')
@@ -137,6 +152,11 @@ const handler = apiHandlerWithMethod({
           select: { id: true, name: true },
         },
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
+        rejectedReason: true,
         startDate: true,
         endDate: true,
         budget: true,
@@ -153,6 +173,11 @@ const handler = apiHandlerWithMethod({
       customerId: project.customerId,
       customer: project.Customer,
       status: project.status,
+      approvalStatus: project.approvalStatus,
+      approvedAt: project.approvedAt,
+      submittedAt: project.submittedAt,
+      rejectedAt: project.rejectedAt,
+      rejectedReason: project.rejectedReason,
       startDate: project.startDate,
       endDate: project.endDate,
       budget: project.budget,
@@ -168,6 +193,7 @@ const handler = apiHandlerWithMethod({
    * 删除规则：如果项目存在关联合同，禁止删除
    */
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {
@@ -179,6 +205,12 @@ const handler = apiHandlerWithMethod({
 
     if (!project) {
       throw new NotFoundError('项目不存在')
+    }
+
+    try {
+      assertEditable(project.approvalStatus, project.approvedAt)
+    } catch (err) {
+      throw new ForbiddenError(err instanceof Error ? err.message : '无法删除')
     }
 
     // 检查是否存在关联合同

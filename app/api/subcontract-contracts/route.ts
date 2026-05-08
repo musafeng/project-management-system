@@ -3,31 +3,37 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import {
   assertConstructionApprovalInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
 async function resolveSubcontractAssignee(workerId: string) {
+  const regionId = await requireCurrentRegionId()
   const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
-  if (supportsWorkerId) {
-    return { workerId, vendorId: null as string | null }
-  }
-
-  const compatCode = `LW-${workerId}`
+  const supportsVendorRegionId = await hasDbColumn('SubcontractVendor', 'regionId')
+  const legacyCompatCode = `LW-${workerId}`
+  const compatCode = `${legacyCompatCode}-${regionId.slice(-6)}`
   const existingVendor = await db.subcontractVendor.findFirst({
-    where: { code: compatCode },
+    where: {
+      ...(supportsVendorRegionId ? { regionId } : {}),
+      OR: [{ code: compatCode }, { code: legacyCompatCode }],
+    },
     select: { id: true },
   })
   if (existingVendor) {
-    return { workerId: null as string | null, vendorId: existingVendor.id }
+    return { workerId: supportsWorkerId ? workerId : null, vendorId: existingVendor.id }
   }
 
+  const currentWorker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
   const worker = await db.laborWorker.findUnique({
-    where: { id: workerId },
+    where: { id: currentWorker.id },
     select: { name: true, phone: true, bankAccount: true, bankName: true },
   })
   if (!worker) throw new NotFoundError('分包人员不存在')
@@ -40,12 +46,13 @@ async function resolveSubcontractAssignee(workerId: string) {
       phone: worker.phone,
       bankAccount: worker.bankAccount,
       bankName: worker.bankName,
+      ...(supportsVendorRegionId ? { regionId } : {}),
       updatedAt: new Date(),
     },
     select: { id: true },
   })
 
-  return { workerId: null as string | null, vendorId: vendor.id }
+  return { workerId: supportsWorkerId ? workerId : null, vendorId: vendor.id }
 }
 
 
@@ -81,6 +88,7 @@ function toResponse(contract: {
   subcontractType?: string | null
   remark?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
 }) {
   const workerName = contract.LaborWorker?.name ?? contract.SubcontractVendor?.name ?? ''
@@ -108,6 +116,7 @@ function toResponse(contract: {
     subcontractType: contract.subcontractType ?? null,
     remark: contract.remark ?? null,
     approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
   }
 }
@@ -123,6 +132,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
+    applyMonthDateFilter(where, 'signDate', searchParams)
 
     const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
     const contracts = await db.subcontractContract.findMany({
@@ -148,6 +158,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -182,17 +193,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const project = await assertProjectInCurrentRegion(body.projectId)
     if (!project) throw new NotFoundError('项目不存在')
+    assertApprovedUpstream(project, '项目')
 
     const construction = await assertConstructionApprovalInCurrentRegion(body.constructionId)
     if (!construction) throw new NotFoundError('施工立项不存在')
+    assertApprovedUpstream(construction, '施工立项')
     if (construction.projectId !== body.projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    const worker = await db.laborWorker.findUnique({
-      where: { id: workerId },
-      select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
-    })
+    const worker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
     if (!worker) throw new NotFoundError('分包人员不存在')
     const assignee = await resolveSubcontractAssignee(workerId)
     const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
@@ -218,6 +228,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       subcontractType: body.subcontractType?.trim() || null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -245,6 +256,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
     })

@@ -3,7 +3,9 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import { assertProcurementContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +28,7 @@ function toResponse(payment: {
   paymentNumber: string | null
   attachmentUrl?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   status: string
   remark: string | null
   createdAt: Date
@@ -50,6 +53,7 @@ function toResponse(payment: {
     paymentNumber: payment.paymentNumber,
     attachmentUrl: payment.attachmentUrl,
     approvalStatus: payment.approvalStatus,
+    approvedAt: payment.approvedAt,
     status: payment.status,
     remark: payment.remark,
     createdAt: payment.createdAt,
@@ -67,6 +71,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (contractId) where.contractId = contractId
     if (projectId) where.projectId = projectId
+    applyMonthDateFilter(where, 'paymentDate', searchParams)
 
     const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
     const payments = await db.procurementPayment.findMany({
@@ -91,6 +96,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -117,6 +123,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const contract = await assertProcurementContractInCurrentRegion(body.contractId)
     if (!contract) throw new NotFoundError('采购合同不存在')
+    assertApprovedUpstream(contract, '采购合同')
 
     const regionId = await requireCurrentRegionId()
     const supportsAttachmentUrl = await hasDbColumn('ProcurementPayment', 'attachmentUrl')
@@ -131,6 +138,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       ...(supportsAttachmentUrl ? { attachmentUrl: body.attachmentUrl?.trim() || null } : {}),
       status: 'PAID',
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -157,6 +165,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,

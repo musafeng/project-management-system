@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { handleSubmit, handleApprove, handleReject } from '@/lib/approval'
+import { handleSubmit, handleApprove, handleReject, handleUrge } from '@/lib/approval'
 import { success } from '@/lib/api'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { applyApprovedProjectContractChange } from '@/lib/project-contract-changes'
@@ -24,6 +24,8 @@ export async function POST(
     } else if (action === 'reject') {
       const body = await req.json().catch(() => ({}))
       await handleReject(MODEL, id, body.reason, `${BASE}/${id}/reject`)
+    } else if (action === 'urge') {
+      await handleUrge(MODEL, id, `${BASE}/${id}/urge`)
     } else {
       return NextResponse.json({ success: false, error: '无效的操作' }, { status: 400 })
     }

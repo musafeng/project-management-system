@@ -6,6 +6,7 @@ import { assertEditable } from '@/lib/approval'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertDirectRecordInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -13,22 +14,25 @@ import {
 export const dynamic = 'force-dynamic'
 
 async function resolveSubcontractAssignee(workerId: string) {
+  const regionId = await requireCurrentRegionId()
   const supportsWorkerId = await hasDbColumn('SubcontractContract', 'workerId')
-  if (supportsWorkerId) {
-    return { workerId, vendorId: null as string | null }
-  }
-
-  const compatCode = `LW-${workerId}`
+  const supportsVendorRegionId = await hasDbColumn('SubcontractVendor', 'regionId')
+  const legacyCompatCode = `LW-${workerId}`
+  const compatCode = `${legacyCompatCode}-${regionId.slice(-6)}`
   const existingVendor = await db.subcontractVendor.findFirst({
-    where: { code: compatCode },
+    where: {
+      ...(supportsVendorRegionId ? { regionId } : {}),
+      OR: [{ code: compatCode }, { code: legacyCompatCode }],
+    },
     select: { id: true },
   })
   if (existingVendor) {
-    return { workerId: null as string | null, vendorId: existingVendor.id }
+    return { workerId: supportsWorkerId ? workerId : null, vendorId: existingVendor.id }
   }
 
+  const currentWorker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
   const worker = await db.laborWorker.findUnique({
-    where: { id: workerId },
+    where: { id: currentWorker.id },
     select: { name: true, phone: true, bankAccount: true, bankName: true },
   })
   if (!worker) throw new NotFoundError('分包人员不存在')
@@ -41,12 +45,13 @@ async function resolveSubcontractAssignee(workerId: string) {
       phone: worker.phone,
       bankAccount: worker.bankAccount,
       bankName: worker.bankName,
+      ...(supportsVendorRegionId ? { regionId } : {}),
       updatedAt: new Date(),
     },
     select: { id: true },
   })
 
-  return { workerId: null as string | null, vendorId: vendor.id }
+  return { workerId: supportsWorkerId ? workerId : null, vendorId: vendor.id }
 }
 
 
@@ -87,6 +92,8 @@ function toResponse(contract: {
   attachmentUrl: string | null
   subcontractType: string | null
   remark: string | null
+  approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -118,6 +125,8 @@ function toResponse(contract: {
     attachmentUrl: contract.attachmentUrl,
     subcontractType: contract.subcontractType,
     remark: contract.remark,
+    approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   }
@@ -156,6 +165,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         subcontractType: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -175,7 +186,7 @@ const handler = apiHandlerWithMethod({
     if (!existingContract) throw new NotFoundError('分包合同不存在')
 
     try {
-      assertEditable(existingContract.approvalStatus)
+      assertEditable(existingContract.approvalStatus, existingContract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
@@ -199,10 +210,7 @@ const handler = apiHandlerWithMethod({
     if (construction.projectId !== projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
-    const worker = await db.laborWorker.findUnique({
-      where: { id: workerId },
-      select: { id: true },
-    })
+    const worker = await assertMasterRecordInCurrentRegion('laborWorker', workerId)
     if (!worker) throw new NotFoundError('分包人员不存在')
     const assignee = await resolveSubcontractAssignee(workerId)
 
@@ -289,6 +297,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         subcontractType: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -306,7 +316,7 @@ const handler = apiHandlerWithMethod({
     if (!contract) throw new NotFoundError('分包合同不存在')
 
     try {
-      assertEditable(contract.approvalStatus)
+      assertEditable(contract.approvalStatus, contract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

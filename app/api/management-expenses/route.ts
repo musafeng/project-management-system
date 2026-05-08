@@ -8,6 +8,8 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,14 +51,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
+      const submitter = searchParams.get('submitter')?.trim()
       const supportsRegionId = await hasDbColumn('ManagementExpense', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
+      const where: any = {
+        ...(supportsRegionId ? { regionId } : {}),
+        ...(projectId ? { projectId } : {}),
+        ...(submitter ? { submitter: { contains: submitter } } : {}),
+      }
+      applyMonthDateFilter(where, 'expenseDate', searchParams)
 
       const records = await db.managementExpense.findMany({
-        where: {
-          ...(supportsRegionId ? { regionId } : {}),
-          ...(projectId ? { projectId } : {}),
-        },
+        where,
         select: {
           id: true,
           ...(supportsRegionId ? { regionId: true } : {}),
@@ -68,6 +74,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           expenseDate: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
@@ -105,6 +112,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+        assertApprovedUpstream(project, '项目')
       }
 
       const now = new Date()
@@ -121,6 +129,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         expenseItems: JSON.stringify(expenseItems),
         attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: String(body.remark ?? '').trim() || null,
+        approvalStatus: 'DRAFT',
         updatedAt: now,
       })
 

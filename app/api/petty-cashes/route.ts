@@ -8,6 +8,8 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,14 +19,18 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
     GET: async (req) => {
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
+      const holder = searchParams.get('holder')?.trim()
       const supportsRegionId = await hasDbColumn('PettyCash', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
+      const where: any = {
+        ...(supportsRegionId ? { regionId } : {}),
+        ...(projectId ? { projectId } : {}),
+        ...(holder ? { holder: { contains: holder } } : {}),
+      }
+      applyMonthDateFilter(where, 'issueDate', searchParams)
 
       const records = await db.pettyCash.findMany({
-        where: {
-          ...(supportsRegionId ? { regionId } : {}),
-          ...(projectId ? { projectId } : {}),
-        },
+        where,
         select: {
           id: true,
           ...(supportsRegionId ? { regionId: true } : {}),
@@ -39,6 +45,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           status: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
@@ -69,6 +76,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+        assertApprovedUpstream(project, '项目')
       }
 
       const now = new Date()
@@ -84,6 +92,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         issueDate: new Date(issueDate),
         attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: String(body.remark ?? '').trim() || null,
+        approvalStatus: 'DRAFT',
         status: 'ISSUED',
         updatedAt: now,
       })

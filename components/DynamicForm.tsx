@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Form, Input, InputNumber, DatePicker, Select, Button, Table, Upload, Space } from 'antd'
 import { PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import type { FormInstance } from 'antd'
+import { getAttachmentOpenUrl } from '@/lib/attachments'
 
 export interface FormFieldConfig {
   id: string
@@ -211,7 +212,7 @@ function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boo
 
   if (disabled) {
     return currentUrl
-      ? <a href={currentUrl} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{fileName || currentUrl}</a>
+      ? <a href={getAttachmentOpenUrl(currentUrl)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{fileName || currentUrl}</a>
       : <span style={{ color: '#999' }}>暂无附件</span>
   }
 
@@ -229,7 +230,7 @@ function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boo
       </Upload>
       {fileName && (
         <Space size={4}>
-          <a href={currentUrl} target="_blank" rel="noreferrer">{fileName}</a>
+          <a href={getAttachmentOpenUrl(currentUrl)} target="_blank" rel="noreferrer">{fileName}</a>
           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={handleClear} />
         </Space>
       )}

@@ -12,6 +12,7 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { canUseAsApprovedUpstream } from '@/lib/approval-status'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -66,6 +67,7 @@ interface ContractOption {
   paidAmount: number
   unpaidAmount: number
   approvalStatus: string
+  approvedAt?: string | null
   // procurement
   supplierName?: string
   // labor
@@ -194,7 +196,7 @@ function StepOne({
             options={contracts.map((c) => ({
               value: c.id,
               label: `${c.code} — ${c.name}`,
-              disabled: c.approvalStatus !== 'APPROVED',
+              disabled: !canUseAsApprovedUpstream(c),
             }))}
             notFoundContent={loadingContracts ? <Spin size="small" /> : '该项目下暂无合同'}
           />
@@ -531,7 +533,7 @@ export default function PaymentApplyPage() {
       await form1.validateFields()
     } catch { return }
     if (!selectedContract) { message.warning('请选择合同'); return }
-    if (selectedContract.approvalStatus !== 'APPROVED') {
+    if (!canUseAsApprovedUpstream(selectedContract)) {
       message.error('所选合同尚未审批通过，无法申请付款')
       return
     }

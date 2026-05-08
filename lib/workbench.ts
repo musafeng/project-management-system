@@ -70,6 +70,8 @@ export interface BusinessAlert {
 // ============================================================
 
 const RESOURCE_LABELS: Record<string, string> = {
+  'projects': '项目新增',
+  'project-contracts': '项目合同',
   'construction-approvals': '施工立项',
   'project-contract-changes': '项目合同变更',
   'procurement-contracts': '采购合同',

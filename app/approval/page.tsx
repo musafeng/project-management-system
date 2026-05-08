@@ -1,17 +1,19 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import {
   Table, Tabs, Tag, Space, Button, Input, Select,
-  Modal, message, Tooltip, Badge,
+  Modal, message, Tooltip, Badge, Pagination,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   SearchOutlined, CheckOutlined, CloseOutlined,
-  EyeOutlined, RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
+  RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
 } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
+import { MobileCardList } from '@/components/ledger'
+import ViewRecordButton from '@/components/ViewRecordButton'
+import { useMobile } from '@/hooks/useMobile'
 
 // ============================================================
 // TypeScript 类型
@@ -32,10 +34,12 @@ export interface ApprovalItem {
   startedAt: string
   taskCreatedAt: string
   canApprove?: boolean
+  canUrge?: boolean
   canRevoke?: boolean
 }
 
 type TabKey = 'pending' | 'done' | 'cc' | 'mine'
+const MOBILE_PAGE_SIZE = 20
 
 // ============================================================
 // 常量
@@ -43,6 +47,8 @@ type TabKey = 'pending' | 'done' | 'cc' | 'mine'
 
 const RESOURCE_TYPES = [
   { label: '全部类型', value: '' },
+  { label: '项目新增', value: 'projects' },
+  { label: '项目合同', value: 'project-contracts' },
   { label: '施工立项', value: 'construction-approvals' },
   { label: '项目合同变更', value: 'project-contract-changes' },
   { label: '采购合同', value: 'procurement-contracts' },
@@ -51,20 +57,18 @@ const RESOURCE_TYPES = [
   { label: '劳务付款', value: 'labor-payments' },
   { label: '分包合同', value: 'subcontract-contracts' },
   { label: '分包付款', value: 'subcontract-payments' },
+  { label: '项目合同收款', value: 'contract-receipts' },
+  { label: '其他收款', value: 'other-receipts' },
+  { label: '其他付款', value: 'other-payments' },
+  { label: '项目费用报销', value: 'project-expenses' },
+  { label: '管理费用报销', value: 'management-expenses' },
+  { label: '销售费用报销', value: 'sales-expenses' },
+  { label: '备用金申请', value: 'petty-cashes' },
 ]
 
-const RESOURCE_ROUTE: Record<string, string> = {
-  'construction-approvals': '/construction-approvals',
-  'project-contract-changes': '/project-contract-changes',
-  'procurement-contracts': '/procurement-contracts',
-  'procurement-payments': '/procurement-payments',
-  'labor-contracts': '/labor-contracts',
-  'labor-payments': '/labor-payments',
-  'subcontract-contracts': '/subcontract-contracts',
-  'subcontract-payments': '/subcontract-payments',
-}
-
 const RESOURCE_COLOR: Record<string, string> = {
+  'projects': '#1677ff',
+  'project-contracts': '#0958d9',
   'construction-approvals': '#1677ff',
   'project-contract-changes': '#2f54eb',
   'procurement-contracts': '#faad14',
@@ -73,6 +77,13 @@ const RESOURCE_COLOR: Record<string, string> = {
   'labor-payments': '#722ed1',
   'subcontract-contracts': '#13c2c2',
   'subcontract-payments': '#fa8c16',
+  'contract-receipts': '#52c41a',
+  'other-receipts': '#13c2c2',
+  'other-payments': '#ff4d4f',
+  'project-expenses': '#fa541c',
+  'management-expenses': '#722ed1',
+  'sales-expenses': '#eb2f96',
+  'petty-cashes': '#fa8c16',
 }
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -111,14 +122,24 @@ function FilterBar({
   onReset: () => void
   loading: boolean
 }) {
+  const isMobile = useMobile()
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '12px 0 4px' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        padding: '12px 0 4px',
+      }}
+    >
       <Select
         value={resourceType}
         onChange={setResourceType}
         options={RESOURCE_TYPES}
-        style={{ width: 150 }}
-        size="small"
+        style={{ width: isMobile ? '100%' : 150 }}
+        size={isMobile ? 'middle' : 'small'}
       />
       <Input
         prefix={<SearchOutlined style={{ color: '#bbb' }} />}
@@ -126,11 +147,29 @@ function FilterBar({
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
         onPressEnter={onSearch}
-        style={{ width: 200 }}
-        size="small"
+        style={{ width: isMobile ? '100%' : 200 }}
+        size={isMobile ? 'middle' : 'small'}
       />
-      <Button type="primary" size="small" onClick={onSearch} loading={loading} icon={<SearchOutlined />}>查询</Button>
-      <Button size="small" onClick={onReset} icon={<ReloadOutlined />}>重置</Button>
+      <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+        <Button
+          type="primary"
+          size={isMobile ? 'middle' : 'small'}
+          onClick={onSearch}
+          loading={loading}
+          icon={<SearchOutlined />}
+          style={{ flex: isMobile ? 1 : undefined }}
+        >
+          查询
+        </Button>
+        <Button
+          size={isMobile ? 'middle' : 'small'}
+          onClick={onReset}
+          icon={<ReloadOutlined />}
+          style={{ flex: isMobile ? 1 : undefined }}
+        >
+          重置
+        </Button>
+      </div>
     </div>
   )
 }
@@ -140,11 +179,7 @@ function FilterBar({
 // ============================================================
 
 function buildColumns(
-  tab: TabKey,
-  router: ReturnType<typeof useRouter>,
-  onApprove: (item: ApprovalItem) => void,
-  onReject: (item: ApprovalItem) => void,
-  onRevoke: (item: ApprovalItem) => void,
+  renderActions: (row: ApprovalItem) => ReactNode,
 ): ColumnsType<ApprovalItem> {
   const cols: ColumnsType<ApprovalItem> = [
     {
@@ -202,25 +237,9 @@ function buildColumns(
     {
       title: '操作',
       key: 'action',
-      width: tab === 'pending' ? 160 : 80,
+      width: 180,
       fixed: 'right' as const,
-      render: (_: unknown, row: ApprovalItem) => (
-        <Space size={4} wrap>
-          <Button
-            type="link" size="small" icon={<EyeOutlined />}
-            onClick={() => router.push(RESOURCE_ROUTE[row.resourceType] || '/')}
-          >查看</Button>
-          {tab === 'pending' && row.canApprove && (
-            <>
-              <Button type="link" size="small" icon={<CheckOutlined />} style={{ color: '#52c41a' }} onClick={() => onApprove(row)}>通过</Button>
-              <Button type="link" size="small" icon={<CloseOutlined />} danger onClick={() => onReject(row)}>驳回</Button>
-            </>
-          )}
-          {tab === 'mine' && row.canRevoke && (
-            <Button type="link" size="small" icon={<RollbackOutlined />} danger onClick={() => onRevoke(row)}>撤回</Button>
-          )}
-        </Space>
-      ),
+      render: (_: unknown, row: ApprovalItem) => renderActions(row),
     },
   ]
   return cols
@@ -231,12 +250,13 @@ function buildColumns(
 // ============================================================
 
 export default function ApprovalCenterPage() {
-  const router = useRouter()
+  const isMobile = useMobile()
   const [tab, setTab] = useState<TabKey>('pending')
   const [items, setItems] = useState<ApprovalItem[]>([])
   const [loading, setLoading] = useState(false)
   const [resourceType, setResourceType] = useState('')
   const [keyword, setKeyword] = useState('')
+  const [mobilePage, setMobilePage] = useState(1)
   // 驳回弹窗
   const [rejectTarget, setRejectTarget] = useState<ApprovalItem | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -263,8 +283,17 @@ export default function ApprovalCenterPage() {
 
   useEffect(() => { load() }, [tab]) // eslint-disable-line
 
-  const handleSearch = () => load(tab, resourceType, keyword)
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(items.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [items.length, mobilePage])
+
+  const handleSearch = () => {
+    setMobilePage(1)
+    load(tab, resourceType, keyword)
+  }
   const handleReset = () => {
+    setMobilePage(1)
     setResourceType('')
     setKeyword('')
     load(tab, '', '')
@@ -317,9 +346,103 @@ export default function ApprovalCenterPage() {
     })
   }
 
-  const columns = buildColumns(tab, router, handleApprove, (row) => setRejectTarget(row), handleRevoke)
+  const handleUrge = async (row: ApprovalItem) => {
+    const result = await requestApi(`/api/${row.resourceType}/${row.resourceId}/urge`, {
+      method: 'POST',
+      credentials: 'include',
+      fallbackError: '催办失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success('已发送催办')
+      load()
+    } else {
+      message.error(result.error || '催办失败，请稍后重试')
+    }
+  }
+
+  const renderActions = (row: ApprovalItem) => (
+    <Space size={4} wrap>
+      <ViewRecordButton resource={row.resourceType} id={row.resourceId} />
+      {tab === 'pending' && row.canApprove && (
+        <>
+          <Button type="link" size="small" icon={<CheckOutlined />} style={{ color: '#52c41a' }} onClick={() => handleApprove(row)}>
+            通过
+          </Button>
+          <Button type="link" size="small" icon={<CloseOutlined />} danger onClick={() => setRejectTarget(row)}>
+            驳回
+          </Button>
+        </>
+      )}
+      {tab === 'mine' && row.canRevoke && (
+        <>
+          {row.canUrge && (
+            <Button type="link" size="small" onClick={() => handleUrge(row)}>
+              催办
+            </Button>
+          )}
+          <Button type="link" size="small" icon={<RollbackOutlined />} danger onClick={() => handleRevoke(row)}>
+            撤回
+          </Button>
+        </>
+      )}
+    </Space>
+  )
+
+  const columns = buildColumns(renderActions)
 
   const pendingCount = tab === 'pending' ? items.length : 0
+
+  const mobileList = (
+    <>
+      <MobileCardList<ApprovalItem>
+        data={items.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.resourceLabel}
+        getDescription={(item) => `发起人：${item.submitterName}`}
+        getStatus={(item) => {
+          const cfg = STATUS_CONFIG[item.status] ?? { color: 'default', label: item.status }
+          return <Tag color={cfg.color} style={{ fontSize: 11 }}>{cfg.label}</Tag>
+        }}
+        fields={[
+          {
+            key: 'resourceType',
+            label: '业务类型',
+            render: (item) => (
+              <Tag color={RESOURCE_COLOR[item.resourceType] ?? 'blue'} style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                {item.resourceLabel}
+              </Tag>
+            ),
+          },
+          { key: 'nodeName', label: '当前节点', render: (item) => item.nodeName || '-' },
+          { key: 'startedAt', label: '发起时间', render: (item) => fmtDate(item.startedAt) },
+          {
+            key: 'aging',
+            label: '停留时长',
+            render: (item) => {
+              const days = diffDays(item.startedAt)
+              const color = days >= 3 ? '#ff4d4f' : days >= 1 ? '#fa8c16' : '#8c8c8c'
+              return <span style={{ color }}>{days === 0 ? '今天' : `${days}天前`}</span>
+            },
+          },
+        ]}
+        actions={renderActions}
+        empty={tab === 'cc' ? '抄送功能即将开放' : '暂无数据'}
+      />
+      {items.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={items.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
+      )}
+    </>
+  )
 
   const tabItems = [
     {
@@ -334,7 +457,14 @@ export default function ApprovalCenterPage() {
   ]
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: isMobile ? 10 : 12,
+        padding: isMobile ? '14px 14px 16px' : '20px 24px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+      }}
+    >
       {/* 标题 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <ClockCircleOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
@@ -344,7 +474,7 @@ export default function ApprovalCenterPage() {
       {/* Tabs */}
       <Tabs
         activeKey={tab}
-        onChange={(k) => { setTab(k as TabKey); setItems([]) }}
+        onChange={(k) => { setMobilePage(1); setTab(k as TabKey); setItems([]) }}
         items={tabItems.map((t) => ({
           key: t.key,
           label: t.label,
@@ -359,20 +489,24 @@ export default function ApprovalCenterPage() {
                 onReset={handleReset}
                 loading={loading}
               />
-              <Table<ApprovalItem>
-                rowKey="id"
-                columns={columns}
-                dataSource={items}
-                loading={loading}
-                size="small"
-                pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
-                scroll={{ x: 700 }}
-                locale={{ emptyText: tab === 'cc' ? '抄送功能即将开放' : '暂无数据' }}
-                rowClassName={(row) => {
-                  if (tab === 'pending' && diffDays(row.startedAt) >= 3) return 'approval-row-urgent'
-                  return ''
-                }}
-              />
+              {isMobile ? (
+                mobileList
+              ) : (
+                <Table<ApprovalItem>
+                  rowKey="id"
+                  columns={columns}
+                  dataSource={items}
+                  loading={loading}
+                  size="small"
+                  pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
+                  scroll={{ x: 700 }}
+                  locale={{ emptyText: tab === 'cc' ? '抄送功能即将开放' : '暂无数据' }}
+                  rowClassName={(row) => {
+                    if (tab === 'pending' && diffDays(row.startedAt) >= 3) return 'approval-row-urgent'
+                    return ''
+                  }}
+                />
+              )}
             </div>
           ),
         }))}
@@ -387,6 +521,7 @@ export default function ApprovalCenterPage() {
         okText="确认驳回"
         cancelText="取消"
         okButtonProps={{ danger: true, loading: actionLoading }}
+        width={isMobile ? '95vw' : undefined}
       >
         <Input.TextArea
           rows={3}

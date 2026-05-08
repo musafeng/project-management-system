@@ -3,7 +3,9 @@ import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import { assertSubcontractContractInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,7 @@ function toResponse(payment: {
   paymentNumber: string | null
   attachmentUrl?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   status: string
   remark: string | null
   createdAt: Date
@@ -58,6 +61,7 @@ function toResponse(payment: {
     paymentNumber: payment.paymentNumber,
     attachmentUrl: payment.attachmentUrl,
     approvalStatus: payment.approvalStatus,
+    approvedAt: payment.approvedAt,
     status: payment.status,
     remark: payment.remark,
     createdAt: payment.createdAt,
@@ -75,6 +79,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (contractId) where.contractId = contractId
     if (projectId) where.projectId = projectId
+    applyMonthDateFilter(where, 'paymentDate', searchParams)
 
     const supportsAttachmentUrl = await hasDbColumn('SubcontractPayment', 'attachmentUrl')
     const supportsPaymentWorkerId = await hasDbColumn('SubcontractPayment', 'workerId')
@@ -106,6 +111,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,
@@ -140,6 +146,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const contract = await assertSubcontractContractInCurrentRegion(body.contractId)
     if (!contract) throw new NotFoundError('分包合同不存在')
+    assertApprovedUpstream(contract, '分包合同')
     const contractData = contract as unknown as {
       projectId: string
       paidAmount: Prisma.Decimal | number
@@ -170,6 +177,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       ...(supportsAttachmentUrl ? { attachmentUrl: body.attachmentUrl?.trim() || null } : {}),
       status: 'PAID',
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -201,6 +209,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         paymentNumber: true,
         ...(supportsAttachmentUrl ? { attachmentUrl: true } : {}),
         approvalStatus: true,
+        approvedAt: true,
         status: true,
         remark: true,
         createdAt: true,

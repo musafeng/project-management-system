@@ -7,11 +7,14 @@ import {
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
-import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
+import { resolveRecordSubmitterNames } from '@/lib/api/record-submitter'
+import { assertMasterRecordInCurrentRegion, assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 import {
   parseOtherPaymentRemark,
   serializeOtherPaymentRemark,
 } from '@/lib/other-payment-supplier'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,12 +25,14 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
       const keyword = searchParams.get('keyword')
+      const submitter = searchParams.get('submitter')?.trim()
       const supportsRegionId = await hasDbColumn('OtherPayment', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const where: any = supportsRegionId ? { regionId } : {}
 
       if (projectId) where.projectId = projectId
       if (keyword) where.paymentType = { contains: keyword }
+      applyMonthDateFilter(where, 'paymentDate', searchParams)
 
       const records = await db.otherPayment.findMany({
         where,
@@ -42,18 +47,30 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           paymentMethod: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
         orderBy: { paymentDate: 'desc' },
       })
 
+      const submitterMap = await resolveRecordSubmitterNames({
+        ids: records.map((record) => record.id),
+        resourceType: 'other-payments',
+        actionLogResource: 'other-payments',
+      })
+      const normalizedSubmitter = submitter?.toLocaleLowerCase()
+
       return success(
         records.map((record) => ({
           ...record,
           projectName: record.Project?.name ?? null,
+          submitterName: submitterMap.get(record.id) ?? null,
           ...parseOtherPaymentRemark(record.remark),
-        }))
+        })).filter((record) => (
+          !normalizedSubmitter ||
+          record.submitterName?.toLocaleLowerCase().includes(normalizedSubmitter)
+        ))
       )
     },
 
@@ -74,6 +91,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+        assertApprovedUpstream(project, '项目')
       }
 
       let supplierName: string | null = null
@@ -83,16 +101,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       let bankName: string | null = String(body.bankName ?? '').trim() || null
 
       if (supplierId) {
-        const supplier = await db.supplier.findUnique({
-          where: { id: supplierId },
-          select: {
-            id: true,
-            name: true,
-            contact: true,
-            bankAccount: true,
-            bankName: true,
-          },
-        })
+        const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
         if (!supplier) throw new NotFoundError('供应商不存在')
         supplierName = supplier.name
         contact = contact || supplier.contact || null
@@ -120,6 +129,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           bankAccount,
           bankName,
         }),
+        approvalStatus: 'DRAFT',
         updatedAt: now,
       })
 

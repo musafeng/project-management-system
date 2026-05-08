@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Table, Input, Select, Button, Space, Spin, message, Card } from 'antd'
+import { Table, Input, Select, Button, Space, Spin, message, Card, Alert, Empty } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { formatDistanceToNow } from 'date-fns'
@@ -39,6 +39,11 @@ interface LogFilters {
   resource?: string
 }
 
+function parseValidDate(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 /**
  * 操作日志页面
  */
@@ -56,6 +61,7 @@ export default function ActionLogsPage() {
   const [keyword, setKeyword] = useState('')
   const [action, setAction] = useState<string | undefined>()
   const [resource, setResource] = useState('')
+  const [accessError, setAccessError] = useState<string | null>(null)
 
   /**
    * 加载日志列表
@@ -67,6 +73,7 @@ export default function ActionLogsPage() {
 
     try {
       setLoading(true)
+      setAccessError(null)
       const params = new URLSearchParams()
       params.append('page', page.toString())
       params.append('pageSize', '20')
@@ -84,14 +91,28 @@ export default function ActionLogsPage() {
       const response = await fetch(`/api/action-logs?${params.toString()}`)
       const data = await response.json()
 
+      if (response.status === 401) {
+        setLogs([])
+        setAccessError('未登录或登录已失效，请重新登录')
+        return
+      }
+
+      if (response.status === 403) {
+        setLogs([])
+        setAccessError('仅系统管理员可访问操作日志')
+        return
+      }
+
       if (data.success) {
-        setLogs(data.logs)
+        setLogs(Array.isArray(data.logs) ? data.logs : [])
         setPagination(data.pagination)
       } else {
+        setLogs([])
         message.error(data.error || '加载日志失败')
       }
     } catch (error) {
       console.error('加载日志失败:', error)
+      setLogs([])
       message.error('加载日志失败')
     } finally {
       setLoading(false)
@@ -207,7 +228,7 @@ export default function ActionLogsPage() {
       dataIndex: 'path',
       key: 'path',
       width: 200,
-      render: (text) => <span style={{ fontSize: 12, color: '#666' }}>{text}</span>,
+      render: (text) => <span style={{ fontSize: 12, color: '#666' }}>{text || '-'}</span>,
     },
     {
       title: '详情',
@@ -220,11 +241,15 @@ export default function ActionLogsPage() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 150,
-      render: (text) => (
-        <span title={new Date(text).toLocaleString()}>
-          {formatDistanceToNow(new Date(text), { locale: zhCN, addSuffix: true })}
-        </span>
-      ),
+      render: (text) => {
+        const date = parseValidDate(text)
+        if (!date) return <span>-</span>
+        return (
+          <span title={date.toLocaleString()}>
+            {formatDistanceToNow(date, { locale: zhCN, addSuffix: true })}
+          </span>
+        )
+      },
     },
   ]
 
@@ -289,20 +314,32 @@ export default function ActionLogsPage() {
 
       {/* 表格 */}
       <Card>
-        <Spin spinning={loading}>
-          <Table
-            columns={columns}
-            dataSource={logs}
-            rowKey="id"
-            pagination={{
-              current: pagination.page,
-              pageSize: pagination.pageSize,
-              total: pagination.total,
-              showSizeChanger: false,
-              onChange: (page) => loadLogs(page),
-            }}
-            scroll={{ x: 1200 }}
+        {accessError ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={accessError}
+            style={{ marginBottom: 16 }}
           />
+        ) : null}
+        <Spin spinning={loading}>
+          {accessError ? (
+            <Empty description={accessError} />
+          ) : (
+            <Table
+              columns={columns}
+              dataSource={logs}
+              rowKey="id"
+              pagination={{
+                current: pagination.page,
+                pageSize: pagination.pageSize,
+                total: pagination.total,
+                showSizeChanger: false,
+                onChange: (page) => loadLogs(page),
+              }}
+              scroll={{ x: 1200 }}
+            />
+          )}
         </Spin>
       </Card>
     </div>

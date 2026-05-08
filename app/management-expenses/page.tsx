@@ -12,14 +12,18 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 interface ExpenseItem {
   type: string
@@ -38,13 +42,8 @@ interface Expense {
   expenseDate: string
   attachmentUrl?: string
   approvalStatus: string
+  approvedAt?: string | null
   remark?: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
 }
 
 const EXPENSE_TYPES = ['职工薪酬', '办公费', '交通费', '员工福利', '其他']
@@ -66,23 +65,30 @@ export default function ManagementExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
+  const [canDelete, setCanDelete] = useState(false)
   const [items, setItems] = useState<ExpenseItem[]>([{ type: '办公费', amount: 0 }])
+  const [submitter, setSubmitter] = useState('')
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
 
-  const load = async () => {
+  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
     try {
-      const response = await fetch('/api/management-expenses')
+      const params = new URLSearchParams()
+      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
+      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
+      const response = await fetch(`/api/management-expenses${params.toString() ? `?${params.toString()}` : ''}`)
       const json = await response.json()
       if (json.success) setData(json.data)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load('', null)
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
+  }, [load])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -133,7 +139,7 @@ export default function ManagementExpensesPage() {
       if (json.success) {
         message.success(editing ? '更新成功' : '创建成功')
         setModalOpen(false)
-        void load()
+        void load(submitter, month)
         return
       }
 
@@ -150,7 +156,7 @@ export default function ManagementExpensesPage() {
 
     if (json.success) {
       message.success('已删除')
-      void load()
+      void load(submitter, month)
       return
     }
 
@@ -171,25 +177,39 @@ export default function ManagementExpensesPage() {
       title: '审批状态',
       dataIndex: 'approvalStatus',
       width: 100,
-      render: (value) => <Tag color={STATUS_MAP[value]?.color}>{STATUS_MAP[value]?.label || value}</Tag>,
+      render: (value, record) => <ApprovalStatusTag status={value || 'DRAFT'} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 260,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(record)}>
-            编辑
-          </Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="management-expenses" id={record.id} />
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
+              编辑
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="management-expenses"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      },
     },
   ]
 
@@ -198,6 +218,10 @@ export default function ManagementExpensesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>管理费用报销</h2>
         <Space>
+          <Input placeholder="筛选报销人" value={submitter} onChange={(event) => setSubmitter(event.target.value)} style={{ width: 140 }} />
+          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
+          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
+          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
           <Button onClick={() => { window.location.href = '/data-exports?resourceType=management-expenses' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增

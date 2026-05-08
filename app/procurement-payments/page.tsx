@@ -20,8 +20,15 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
+import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
+import { canUseAsApprovedUpstream } from '@/lib/approval-status'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 /**
  * 采购付款数据类型
@@ -41,6 +48,7 @@ interface ProcurementPayment {
   paymentDate: string
   attachmentUrl?: string | null
   approvalStatus: string
+  approvedAt?: string | null
   remark: string | null
   createdAt: string
 }
@@ -67,6 +75,8 @@ interface ProcurementContract {
   unpaidAmount: number
   signDate: string | null
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -78,7 +88,6 @@ interface ApiResponse<T> {
   data?: T
   error?: string
 }
-
 /**
  * 格式化日期
  */
@@ -108,14 +117,17 @@ export default function ProcurementPaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [contractsLoading, setContractsLoading] = useState(true)
   const [contractId, setContractId] = useState<string | undefined>(undefined)
+  const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
   const selectedContractId = Form.useWatch('contractId', form)
   const selectedContract = contracts.find((item) => item.id === selectedContractId)
+  const isMobile = useMobile()
 
   useEffect(() => {
-    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+    getCurrentAuthUser().then((u) => setIsAdmin(isSystemManagerClientUser(u)))
   }, [])
 
   /**
@@ -142,11 +154,13 @@ export default function ProcurementPaymentsPage() {
   /**
    * 加载采购付款列表
    */
-  const loadPayments = async (searchContractId?: string) => {
+  const loadPayments = async (searchContractId?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchContractId) params.append('contractId', searchContractId)
+      if (searchProjectId) params.append('projectId', searchProjectId)
+      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
 
       const url = `/api/procurement-payments${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
@@ -179,7 +193,7 @@ export default function ProcurementPaymentsPage() {
    * 查询处理
    */
   const handleSearch = () => {
-    loadPayments(contractId)
+    loadPayments(contractId, projectId, month)
   }
 
   /**
@@ -187,7 +201,9 @@ export default function ProcurementPaymentsPage() {
    */
   const handleReset = () => {
     setContractId(undefined)
-    loadPayments('')
+    setProjectId(undefined)
+    setMonth(null)
+    loadPayments('', undefined, null)
   }
 
   /**
@@ -210,7 +226,7 @@ export default function ProcurementPaymentsPage() {
 
       if (result.success) {
         message.success('付款记录已删除')
-        loadPayments(contractId)
+        loadPayments(contractId, projectId, month)
       } else {
         message.error(result.error || '删除失败')
       }
@@ -247,7 +263,7 @@ export default function ProcurementPaymentsPage() {
         message.success('付款记录已创建')
         setIsModalVisible(false)
         form.resetFields()
-        loadPayments(contractId)
+        loadPayments(contractId, projectId, month)
       } else {
         message.error(result.error || '操作失败')
       }
@@ -324,34 +340,133 @@ export default function ProcurementPaymentsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) => <ApprovalStatusTag status={status} />,
+      render: (_: string, record) => <ApprovalStatusTag status={record.approvalStatus} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
       width: 180,
       fixed: 'right',
-      render: (_, record) => (
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small">
-          <Popconfirm
-            title="删除付款记录"
-            description="确定删除该付款记录吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-            disabled={record.approvalStatus !== 'REJECTED'}
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''}>删除</Button>
-          </Popconfirm>
+          <ViewRecordButton resource="procurement-payments" id={record.id} />
+          {isAdmin ? (
+            <Popconfirm
+              title="删除付款记录"
+              description="确定删除该付款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+              disabled={locked}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
+            </Popconfirm>
+          ) : null}
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="procurement-payments"
             isAdmin={isAdmin}
-            onSuccess={() => loadPayments(contractId)}
+            onSuccess={() => loadPayments(contractId, projectId, month)}
           />
         </Space>
-      ),
+      )},
+    },
+  ]
+
+  const mobileCards = (
+    <MobileCardList<ProcurementPayment>
+      data={payments}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.contractName}
+      getDescription={(item) => `合同编号：${item.contractCode}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'supplierName', label: '供应商', render: (item) => item.supplierName || '-' },
+        { key: 'amount', label: '付款金额', render: (item) => <span style={{ color: '#ff7a45', fontWeight: 600 }}>{formatCurrency(item.amount)}</span> },
+        { key: 'paymentDate', label: '付款日期', render: (item) => formatDate(item.paymentDate) },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
+        <Space size="small" wrap>
+          <ViewRecordButton resource="procurement-payments" id={record.id} />
+          {isAdmin ? (
+            <Popconfirm
+              title="删除付款记录"
+              description="确定删除该付款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+              disabled={locked}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={locked}
+                title={lockReason}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
+            resource="procurement-payments"
+            isAdmin={isAdmin}
+            onSuccess={() => loadPayments(contractId, projectId, month)}
+          />
+        </Space>
+      )}}
+      empty={(
+        <EmptyHint
+          title="暂无采购付款记录"
+          desc="新增付款后，可在此查看采购付款明细。"
+          action={<Button type="primary" onClick={handleAddClick}>新增付款</Button>}
+        />
+      )}
+    />
+  )
+
+  const projectOptions = Array.from(
+    new Map(contracts.map((contract) => [contract.projectId, contract.projectName])).entries()
+  ).map(([value, label]) => ({ value, label }))
+  const paymentContractIds = new Set(payments.map((payment) => payment.contractId))
+  const summaryContracts = contracts.filter((contract) => {
+    if (contractId) return contract.id === contractId
+    if (projectId) return contract.projectId === projectId
+    if (month) return paymentContractIds.has(contract.id)
+    return true
+  })
+  const summaryItems = [
+    {
+      label: '合同总金额',
+      value: formatCurrency(summaryContracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
+      color: '#1677ff',
+    },
+    {
+      label: '已付款总金额',
+      value: formatCurrency(payments.reduce((sum, item) => sum + Number(item.amount || 0), 0)),
+      color: '#52c41a',
+    },
+    {
+      label: '未付款总金额',
+      value: formatCurrency(summaryContracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
+      color: '#f5222d',
     },
   ]
 
@@ -369,7 +484,7 @@ export default function ProcurementPaymentsPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: '16px',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
         <div
@@ -377,8 +492,8 @@ export default function ProcurementPaymentsPage() {
             maxWidth: '100%',
             margin: '0 auto',
             background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
@@ -387,7 +502,7 @@ export default function ProcurementPaymentsPage() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 20,
+                fontSize: isMobile ? 18 : 20,
                 fontWeight: 600,
                 color: '#1d1d1f',
               }}
@@ -406,60 +521,113 @@ export default function ProcurementPaymentsPage() {
               border: '1px solid #f0f0f0',
             }}
           >
-            <Space wrap style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                flexWrap: 'wrap',
+                gap: 8,
+                width: '100%',
+              }}
+            >
+              <Select
+                placeholder="选择项目"
+                value={projectId || undefined}
+                onChange={(value) => {
+                  setProjectId(value)
+                  setContractId(undefined)
+                }}
+                allowClear
+                style={{ width: isMobile ? '100%' : 200 }}
+                loading={contractsLoading}
+                options={projectOptions}
+              />
+
               <Select
                 placeholder="选择合同"
                 value={contractId || undefined}
                 onChange={setContractId}
                 allowClear
-                style={{ width: 250 }}
+                style={{ width: isMobile ? '100%' : 250 }}
                 loading={contractsLoading}
-                options={contracts.map((contract) => ({
+                size={isMobile ? 'middle' : 'middle'}
+                options={contracts.filter((contract) => canUseAsApprovedUpstream(contract) && (!projectId || contract.projectId === projectId)).map((contract) => ({
                   label: `${contract.code} - ${contract.name}`,
                   value: contract.id,
                 }))}
               />
 
-              <Button
-                type="primary"
-                onClick={handleSearch}
-                loading={loading}
+              <DatePicker
+                picker="month"
+                placeholder="选择月份"
+                value={month}
+                onChange={setMonth}
+                allowClear
+                style={{ width: isMobile ? '100%' : 150 }}
+              />
+
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button
+                  type="primary"
+                  onClick={handleSearch}
+                  loading={loading}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  查询
+                </Button>
+
+                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  重置
+                </Button>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  width: isMobile ? '100%' : 'auto',
+                  marginLeft: isMobile ? 0 : 'auto',
+                  flexWrap: 'wrap',
+                }}
               >
-                查询
-              </Button>
+                <Button
+                  onClick={() => { window.location.href = '/data-exports?resourceType=procurement-payments' }}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  导出数据
+                </Button>
 
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
-
-              <Button onClick={() => { window.location.href = '/data-exports?resourceType=procurement-payments' }}>
-                导出数据
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
-              >
-                新增付款
-              </Button>
-            </Space>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddClick}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  新增付款
+                </Button>
+              </div>
+            </div>
           </div>
 
+          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
+
           {/* 表格 */}
-          <Table<ProcurementPayment>
-            rowKey="id"
-            columns={columns}
-            dataSource={payments}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1000 }}
-            size="small"
-            locale={{
-              emptyText: '暂无采购付款记录',
-            }}
-          />
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<ProcurementPayment>
+              rowKey="id"
+              columns={columns}
+              dataSource={payments}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1000 }}
+              size="small"
+              locale={{
+                emptyText: '暂无采购付款记录',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -472,7 +640,7 @@ export default function ProcurementPaymentsPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={600}
+        width={isMobile ? '95vw' : 600}
         okText="确定"
         cancelText="取消"
       >
@@ -492,7 +660,7 @@ export default function ProcurementPaymentsPage() {
             <Select
               placeholder="请选择合同"
               loading={contractsLoading}
-              options={contracts.map((contract) => ({
+              options={contracts.filter((contract) => canUseAsApprovedUpstream(contract)).map((contract) => ({
                 label: `${contract.code} - ${contract.name}`,
                 value: contract.id,
               }))}

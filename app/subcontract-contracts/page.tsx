@@ -14,14 +14,21 @@ import {
   Popconfirm,
   DatePicker,
   InputNumber,
+  Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import ViewRecordButton from '@/components/ViewRecordButton'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
+import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
 /**
  * 分包合同数据类型
@@ -39,6 +46,7 @@ interface SubcontractContract {
   unpaidAmount: number
   signDate: string | null
   approvalStatus: string
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -69,6 +77,8 @@ interface Project {
   customerId: string
   customerName: string
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -82,6 +92,8 @@ interface ConstructionApproval {
   projectId: string
   budget: number
   status: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
   createdAt: string
 }
 
@@ -107,6 +119,8 @@ interface ApiResponse<T> {
   data?: T
   error?: string
 }
+
+const { Text } = Typography
 
 /**
  * 格式化日期
@@ -143,14 +157,16 @@ export default function SubcontractContractsPage() {
   const [vendorsLoading, setVendorsLoading] = useState(true)
   const [keyword, setKeyword] = useState('')
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
   const selectedProjectId = Form.useWatch('projectId', form)
+  const isMobile = useMobile()
 
   useEffect(() => {
-    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+    getCurrentAuthUser().then((u) => setIsAdmin(isSystemManagerClientUser(u)))
   }, [])
 
   /**
@@ -219,11 +235,12 @@ export default function SubcontractContractsPage() {
   /**
    * 加载分包合同列表
    */
-  const loadContracts = async (searchKeyword?: string, searchProjectId?: string) => {
+  const loadContracts = async (searchKeyword?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (searchProjectId) params.append('projectId', searchProjectId)
+      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
 
       const url = `/api/subcontract-contracts${params.toString() ? `?${params.toString()}` : ''}`
       const response = await fetch(url)
@@ -269,7 +286,7 @@ export default function SubcontractContractsPage() {
    * 查询处理
    */
   const handleSearch = () => {
-    loadContracts(keyword, projectId)
+    loadContracts(keyword, projectId, month)
   }
 
   /**
@@ -278,7 +295,8 @@ export default function SubcontractContractsPage() {
   const handleReset = () => {
     setKeyword('')
     setProjectId(undefined)
-    loadContracts('', undefined)
+    setMonth(null)
+    loadContracts('', undefined, null)
   }
 
   /**
@@ -332,7 +350,7 @@ export default function SubcontractContractsPage() {
 
       if (result.success) {
         message.success('分包合同已删除')
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '删除失败')
       }
@@ -375,7 +393,7 @@ export default function SubcontractContractsPage() {
         message.success(editingId ? '分包合同已更新' : '分包合同已创建')
         setIsModalVisible(false)
         form.resetFields()
-        loadContracts(keyword, projectId)
+        loadContracts(keyword, projectId, month)
       } else {
         message.error(result.error || '操作失败')
       }
@@ -475,28 +493,118 @@ export default function SubcontractContractsPage() {
       dataIndex: 'approvalStatus',
       key: 'approvalStatus',
       width: 100,
-      render: (status: string) => <ApprovalStatusTag status={status} />,
+      render: (_: string, record) => <ApprovalStatusTag status={record.approvalStatus} approvedAt={record.approvedAt} />,
     },
     {
       title: '操作',
       key: 'action',
       width: 200,
       fixed: 'right',
-      render: (_, record) => (
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={record.approvalStatus !== 'REJECTED'} title={record.approvalStatus !== 'REJECTED' ? '审批中或已通过的数据不可修改' : ''} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <Popconfirm title="删除分包合同" description="确定删除该分包合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={record.approvalStatus !== 'REJECTED'}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={record.approvalStatus !== 'REJECTED'}>删除</Button>
+          <ViewRecordButton resource="subcontract-contracts" id={record.id} />
+          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} title={lockReason} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          <Popconfirm title="删除分包合同" description="确定删除该分包合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
             resource="subcontract-contracts"
             isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId)}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
           />
         </Space>
-      ),
+      )},
+    },
+  ]
+
+  const mobileCards = (
+    <MobileCardList<SubcontractContract>
+      data={contracts}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      getDescription={(item) => `合同编号：${item.code}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+        { key: 'constructionName', label: '施工立项', render: (item) => item.constructionName || '-' },
+        { key: 'subcontractWorkerName', label: '分包人员', render: (item) => item.subcontractWorkerName || '-' },
+        { key: 'contractAmount', label: '合同金额', render: (item) => <Text>{formatCurrency(item.contractAmount)}</Text> },
+        { key: 'paidAmount', label: '已付金额', render: (item) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatCurrency(item.paidAmount)}</span> },
+        { key: 'unpaidAmount', label: '未付金额', render: (item) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{formatCurrency(item.unpaidAmount)}</span> },
+        { key: 'signDate', label: '签订日期', render: (item) => formatDate(item.signDate), fullWidth: true },
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        const lockReason = getApprovalLockReason(record) ?? ''
+
+        return (
+        <Space size="small" wrap>
+          <ViewRecordButton resource="subcontract-contracts" id={record.id} />
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            disabled={locked}
+            title={lockReason}
+            onClick={() => handleEditClick(record.id)}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="删除分包合同"
+            description="确定删除该分包合同吗？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            disabled={locked}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+              删除
+            </Button>
+          </Popconfirm>
+          <ApprovalActions
+            id={record.id}
+            approvalStatus={record.approvalStatus}
+            approvedAt={record.approvedAt}
+            resource="subcontract-contracts"
+            isAdmin={isAdmin}
+            onSuccess={() => loadContracts(keyword, projectId, month)}
+          />
+        </Space>
+      )}}
+      empty={(
+        <EmptyHint
+          title="暂无分包合同数据"
+          desc="新增分包合同后，可在此查看合同金额和付款进度。"
+          action={<Button type="primary" onClick={handleAddClick}>新增合同</Button>}
+        />
+      )}
+    />
+  )
+
+  const summaryItems = [
+    {
+      label: '合同总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
+      color: '#1677ff',
+    },
+    {
+      label: '已付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0)),
+      color: '#52c41a',
+    },
+    {
+      label: '未付款总金额',
+      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
+      color: '#f5222d',
     },
   ]
 
@@ -514,7 +622,7 @@ export default function SubcontractContractsPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: '16px',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
         <div
@@ -522,8 +630,8 @@ export default function SubcontractContractsPage() {
             maxWidth: '100%',
             margin: '0 auto',
             background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
@@ -532,7 +640,7 @@ export default function SubcontractContractsPage() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 20,
+                fontSize: isMobile ? 18 : 20,
                 fontWeight: 600,
                 color: '#1d1d1f',
               }}
@@ -551,13 +659,21 @@ export default function SubcontractContractsPage() {
               border: '1px solid #f0f0f0',
             }}
           >
-            <Space wrap style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                flexWrap: 'wrap',
+                gap: 8,
+                width: '100%',
+              }}
+            >
               <Input
                 placeholder="输入合同编号搜索"
                 prefix={<SearchOutlined />}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
+                style={{ width: isMobile ? '100%' : 200 }}
                 onPressEnter={handleSearch}
               />
 
@@ -566,55 +682,86 @@ export default function SubcontractContractsPage() {
                 value={projectId || undefined}
                 onChange={setProjectId}
                 allowClear
-                style={{ width: 200 }}
+                style={{ width: isMobile ? '100%' : 200 }}
                 loading={projectsLoading}
-                options={projects.map((project) => ({
+                options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
                   label: project.name,
                   value: project.id,
                 }))}
               />
 
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-                loading={loading}
+              <DatePicker
+                picker="month"
+                placeholder="选择月份"
+                value={month}
+                onChange={setMonth}
+                allowClear
+                style={{ width: isMobile ? '100%' : 150 }}
+              />
+
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button
+                  type="primary"
+                  icon={<SearchOutlined />}
+                  onClick={handleSearch}
+                  loading={loading}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  查询
+                </Button>
+
+                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
+                  重置
+                </Button>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  width: isMobile ? '100%' : 'auto',
+                  marginLeft: isMobile ? 0 : 'auto',
+                  flexWrap: 'wrap',
+                }}
               >
-                查询
-              </Button>
+                <Button
+                  onClick={() => { window.location.href = '/data-exports?resourceType=subcontract-contracts' }}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  导出数据
+                </Button>
 
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
-
-              <Button onClick={() => { window.location.href = '/data-exports?resourceType=subcontract-contracts' }}>
-                导出数据
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
-              >
-                新增合同
-              </Button>
-            </Space>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddClick}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  新增合同
+                </Button>
+              </div>
+            </div>
           </div>
 
+          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
+
           {/* 表格 */}
-          <Table<SubcontractContract>
-            rowKey="id"
-            columns={columns}
-            dataSource={contracts}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1600 }}
-            size="small"
-            locale={{
-              emptyText: '暂无分包合同数据',
-            }}
-          />
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<SubcontractContract>
+              rowKey="id"
+              columns={columns}
+              dataSource={contracts}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1600 }}
+              size="small"
+              locale={{
+                emptyText: '暂无分包合同数据',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -627,7 +774,7 @@ export default function SubcontractContractsPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={600}
+        width={isMobile ? '95vw' : 600}
         okText="确定"
         cancelText="取消"
       >
@@ -655,7 +802,7 @@ export default function SubcontractContractsPage() {
             <Select
               placeholder="请选择项目"
               loading={projectsLoading}
-              options={projects.map((project) => ({
+              options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
                 label: project.name,
                 value: project.id,
               }))}
@@ -671,7 +818,11 @@ export default function SubcontractContractsPage() {
               placeholder="请选择施工立项"
               loading={constructionsLoading}
               options={constructions
-                .filter((construction) => !selectedProjectId || construction.projectId === selectedProjectId)
+                .filter(
+                  (construction) =>
+                    canUseAsApprovedUpstream(construction) &&
+                    (!selectedProjectId || construction.projectId === selectedProjectId)
+                )
                 .map((construction) => ({
                   label: construction.name,
                   value: construction.id,

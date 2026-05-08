@@ -7,7 +7,10 @@ import {
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { insertCompatRecord } from '@/lib/db-write-compat'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
+import { resolveRecordSubmitterNames } from '@/lib/api/record-submitter'
 import { assertProjectInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,12 +21,14 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       const { searchParams } = new URL(req.url)
       const projectId = searchParams.get('projectId')
       const keyword = searchParams.get('keyword')
+      const submitter = searchParams.get('submitter')?.trim()
       const supportsRegionId = await hasDbColumn('OtherReceipt', 'regionId')
       const regionId = supportsRegionId ? await requireCurrentRegionId() : null
       const where: any = supportsRegionId ? { regionId } : {}
 
       if (projectId) where.projectId = projectId
       if (keyword) where.receiptType = { contains: keyword }
+      applyMonthDateFilter(where, 'receiptDate', searchParams)
 
       const records = await db.otherReceipt.findMany({
         where,
@@ -38,17 +43,29 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
           receiptMethod: true,
           attachmentUrl: true,
           approvalStatus: true,
+          approvedAt: true,
           remark: true,
           createdAt: true,
         },
         orderBy: { receiptDate: 'desc' },
       })
 
+      const submitterMap = await resolveRecordSubmitterNames({
+        ids: records.map((record) => record.id),
+        resourceType: 'other-receipts',
+        actionLogResource: 'other-receipts',
+      })
+      const normalizedSubmitter = submitter?.toLocaleLowerCase()
+
       return success(
         records.map((record) => ({
           ...record,
           projectName: record.Project?.name ?? null,
-        }))
+          submitterName: submitterMap.get(record.id) ?? null,
+        })).filter((record) => (
+          !normalizedSubmitter ||
+          record.submitterName?.toLocaleLowerCase().includes(normalizedSubmitter)
+        ))
       )
     },
 
@@ -68,6 +85,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
       if (projectId) {
         const project = await assertProjectInCurrentRegion(projectId)
         if (!project) throw new NotFoundError('项目不存在')
+        assertApprovedUpstream(project, '项目')
       }
 
       const now = new Date()
@@ -82,6 +100,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog(
         receiptMethod: String(body.receiptMethod ?? '').trim() || null,
         attachmentUrl: String(body.attachmentUrl ?? '').trim() || null,
         remark: String(body.remark ?? '').trim() || null,
+        approvalStatus: 'DRAFT',
         updatedAt: now,
       })
 

@@ -1,11 +1,14 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import {
   assertConstructionApprovalInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +38,7 @@ function toResponse(contract: {
   laborType?: string | null
   remark?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
 }) {
   return {
@@ -60,6 +64,7 @@ function toResponse(contract: {
     laborType: contract.laborType ?? null,
     remark: contract.remark ?? null,
     approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
   }
 }
@@ -75,6 +80,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
+    applyMonthDateFilter(where, 'signDate', searchParams)
 
     const contracts = await db.laborContract.findMany({
       where,
@@ -97,6 +103,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -129,17 +136,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const project = await assertProjectInCurrentRegion(body.projectId)
     if (!project) throw new NotFoundError('项目不存在')
+    assertApprovedUpstream(project, '项目')
 
     const construction = await assertConstructionApprovalInCurrentRegion(body.constructionId)
     if (!construction) throw new NotFoundError('施工立项不存在')
+    assertApprovedUpstream(construction, '施工立项')
     if (construction.projectId !== body.projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    const worker = await db.laborWorker.findUnique({
-      where: { id: body.laborWorkerId },
-      select: { id: true, name: true, phone: true, idNumber: true, bankAccount: true, bankName: true },
-    })
+    const worker = await assertMasterRecordInCurrentRegion('laborWorker', body.laborWorkerId)
     if (!worker) throw new NotFoundError('劳务人员不存在')
 
     const code = `LABOR${Date.now()}`
@@ -162,6 +168,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       laborType: body.laborType?.trim() || null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -186,6 +193,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
     })

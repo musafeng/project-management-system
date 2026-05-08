@@ -1,11 +1,14 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { applyMonthDateFilter } from '@/lib/api/filter-params'
 import {
   assertConstructionApprovalInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
+import { assertApprovedUpstream } from '@/lib/approval-gates'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +32,7 @@ function toResponse(contract: {
   attachmentUrl?: string | null
   remark?: string | null
   approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
 }) {
   return {
@@ -53,6 +57,7 @@ function toResponse(contract: {
     attachmentUrl: contract.attachmentUrl ?? null,
     remark: contract.remark ?? null,
     approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
   }
 }
@@ -68,6 +73,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     where.regionId = regionId
     if (projectId) where.projectId = projectId
     if (constructionId) where.constructionId = constructionId
+    applyMonthDateFilter(where, 'signDate', searchParams)
 
     const contracts = await db.procurementContract.findMany({
       where,
@@ -90,6 +96,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -122,17 +129,16 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
 
     const project = await assertProjectInCurrentRegion(body.projectId)
     if (!project) throw new NotFoundError('项目不存在')
+    assertApprovedUpstream(project, '项目')
 
     const construction = await assertConstructionApprovalInCurrentRegion(body.constructionId)
     if (!construction) throw new NotFoundError('施工立项不存在')
+    assertApprovedUpstream(construction, '施工立项')
     if (construction.projectId !== body.projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
 
-    const supplier = await db.supplier.findUnique({
-      where: { id: body.supplierId },
-      select: { id: true, name: true, phone: true, bankAccount: true, bankName: true },
-    })
+    const supplier = await assertMasterRecordInCurrentRegion('supplier', body.supplierId)
     if (!supplier) throw new NotFoundError('供应商不存在')
 
     const code = `PROC${Date.now()}`
@@ -154,6 +160,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       materialCategory: body.materialCategory?.trim() || null,
       attachmentUrl: body.attachmentUrl?.trim() || null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -178,6 +185,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
         attachmentUrl: true,
         remark: true,
         approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
       },
     })

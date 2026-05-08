@@ -3,6 +3,7 @@
  */
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, requireSystemManager } from '@/lib/api'
 import { db } from '@/lib/db'
+import { requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,11 +11,12 @@ export const dynamic = 'force-dynamic'
 export const { POST } = apiHandlerWithPermissionAndLog({
   POST: async (req) => {
     await requireSystemManager()
+    const regionId = await requireCurrentRegionId()
     const id = req.url.split('/process-definitions/')[1]?.split('/nodes')[0]?.split('?')[0]
     if (!id) throw new NotFoundError('缺少流程定义 ID')
     const body = await req.json()
 
-    const def = await db.processDefinition.findUnique({ where: { id } })
+    const def = await db.processDefinition.findFirst({ where: { id, regionId } })
     if (!def) throw new NotFoundError('流程定义不存在')
 
     if (!body.approverType) throw new BadRequestError('approverType 为必填项')

@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
 import { deleteCompatRecord } from '@/lib/db-write-compat'
@@ -105,6 +105,7 @@ const handler = apiHandlerWithMethod({
   },
 
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {
@@ -121,6 +122,7 @@ const handler = apiHandlerWithMethod({
         contractId: true,
         paymentAmount: true,
         approvalStatus: true,
+        approvedAt: true,
       },
     })
 
@@ -129,7 +131,7 @@ const handler = apiHandlerWithMethod({
     }
 
     try {
-      assertEditable(payment.approvalStatus)
+      assertEditable(payment.approvalStatus, payment.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }

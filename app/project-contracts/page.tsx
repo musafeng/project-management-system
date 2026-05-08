@@ -2,27 +2,38 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Table, Modal, Form, message, Popconfirm,
+  Table, Modal, Form, message, Popconfirm, Pagination,
   DatePicker, InputNumber, Input, Select, Button, Space, Tooltip, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  EditOutlined, DeleteOutlined, EyeOutlined,
-  SendOutlined, DownloadOutlined, FileTextOutlined,
+  EditOutlined, DeleteOutlined,
+  DownloadOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import {
-  LedgerPageLayout, FilterBar, StatusTag, EmptyHint,
+  LedgerPageLayout, FilterBar, StatusTag, EmptyHint, MobileCardList,
   CONTRACT_STATUS,
 } from '@/components/ledger'
 import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import { useMobile } from '@/hooks/useMobile'
+import {
+  canUseAsApprovedUpstream,
+  getApprovalStatusMeta,
+  getContractDisplayStatus,
+  isApprovalLocked as isApprovalRecordLocked,
+} from '@/lib/approval-status'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
 
 // ============================================================
 // 类型
@@ -54,6 +65,9 @@ interface ProjectContract {
   createdAt: string
   updatedAt?: string
   approvalStatus?: string
+  approvedAt?: string | null
+  submittedAt?: string | null
+  rejectedAt?: string | null
 }
 
 interface ProjectContractDetail extends ProjectContract {
@@ -65,6 +79,24 @@ interface Project {
   id: string
   name: string
   code: string
+  approvalStatus?: string | null
+  approvedAt?: string | null
+}
+
+function getApprovalTag(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
+  const statusMeta = getApprovalStatusMeta(contract)
+
+  return (
+    <StatusTag
+      status={statusMeta.label}
+      map={{ [statusMeta.label]: statusMeta }}
+      size="small"
+    />
+  )
+}
+
+function isApprovalLocked(contract: Pick<ProjectContract, 'approvalStatus' | 'approvedAt'>) {
+  return isApprovalRecordLocked(contract)
 }
 
 // ============================================================
@@ -79,9 +111,18 @@ export default function ProjectContractsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form] = Form.useForm()
   const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const [mobilePage, setMobilePage] = useState(1)
+  const [canDelete, setCanDelete] = useState(false)
   const watchedContractAmount = Form.useWatch('contractAmount', form)
   const watchedHasRetention = Form.useWatch('hasRetention', form)
   const watchedRetentionRate = Form.useWatch('retentionRate', form)
+  const isMobile = useMobile()
+
+  const openCreateModal = () => {
+    setEditingId(null)
+    form.resetFields()
+    setModalOpen(true)
+  }
 
   const loadProjects = async () => {
     const result = await requestApi<Project[]>('/api/projects', {
@@ -113,7 +154,11 @@ export default function ProjectContractsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadProjects(); loadContracts() }, [])
+  useEffect(() => {
+    loadProjects()
+    loadContracts()
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
+  }, [])
 
   useEffect(() => {
     const contractAmount = Number(watchedContractAmount || 0)
@@ -130,7 +175,13 @@ export default function ProjectContractsPage() {
     }
   }, [watchedContractAmount, watchedHasRetention, watchedRetentionRate, form])
 
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(contracts.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [contracts.length, mobilePage])
+
   const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
     setLastFilter(filters)
     loadContracts(filters)
   }
@@ -208,12 +259,14 @@ export default function ProjectContractsPage() {
       width: 180,
       render: (v: string, row) => (
         <Tooltip title="点击查看详情">
-          <a
+          <ViewRecordButton
+            resource="project-contracts"
+            id={row.id}
+            label={v}
+            type="link"
+            icon={null}
             style={{ color: '#1677ff', fontWeight: 500, cursor: 'pointer' }}
-            onClick={() => message.info(`即将跳转到合同 ${row.code} 详情`)}
-          >
-            {v}
-          </a>
+          />
         </Tooltip>
       ),
     },
@@ -276,36 +329,49 @@ export default function ProjectContractsPage() {
       dataIndex: 'status',
       key: 'status',
       width: 90,
-      render: (v: string) => <StatusTag status={v} map={CONTRACT_STATUS} size="small" />,
+      render: (v: string, row) => (
+        <StatusTag status={getContractDisplayStatus(v, row)} map={CONTRACT_STATUS} size="small" />
+      ),
+    },
+    {
+      title: '审批状态',
+      key: 'approvalStatus',
+      width: 100,
+      render: (_: unknown, row: ProjectContract) => getApprovalTag(row),
     },
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 250,
       fixed: 'right',
-      render: (_: unknown, row: ProjectContract) => (
-        <Space size={2}>
-          <Button type="link" size="small" icon={<EyeOutlined />}
-            onClick={() => message.info(`查看 ${row.code}`)}
-          >查看</Button>
+      render: (_: unknown, row: ProjectContract) => {
+        const locked = isApprovalLocked(row)
+        return (
+        <Space size={2} wrap>
+          <ViewRecordButton resource="project-contracts" id={row.id} />
           <Button type="link" size="small" icon={<EditOutlined />}
+            disabled={locked}
             onClick={() => handleEditClick(row.id)}
           >编辑</Button>
           <ApprovalActions
             id={row.id}
-            approvalStatus={row.approvalStatus || 'PENDING'}
+            approvalStatus={row.approvalStatus || 'APPROVED'}
+            approvedAt={row.approvedAt}
             resource="project-contracts"
             onSuccess={() => loadContracts(lastFilter)}
           />
-          <Popconfirm
-            title="确认删除？" description="删除后无法恢复"
-            onConfirm={() => handleDelete(row.id)}
-            okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
+          {canDelete ? (
+            <Popconfirm
+              title="确认删除？" description="删除后无法恢复"
+              onConfirm={() => handleDelete(row.id)}
+              okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+            </Popconfirm>
+          ) : null}
         </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -328,7 +394,7 @@ export default function ProjectContractsPage() {
         { type: 'dateRange', key: 'dateRange', placeholder: ['签订开始', '签订结束'] },
       ]}
       onSearch={handleSearch}
-      onReset={() => { setLastFilter({}); loadContracts({}) }}
+      onReset={() => { setMobilePage(1); setLastFilter({}); loadContracts({}) }}
       loading={loading}
       extra={
         <Button
@@ -386,7 +452,7 @@ export default function ProjectContractsPage() {
             title="还没有合同"
             desc="新增合同后，可在此查看全部合同及收款进度。建议先选择好项目再新增。"
             action={
-              <Button type="primary" onClick={() => { setEditingId(null); form.resetFields(); setModalOpen(true) }}>
+              <Button type="primary" onClick={openCreateModal}>
                 新增合同
               </Button>
             }
@@ -396,40 +462,126 @@ export default function ProjectContractsPage() {
     />
   )
 
+  const summaryCards = (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      {[
+        { label: '合同总金额', value: summary.contractAmount, color: '#1677ff' },
+        { label: '应收金额', value: summary.receivableAmount, color: '#722ed1' },
+        { label: '已收金额', value: summary.receivedAmount, color: '#52c41a' },
+        { label: '未收金额', value: summary.unreceivedAmount, color: '#fa8c16' },
+      ].map((item) => (
+        <div
+          key={item.label}
+          style={{
+            minWidth: isMobile ? 'calc(50% - 6px)' : 160,
+            flex: isMobile ? '1 1 calc(50% - 6px)' : '0 0 auto',
+            background: '#fafafa',
+            border: '1px solid #f0f0f0',
+            borderRadius: 8,
+            padding: '10px 12px',
+          }}
+        >
+          <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
+          <div style={{ color: item.color, fontWeight: 700 }}>{fmtMoney(item.value)}</div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const mobileCards = (
+    <>
+      <MobileCardList<ProjectContract>
+        data={contracts.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.name}
+        getDescription={(item) => `合同编号：${item.code}`}
+        getStatus={(item) => (
+          <Space size={4}>
+            <StatusTag status={item.status} map={CONTRACT_STATUS} size="small" />
+            {getApprovalTag(item)}
+          </Space>
+        )}
+        fields={[
+          { key: 'projectName', label: '所属项目', render: (item) => item.projectName || '-' },
+          { key: 'customerName', label: '客户', render: (item) => item.customerName || '-' },
+          { key: 'contractAmount', label: '合同金额', render: (item) => <Text strong style={{ color: '#1677ff' }}>{fmtMoney(item.contractAmount)}</Text> },
+          { key: 'receivedAmount', label: '已收款', render: (item) => <Text style={{ color: '#52c41a' }}>{fmtMoney(item.receivedAmount)}</Text> },
+          { key: 'unreceivedAmount', label: '未收款', render: (item) => <Text style={{ color: item.unreceivedAmount > 0 ? '#fa8c16' : '#8c8c8c' }}>{fmtMoney(item.unreceivedAmount)}</Text> },
+          { key: 'signDate', label: '签订日期', render: (item) => fmtDate(item.signDate), fullWidth: true },
+        ]}
+        actions={(item) => (
+          <Space size={2} wrap>
+            <ViewRecordButton resource="project-contracts" id={item.id} />
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={isApprovalLocked(item)} onClick={() => handleEditClick(item.id)}>
+              编辑
+            </Button>
+            <ApprovalActions
+              id={item.id}
+              approvalStatus={item.approvalStatus || 'APPROVED'}
+              approvedAt={item.approvedAt}
+              resource="project-contracts"
+              onSuccess={() => loadContracts(lastFilter)}
+            />
+            {canDelete ? (
+              <Popconfirm
+                title="确认删除？"
+                description="删除后无法恢复"
+                onConfirm={() => handleDelete(item.id)}
+                okText="确认"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalLocked(item)}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        )}
+        empty={(
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="还没有合同"
+            desc="新增合同后，可在此查看全部合同及收款进度。建议先选择好项目再新增。"
+            action={<Button type="primary" onClick={openCreateModal}>新增合同</Button>}
+          />
+        )}
+      />
+      {contracts.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={contracts.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
+      )}
+    </>
+  )
+
   return (
     <>
       <LedgerPageLayout
         title="销售合同"
         desc="管理项目收入合同，实时跟踪收款进度"
         createLabel="新增合同"
-        onCreate={() => { setEditingId(null); form.resetFields(); setModalOpen(true) }}
+        onCreate={openCreateModal}
         total={contracts.length}
         filterBar={filterBar}
         table={
           <>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              {[
-                { label: '合同总金额', value: summary.contractAmount, color: '#1677ff' },
-                { label: '应收金额', value: summary.receivableAmount, color: '#722ed1' },
-                { label: '已收金额', value: summary.receivedAmount, color: '#52c41a' },
-                { label: '未收金额', value: summary.unreceivedAmount, color: '#fa8c16' },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    minWidth: 160,
-                    background: '#fafafa',
-                    border: '1px solid #f0f0f0',
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                  }}
-                >
-                  <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
-                  <div style={{ color: item.color, fontWeight: 700 }}>{fmtMoney(item.value)}</div>
-                </div>
-              ))}
-            </div>
+            {summaryCards}
             {table}
+          </>
+        }
+        mobileTable={
+          <>
+            {summaryCards}
+            {mobileCards}
           </>
         }
       />
@@ -440,7 +592,7 @@ export default function ProjectContractsPage() {
         onOk={() => form.submit()}
         onCancel={() => { setModalOpen(false); form.resetFields() }}
         okText="保存" cancelText="取消"
-        width={560}
+        width={isMobile ? '95vw' : 560}
       >
         <Form
           form={form}
@@ -458,7 +610,9 @@ export default function ProjectContractsPage() {
               placeholder="请选择项目"
               showSearch
               optionFilterProp="label"
-              options={projects.map((p) => ({ label: `${p.name}（${p.code}）`, value: p.id }))}
+              options={projects
+                .filter((project) => canUseAsApprovedUpstream(project))
+                .map((p) => ({ label: `${p.name}（${p.code}）`, value: p.id }))}
             />
           </Form.Item>
           <Form.Item name="contractAmount" label="合同金额（元）" rules={[{ required: true, message: '请输入合同金额' }]}>

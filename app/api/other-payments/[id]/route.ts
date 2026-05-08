@@ -1,13 +1,17 @@
 import {
   apiHandlerWithPermissionAndLog,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
+  requireDeletePermission,
   success,
 } from '@/lib/api'
+import { assertEditable } from '@/lib/approval'
 import { db } from '@/lib/db'
 import { deleteCompatRecord, updateCompatRecord } from '@/lib/db-write-compat'
 import {
   assertDirectRecordInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -50,6 +54,11 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const existing = await assertDirectRecordInCurrentRegion('otherPayment', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
+      }
 
       const nextProjectId =
         body.projectId === undefined
@@ -97,16 +106,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
           : String(body.bankName ?? '').trim() || null
 
       if (supplierId) {
-        const supplier = await db.supplier.findUnique({
-          where: { id: supplierId },
-          select: {
-            id: true,
-            name: true,
-            contact: true,
-            bankAccount: true,
-            bankName: true,
-          },
-        })
+        const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
         if (!supplier) throw new NotFoundError('供应商不存在')
         supplierName = supplierName || supplier.name
         contact = contact || supplier.contact || null
@@ -153,10 +153,16 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
     },
 
     DELETE: async (req) => {
+      await requireDeletePermission()
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('otherPayment', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
+      try {
+        assertEditable(existing.approvalStatus, existing.approvedAt)
+      } catch (error) {
+        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
+      }
 
       await deleteCompatRecord('OtherPayment', id)
       return success({ id })

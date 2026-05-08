@@ -6,8 +6,9 @@
  * DELETE /api/labor-workers/{id} - 删除劳务人员
  */
 
-import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertMasterRecordInCurrentRegion } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,8 @@ const handler = apiHandlerWithMethod({
     }
 
     // 查询劳务人员
+    await assertMasterRecordInCurrentRegion('laborWorker', id)
+
     const laborWorker = await db.laborWorker.findUnique({
       where: { id },
       select: {
@@ -93,10 +96,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 验证劳务人员是否存在
-    const existingLaborWorker = await db.laborWorker.findUnique({
-      where: { id },
-      select: { id: true },
-    })
+    const existingLaborWorker = await assertMasterRecordInCurrentRegion('laborWorker', id)
 
     if (!existingLaborWorker) {
       throw new NotFoundError('劳务人员不存在')
@@ -203,6 +203,7 @@ const handler = apiHandlerWithMethod({
    * /api/labor-workers/clx1a2b3c4d5e6f7g8h9i0j1k2
    */
   DELETE: async (req: any, { params }: { params: { id: string } }, context: any) => {
+    await requireDeletePermission()
     const { id } = params
 
     if (!id || typeof id !== 'string') {
@@ -210,10 +211,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 验证劳务人员是否存在
-    const laborWorker = await db.laborWorker.findUnique({
-      where: { id },
-      select: { id: true, name: true },
-    })
+    const laborWorker = await assertMasterRecordInCurrentRegion('laborWorker', id)
 
     if (!laborWorker) {
       throw new NotFoundError('劳务人员不存在')

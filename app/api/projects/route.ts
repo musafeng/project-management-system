@@ -1,7 +1,7 @@
 import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ConflictError } from '@/lib/api'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-import { requireCurrentRegionId } from '@/lib/region'
+import { assertMasterRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +43,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
           select: { name: true },
         },
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
         startDate: true,
         endDate: true,
         location: true,
@@ -63,6 +67,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       customerId: project.customerId,
       customerName: project.Customer.name,
       status: project.status,
+      approvalStatus: project.approvalStatus,
+      approvedAt: project.approvedAt,
+      submittedAt: project.submittedAt,
+      rejectedAt: project.rejectedAt,
       startDate: project.startDate,
       endDate: project.endDate,
       location: project.location,
@@ -92,9 +100,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
     }
 
     // 验证客户是否存在
-    const customer = await db.customer.findUnique({
-      where: { id: body.customerId },
-    })
+    const customer = await assertMasterRecordInCurrentRegion('customer', body.customerId)
 
     if (!customer) {
       throw new NotFoundError('客户不存在')
@@ -119,6 +125,7 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       bidMethod: body.bidMethod?.trim() || null,
       area: body.area ?? null,
       remark: body.remark?.trim() || null,
+      approvalStatus: 'DRAFT',
       regionId,
       updatedAt: new Date(),
     }
@@ -133,6 +140,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
           select: { name: true },
         },
         status: true,
+        approvalStatus: true,
+        approvedAt: true,
+        submittedAt: true,
+        rejectedAt: true,
         startDate: true,
         endDate: true,
         budget: true,
@@ -165,6 +176,10 @@ export const { GET, POST } = apiHandlerWithPermissionAndLog({
       customerId: project.customerId,
       customerName: project.Customer.name,
       status: project.status,
+      approvalStatus: project.approvalStatus,
+      approvedAt: project.approvedAt,
+      submittedAt: project.submittedAt,
+      rejectedAt: project.rejectedAt,
       startDate: project.startDate,
       endDate: project.endDate,
       budget: project.budget,

@@ -16,10 +16,10 @@
  */
 'use client'
 
-import { Input, Select, DatePicker, Button, Space } from 'antd'
+import { Input, Select, DatePicker, Button } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useState, type ReactNode } from 'react'
-import dayjs from 'dayjs'
+import { useMobile } from '@/hooks/useMobile'
 
 const { RangePicker } = DatePicker
 
@@ -45,6 +45,7 @@ interface FilterBarProps {
 
 export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterBarProps) {
   const [values, setValues] = useState<FilterValues>({})
+  const isMobile = useMobile()
 
   const set = (key: string, val: FilterValue) =>
     setValues((prev) => ({ ...prev, [key]: val }))
@@ -61,10 +62,11 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
     <div
       style={{
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         flexWrap: 'wrap',
         gap: 8,
         padding: '12px 0 8px',
-        alignItems: 'center',
+        alignItems: isMobile ? 'stretch' : 'center',
       }}
     >
       {fields.map((f) => {
@@ -77,8 +79,8 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
               value={(values[f.key] as string) ?? ''}
               onChange={(e) => set(f.key, e.target.value)}
               onPressEnter={handleSearch}
-              style={{ width: f.width ?? 200 }}
-              size="small"
+              style={{ width: isMobile ? '100%' : (f.width ?? 200) }}
+              size={isMobile ? 'middle' : 'small'}
               allowClear
             />
           )
@@ -90,8 +92,8 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
               placeholder={f.placeholder as string}
               value={(values[f.key] as string) || undefined}
               onChange={(v) => set(f.key, v ?? null)}
-              style={{ width: f.width ?? 140 }}
-              size="small"
+              style={{ width: isMobile ? '100%' : (f.width ?? 140) }}
+              size={isMobile ? 'middle' : 'small'}
               allowClear
               options={f.options}
             />
@@ -102,9 +104,9 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
           return (
             <RangePicker
               key={f.key}
-              size="small"
+              size={isMobile ? 'middle' : 'small'}
               placeholder={ph ?? ['开始日期', '结束日期']}
-              style={{ width: f.width ?? 220 }}
+              style={{ width: isMobile ? '100%' : (f.width ?? 220) }}
               onChange={(dates) => {
                 if (dates && dates[0] && dates[1]) {
                   set(f.key, [dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')])
@@ -118,23 +120,49 @@ export function FilterBar({ fields, onSearch, onReset, loading, extra }: FilterB
         return null
       })}
 
-      <Button type="primary" size="small" onClick={handleSearch} loading={loading}>
-        查询
-      </Button>
-      <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
-        重置
-      </Button>
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          width: isMobile ? '100%' : 'auto',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+        }}
+      >
+        <Button
+          type="primary"
+          size={isMobile ? 'middle' : 'small'}
+          onClick={handleSearch}
+          loading={loading}
+          style={{ flex: isMobile ? 1 : undefined }}
+        >
+          查询
+        </Button>
+        <Button
+          size={isMobile ? 'middle' : 'small'}
+          icon={<ReloadOutlined />}
+          onClick={handleReset}
+          style={{ flex: isMobile ? 1 : undefined }}
+        >
+          重置
+        </Button>
+      </div>
 
       {/* 导出等辅助操作弱化在右侧 */}
       {extra && (
-        <div style={{ marginLeft: 'auto' }}>
+        <div
+          style={{
+            marginLeft: isMobile ? 0 : 'auto',
+            width: isMobile ? '100%' : 'auto',
+            display: 'flex',
+            justifyContent: isMobile ? 'flex-end' : 'flex-start',
+          }}
+        >
           {extra}
         </div>
       )}
     </div>
   )
 }
-
 
 
 

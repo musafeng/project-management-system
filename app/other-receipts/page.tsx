@@ -9,34 +9,34 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Select,
   Space,
   Table,
-  Tag,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
+import ViewRecordButton from '@/components/ViewRecordButton'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 interface OtherReceipt {
   id: string
   projectId?: string | null
   projectName?: string | null
+  submitterName?: string | null
   receiptType: string
   receiptAmount: number
   receiptDate: string
   attachmentUrl?: string
   approvalStatus: string
+  approvedAt?: string | null
   remark?: string
-}
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待审批', color: 'orange' },
-  APPROVED: { label: '已通过', color: 'green' },
-  REJECTED: { label: '已拒绝', color: 'red' },
 }
 
 function fmt(value: number) {
@@ -56,22 +56,29 @@ export default function OtherReceiptsPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<OtherReceipt | null>(null)
+  const [canDelete, setCanDelete] = useState(false)
+  const [submitter, setSubmitter] = useState('')
+  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
 
-  const load = async () => {
+  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
     try {
-      const response = await fetch('/api/other-receipts')
+      const params = new URLSearchParams()
+      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
+      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
+      const response = await fetch(`/api/other-receipts${params.toString() ? `?${params.toString()}` : ''}`)
       const json = await response.json()
       if (json.success) setData(json.data)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load('', null)
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
+  }, [load])
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -113,7 +120,7 @@ export default function OtherReceiptsPage() {
       if (json.success) {
         message.success(editing ? '更新成功' : '创建成功')
         setModalOpen(false)
-        void load()
+        void load(submitter, month)
         return
       }
 
@@ -130,7 +137,7 @@ export default function OtherReceiptsPage() {
 
     if (json.success) {
       message.success('已删除')
-      void load()
+      void load(submitter, month)
       return
     }
 
@@ -138,6 +145,7 @@ export default function OtherReceiptsPage() {
   }
 
   const total = data.reduce((sum, record) => sum + Number(record.receiptAmount || 0), 0)
+  const summaryItems = [{ label: '总金额', value: fmt(total), color: '#52c41a' }]
 
   const columns: ColumnsType<OtherReceipt> = [
     { title: '收款事由', dataIndex: 'receiptType', width: 180 },
@@ -153,26 +161,41 @@ export default function OtherReceiptsPage() {
       title: '审批状态',
       dataIndex: 'approvalStatus',
       width: 100,
-      render: (value) => <Tag color={STATUS_MAP[value]?.color}>{STATUS_MAP[value]?.label || value}</Tag>,
+      render: (value, record) => <ApprovalStatusTag status={value || 'DRAFT'} approvedAt={record.approvedAt} />,
     },
+    { title: '填报人', dataIndex: 'submitterName', width: 100, render: (value) => value || '-' },
     { title: '备注', dataIndex: 'remark', width: 180, render: (value) => value || '-' },
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 260,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleOpen(record)}>
-            编辑
-          </Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
+      render: (_, record) => {
+        const locked = isApprovalLocked(record)
+
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="other-receipts" id={record.id} />
+            <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
+              编辑
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="other-receipts"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      },
     },
   ]
 
@@ -181,7 +204,22 @@ export default function OtherReceiptsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
         <h2 style={{ margin: 0 }}>其他收款</h2>
         <Space>
-          <span style={{ color: '#52c41a', fontWeight: 600 }}>合计：{fmt(total)}</span>
+          <Input
+            placeholder="筛选填报人"
+            value={submitter}
+            onChange={(event) => setSubmitter(event.target.value)}
+            style={{ width: 140 }}
+          />
+          <DatePicker
+            picker="month"
+            placeholder="选择月份"
+            value={month}
+            onChange={setMonth}
+            allowClear
+            style={{ width: 140 }}
+          />
+          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
+          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
           <Button onClick={() => { window.location.href = '/data-exports?resourceType=other-receipts' }}>导出数据</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
             新增
@@ -189,7 +227,9 @@ export default function OtherReceiptsPage() {
         </Space>
       </div>
 
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 760 }} size="small" />
+      <AmountSummaryCards items={summaryItems} />
+
+      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 860 }} size="small" />
 
       <Modal
         title={editing ? '编辑其他收款' : '新增其他收款'}

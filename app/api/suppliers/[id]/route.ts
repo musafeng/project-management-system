@@ -6,8 +6,9 @@
  * DELETE /api/suppliers/{id} - 删除供应商
  */
 
-import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
+import { assertMasterRecordInCurrentRegion } from '@/lib/region'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,8 @@ const handler = apiHandlerWithMethod({
     }
 
     // 查询供应商
+    await assertMasterRecordInCurrentRegion('supplier', id)
+
     const supplier = await db.supplier.findUnique({
       where: { id },
       select: {
@@ -97,10 +100,7 @@ const handler = apiHandlerWithMethod({
     const body = await req.json()
 
     // 验证供应商是否存在
-    const existingSupplier = await db.supplier.findUnique({
-      where: { id },
-      select: { id: true },
-    })
+    const existingSupplier = await assertMasterRecordInCurrentRegion('supplier', id)
 
     if (!existingSupplier) {
       throw new NotFoundError('供应商不存在')
@@ -211,6 +211,7 @@ const handler = apiHandlerWithMethod({
    * /api/suppliers/clx1a2b3c4d5e6f7g8h9i0j1k2
    */
   DELETE: async (req: any, { params }: { params: { id: string } }, context: any) => {
+    await requireDeletePermission()
     const { id } = params
 
     if (!id || typeof id !== 'string') {
@@ -218,10 +219,7 @@ const handler = apiHandlerWithMethod({
     }
 
     // 验证供应商是否存在
-    const supplier = await db.supplier.findUnique({
-      where: { id },
-      select: { id: true, name: true },
-    })
+    const supplier = await assertMasterRecordInCurrentRegion('supplier', id)
 
     if (!supplier) {
       throw new NotFoundError('供应商不存在')

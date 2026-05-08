@@ -25,6 +25,8 @@ import {
 export const dynamic = 'force-dynamic'
 
 const RESOURCE_LABELS: Record<string, string> = {
+  'projects': '项目新增',
+  'project-contracts': '项目合同',
   'construction-approvals': '施工立项',
   'project-contract-changes': '项目合同变更',
   'procurement-contracts': '采购合同',
@@ -33,6 +35,13 @@ const RESOURCE_LABELS: Record<string, string> = {
   'labor-payments': '劳务付款',
   'subcontract-contracts': '分包合同',
   'subcontract-payments': '分包付款',
+  'contract-receipts': '项目合同收款',
+  'other-receipts': '其他收款',
+  'other-payments': '其他付款',
+  'project-expenses': '项目费用报销',
+  'management-expenses': '管理费用报销',
+  'sales-expenses': '销售费用报销',
+  'petty-cashes': '备用金申请',
 }
 
 /**
@@ -40,7 +49,28 @@ const RESOURCE_LABELS: Record<string, string> = {
  * 用于在审批记录里做 resourceId 过滤
  */
 async function getResourceIdsByProject(projectId: string, regionId: string): Promise<Set<string>> {
-  const [ca, pcc, pc, pp, lc, lp, sc, sp] = await Promise.all([
+  const [
+    projectRows,
+    contracts,
+    contractReceipts,
+    ca,
+    pcc,
+    pc,
+    pp,
+    lc,
+    lp,
+    sc,
+    sp,
+    otherReceipts,
+    otherPayments,
+    projectExpenses,
+    managementExpenses,
+    salesExpenses,
+    pettyCashes,
+  ] = await Promise.all([
+    db.project.findMany({ where: { id: projectId, regionId }, select: { id: true } }),
+    db.projectContract.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.contractReceipt.findMany({ where: { regionId, ProjectContract: { projectId } }, select: { id: true } }),
     db.constructionApproval.findMany({ where: { projectId, regionId }, select: { id: true } }),
     db.projectContractChange.findMany({
       where: {
@@ -55,9 +85,33 @@ async function getResourceIdsByProject(projectId: string, regionId: string): Pro
     db.laborPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
     db.subcontractContract.findMany({ where: { projectId, regionId }, select: { id: true } }),
     db.subcontractPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.otherReceipt.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.otherPayment.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.projectExpense.findMany({ where: { projectId }, select: { id: true } }),
+    db.managementExpense.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.salesExpense.findMany({ where: { projectId, regionId }, select: { id: true } }),
+    db.pettyCash.findMany({ where: { projectId, regionId }, select: { id: true } }),
   ])
   const ids = new Set<string>()
-  for (const row of [...ca, ...pcc, ...pc, ...pp, ...lc, ...lp, ...sc, ...sp]) {
+  for (const row of [
+    ...projectRows,
+    ...contracts,
+    ...contractReceipts,
+    ...ca,
+    ...pcc,
+    ...pc,
+    ...pp,
+    ...lc,
+    ...lp,
+    ...sc,
+    ...sp,
+    ...otherReceipts,
+    ...otherPayments,
+    ...projectExpenses,
+    ...managementExpenses,
+    ...salesExpenses,
+    ...pettyCashes,
+  ]) {
     ids.add(row.id)
   }
   return ids
@@ -171,6 +225,9 @@ export const GET = apiHandler(async (req: Request) => {
           where: { status: ProcessTaskStatus.PENDING },
           orderBy: { nodeOrder: 'asc' },
           take: 1,
+          include: {
+            ProcessNode: true,
+          },
         },
       },
       orderBy: { startedAt: 'desc' },
@@ -186,11 +243,12 @@ export const GET = apiHandler(async (req: Request) => {
       submitterUserId: inst.submitterUserId,
       status: inst.status,
       taskStatus: inst.ProcessTask[0]?.status || 'NONE',
-      nodeName: inst.ProcessTask[0] ? `节点${inst.ProcessTask[0].nodeOrder}` : '已结束',
+      nodeName: inst.ProcessTask[0]?.ProcessNode?.name || (inst.status === ProcessInstanceStatus.APPROVED ? '已结束' : '-'),
       nodeOrder: inst.ProcessTask[0]?.nodeOrder || 0,
       startedAt: inst.startedAt.toISOString(),
       taskCreatedAt: inst.startedAt.toISOString(),
       canApprove: false,
+      canUrge: inst.status === ProcessInstanceStatus.PENDING,
       canRevoke: inst.status === ProcessInstanceStatus.PENDING,
     }))
   } else {

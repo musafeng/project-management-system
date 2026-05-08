@@ -23,4 +23,4 @@ export { getCurrentUser, checkAuth, requireAuth, requireRole, requireAdmin, requ
 export type { AuthenticatedUser } from './auth'
 export { canAccessApi, getRolePermissionDescription } from './permissions'
 export type { ApiPermissionRule } from './permissions'
-
+export { requireDeletePermission } from './delete-guard'

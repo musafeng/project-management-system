@@ -304,3 +304,61 @@ export async function sendApprovalRejectedNotification(params: {
   }
 }
 
+/**
+ * 发送「审批催办」通知
+ *
+ * - 通知对象：当前待处理节点审批人
+ * - 抄送：发起人本人
+ */
+export async function sendApprovalUrgedNotification(params: {
+  submitterName: string
+  submitterDingUserId: string
+  modelLabel: string
+  resourceId: string
+  nodeName: string
+  approverType: string
+  approverRole?: string
+  approverUserId?: string
+}): Promise<void> {
+  const {
+    submitterName,
+    submitterDingUserId,
+    modelLabel,
+    resourceId,
+    nodeName,
+    approverType,
+    approverRole,
+    approverUserId,
+  } = params
+
+  try {
+    const approverIds =
+      approverType === 'USER' && approverUserId
+        ? [await getDingUserIdBySystemUserId(approverUserId)].filter((id): id is string => Boolean(id))
+        : approverRole
+          ? await getDingUserIdsByRole(approverRole)
+          : []
+
+    const receivers = mergeUserIds(approverIds, [submitterDingUserId])
+
+    if (receivers.length === 0) {
+      console.warn('[钉钉通知] 审批催办：无接收人，跳过')
+      return
+    }
+
+    const title = `【审批催办】${modelLabel}`
+    const content = [
+      `## 【审批催办】${modelLabel}`,
+      ``,
+      `**${submitterName}** 发起了催办，请尽快处理当前审批节点`,
+      ``,
+      `- **单据ID：** ${resourceId}`,
+      `- **当前节点：** ${nodeName}`,
+      `- **发起人：** ${submitterName}`,
+    ].join('\n')
+
+    await sendWorkNotification({ useridList: receivers, title, content })
+  } catch (error) {
+    console.error('[钉钉通知] 发送审批催办通知失败:', error)
+  }
+}

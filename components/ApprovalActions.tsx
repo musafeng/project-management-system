@@ -2,19 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { Button, Tag, Modal, Input, Space, message } from 'antd'
-import { CheckOutlined, CloseOutlined, SendOutlined } from '@ant-design/icons'
+import { CheckOutlined, CloseOutlined, SendOutlined, NotificationOutlined } from '@ant-design/icons'
+import { canSubmitApproval, getApprovalStatusMeta } from '@/lib/approval-status'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 
-/**
- * 审批状态 Tag
- */
-export function ApprovalStatusTag({ status }: { status: string }) {
-  const config: Record<string, { color: string; label: string }> = {
-    APPROVED: { color: 'success', label: '已通过' },
-    PENDING: { color: 'warning', label: '待审批' },
-    REJECTED: { color: 'error', label: '已驳回' },
-  }
-  const c = config[status] || { color: 'default', label: status }
+export function ApprovalStatusTag({
+  status,
+  approvedAt,
+}: {
+  status: string
+  approvedAt?: string | null
+}) {
+  const c = getApprovalStatusMeta({ approvalStatus: status, approvedAt })
   return <Tag color={c.color}>{c.label}</Tag>
 }
 
@@ -28,16 +27,17 @@ function getFriendlyActionErrorMessage(input: unknown, fallback: string) {
  * 审批操作按钮组
  *
  * 显示逻辑：
- * - approvalStatus = APPROVED 或 REJECTED → 显示「提交审批」
- * - approvalStatus = PENDING → 查询后端，判断当前用户是否是审批人
- *   - 是审批人 → 显示「通过」「驳回」
- *   - 不是    → 不显示
+ * - 统一以最新流程实例状态为准
+ * - 未提交 / 已驳回：显示「提交审批」
+ * - 审批中：显示当前节点；审批人可见「通过」「驳回」，发起人可见「催办」
+ * - 已审批完成：不再显示「提交审批」
  *
  * 不再依赖 isAdmin，完全基于 ProcessTask 配置
  */
 export function ApprovalActions({
   id,
   approvalStatus,
+  approvedAt,
   resource,
   onSuccess,
   // 保留 isAdmin 为可选，避免改动7个页面的 props 传递（忽略即可）
@@ -45,6 +45,7 @@ export function ApprovalActions({
 }: {
   id: string
   approvalStatus: string
+  approvedAt?: string | null
   resource: string
   onSuccess: () => void
   isAdmin?: boolean
@@ -53,16 +54,14 @@ export function ApprovalActions({
   const [rejectVisible, setRejectVisible] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [canApprove, setCanApprove] = useState(false)
+  const [canSubmit, setCanSubmit] = useState(false)
+  const [canUrge, setCanUrge] = useState(false)
+  const [latestStatus, setLatestStatus] = useState<string | null>(null)
+  const [currentNodeName, setCurrentNodeName] = useState<string | null>(null)
   const [taskChecked, setTaskChecked] = useState(false)
 
-  // 当状态为 PENDING 时，查询当前用户是否为审批人
+  // 查询最新流程状态和当前用户可执行动作
   useEffect(() => {
-    if (approvalStatus !== 'PENDING') {
-      setCanApprove(false)
-      setTaskChecked(true)
-      return
-    }
-
     setTaskChecked(false)
     fetch(`/api/process-tasks/pending?resource=${encodeURIComponent(resource)}&resourceId=${encodeURIComponent(id)}`, {
       credentials: 'include',
@@ -70,10 +69,23 @@ export function ApprovalActions({
       .then((res) => res.json())
       .then((json) => {
         setCanApprove(json.data?.canApprove ?? false)
+        setCanSubmit(
+          json.data?.canSubmit ??
+            canSubmitApproval({ approvalStatus, approvedAt }, json.data?.latestStatus ?? null)
+        )
+        setCanUrge(json.data?.canUrge ?? false)
+        setLatestStatus(json.data?.latestStatus ?? null)
+        setCurrentNodeName(json.data?.task?.nodeName ?? null)
       })
-      .catch(() => setCanApprove(false))
+      .catch(() => {
+        setCanApprove(false)
+        setCanSubmit(canSubmitApproval({ approvalStatus, approvedAt }, null))
+        setCanUrge(false)
+        setLatestStatus(null)
+        setCurrentNodeName(null)
+      })
       .finally(() => setTaskChecked(true))
-  }, [approvalStatus, resource, id])
+  }, [approvalStatus, approvedAt, resource, id])
 
   const call = async (action: string, body?: object) => {
     setLoading(action)
@@ -113,8 +125,18 @@ export function ApprovalActions({
     setRejectReason('')
   }
 
-  // 非 PENDING 状态：显示「提交审批」
-  if (approvalStatus === 'APPROVED' || approvalStatus === 'REJECTED') {
+  if (!taskChecked) {
+    return null
+  }
+
+  const progressHint =
+    latestStatus === 'PENDING' && currentNodeName ? (
+      <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+        当前：{currentNodeName}
+      </Tag>
+    ) : null
+
+  if (canSubmit) {
     return (
       <Button
         type="link"
@@ -128,16 +150,11 @@ export function ApprovalActions({
     )
   }
 
-  // PENDING 状态：等待查询结果
-  if (!taskChecked) {
-    return null
-  }
-
-  // PENDING 状态，当前用户是审批人
-  if (canApprove) {
+  if (latestStatus === 'PENDING' && canApprove) {
     return (
       <>
-        <Space size="small">
+        <Space size="small" wrap>
+          {progressHint}
           <Button
             type="link"
             size="small"
@@ -180,6 +197,24 @@ export function ApprovalActions({
     )
   }
 
-  // PENDING 状态，非审批人：不显示任何操作
+  if (latestStatus === 'PENDING') {
+    return (
+      <Space size="small" wrap>
+        {progressHint}
+        {canUrge && (
+          <Button
+            type="link"
+            size="small"
+            icon={<NotificationOutlined />}
+            loading={loading === 'urge'}
+            onClick={() => call('urge')}
+          >
+            催办
+          </Button>
+        )}
+      </Space>
+    )
+  }
+
   return null
 }

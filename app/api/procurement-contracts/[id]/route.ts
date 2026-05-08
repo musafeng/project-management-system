@@ -4,6 +4,7 @@ import { assertEditable } from '@/lib/approval'
 import {
   assertConstructionApprovalInCurrentRegion,
   assertDirectRecordInCurrentRegion,
+  assertMasterRecordInCurrentRegion,
   assertProjectInCurrentRegion,
   requireCurrentRegionId,
 } from '@/lib/region'
@@ -33,6 +34,8 @@ function toResponse(contract: {
   attachmentUrl: string | null
   materialCategory: string | null
   remark: string | null
+  approvalStatus: string
+  approvedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -61,6 +64,8 @@ function toResponse(contract: {
     attachmentUrl: contract.attachmentUrl,
     materialCategory: contract.materialCategory,
     remark: contract.remark,
+    approvalStatus: contract.approvalStatus,
+    approvedAt: contract.approvedAt,
     createdAt: contract.createdAt,
     updatedAt: contract.updatedAt,
   }
@@ -97,6 +102,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         materialCategory: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -116,7 +123,7 @@ const handler = apiHandlerWithMethod({
     if (!existingContract) throw new NotFoundError('采购合同不存在')
 
     try {
-      assertEditable(existingContract.approvalStatus)
+      assertEditable(existingContract.approvalStatus, existingContract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
@@ -137,10 +144,7 @@ const handler = apiHandlerWithMethod({
     if (construction.projectId !== projectId) {
       throw new BadRequestError('施工立项不属于该项目')
     }
-    const supplier = await db.supplier.findUnique({
-      where: { id: supplierId },
-      select: { id: true },
-    })
+    const supplier = await assertMasterRecordInCurrentRegion('supplier', supplierId)
     if (!supplier) throw new NotFoundError('供应商不存在')
 
     const contractAmount =
@@ -221,6 +225,8 @@ const handler = apiHandlerWithMethod({
         attachmentUrl: true,
         materialCategory: true,
         remark: true,
+        approvalStatus: true,
+        approvedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -238,7 +244,7 @@ const handler = apiHandlerWithMethod({
     if (!contract) throw new NotFoundError('采购合同不存在')
 
     try {
-      assertEditable(contract.approvalStatus)
+      assertEditable(contract.approvalStatus, contract.approvedAt)
     } catch (err) {
       throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
