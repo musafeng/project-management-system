@@ -6,7 +6,7 @@
  * DELETE /api/labor-workers/{id} - 删除劳务人员
  */
 
-import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError } from '@/lib/api'
+import { apiHandlerWithMethod, success, NotFoundError, BadRequestError, ConflictError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertMasterRecordInCurrentRegion } from '@/lib/region'
 
@@ -203,6 +203,7 @@ const handler = apiHandlerWithMethod({
    * /api/labor-workers/clx1a2b3c4d5e6f7g8h9i0j1k2
    */
   DELETE: async (req: any, { params }: { params: { id: string } }, context: any) => {
+    await requireDeletePermission()
     const { id } = params
 
     if (!id || typeof id !== 'string') {

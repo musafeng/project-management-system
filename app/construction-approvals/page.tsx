@@ -20,6 +20,7 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 import DynamicForm from '@/components/DynamicForm'
 import type { FormFieldConfig } from '@/components/DynamicForm'
 import ViewRecordButton from '@/components/ViewRecordButton'
@@ -137,7 +138,7 @@ export default function ConstructionApprovalsPage() {
   const isMobile = useMobile()
 
   useEffect(() => {
-    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+    getCurrentAuthUser().then((u) => setIsAdmin(isSystemManagerClientUser(u)))
   }, [])
 
   /**

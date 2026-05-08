@@ -22,6 +22,7 @@ import ViewRecordButton from '@/components/ViewRecordButton'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 import { useMobile } from '@/hooks/useMobile'
 import {
   canUseAsApprovedUpstream,
@@ -29,6 +30,7 @@ import {
   getContractDisplayStatus,
   isApprovalLocked as isApprovalRecordLocked,
 } from '@/lib/approval-status'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 const { Text } = Typography
 const MOBILE_PAGE_SIZE = 20
@@ -110,6 +112,7 @@ export default function ProjectContractsPage() {
   const [form] = Form.useForm()
   const [lastFilter, setLastFilter] = useState<FilterValues>({})
   const [mobilePage, setMobilePage] = useState(1)
+  const [canDelete, setCanDelete] = useState(false)
   const watchedContractAmount = Form.useWatch('contractAmount', form)
   const watchedHasRetention = Form.useWatch('hasRetention', form)
   const watchedRetentionRate = Form.useWatch('retentionRate', form)
@@ -151,7 +154,11 @@ export default function ProjectContractsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadProjects(); loadContracts() }, [])
+  useEffect(() => {
+    loadProjects()
+    loadContracts()
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
+  }, [])
 
   useEffect(() => {
     const contractAmount = Number(watchedContractAmount || 0)
@@ -353,13 +360,15 @@ export default function ProjectContractsPage() {
             resource="project-contracts"
             onSuccess={() => loadContracts(lastFilter)}
           />
-          <Popconfirm
-            title="确认删除？" description="删除后无法恢复"
-            onConfirm={() => handleDelete(row.id)}
-            okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
-          </Popconfirm>
+          {canDelete ? (
+            <Popconfirm
+              title="确认删除？" description="删除后无法恢复"
+              onConfirm={() => handleDelete(row.id)}
+              okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+            </Popconfirm>
+          ) : null}
         </Space>
         )
       },
@@ -514,18 +523,20 @@ export default function ProjectContractsPage() {
               resource="project-contracts"
               onSuccess={() => loadContracts(lastFilter)}
             />
-            <Popconfirm
-              title="确认删除？"
-              description="删除后无法恢复"
-              onConfirm={() => handleDelete(item.id)}
-              okText="确认"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalLocked(item)}>
-                删除
-              </Button>
-            </Popconfirm>
+            {canDelete ? (
+              <Popconfirm
+                title="确认删除？"
+                description="删除后无法恢复"
+                onConfirm={() => handleDelete(item.id)}
+                okText="确认"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalLocked(item)}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
         )}
         empty={(

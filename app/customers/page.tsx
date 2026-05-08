@@ -14,6 +14,8 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 /**
  * 客户数据类型
@@ -68,6 +70,7 @@ export default function CustomersPage() {
   const [keyword, setKeyword] = useState('')
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
 
   /**
@@ -103,6 +106,7 @@ export default function CustomersPage() {
    */
   useEffect(() => {
     loadCustomers()
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   /**
@@ -256,17 +260,19 @@ export default function CustomersPage() {
           >
             编辑
           </Button>
-          <Popconfirm
-            title="删除客户"
-            description="确定删除该客户吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
+          {canDelete ? (
+            <Popconfirm
+              title="删除客户"
+              description="确定删除该客户吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },
@@ -416,4 +422,3 @@ export default function CustomersPage() {
     </ConfigProvider>
   )
 }
-

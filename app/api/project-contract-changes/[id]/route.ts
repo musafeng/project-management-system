@@ -1,4 +1,4 @@
-import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithPermissionAndLog, success, BadRequestError, NotFoundError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { assertEditable } from '@/lib/approval'
 import { hasDbColumn } from '@/lib/db-column-compat'
 import { db } from '@/lib/db'
@@ -187,6 +187,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
     },
 
     DELETE: async (req) => {
+      await requireDeletePermission()
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('projectContractChange', id)
       if (!existing) throw new NotFoundError('合同变更不存在')

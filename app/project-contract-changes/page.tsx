@@ -24,9 +24,11 @@ import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { canUseAsApprovedUpstream, getApprovalStatusMeta, isApprovalLocked } from '@/lib/approval-status'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 interface ProjectContract {
   id: string
@@ -95,6 +97,7 @@ export default function ProjectContractChangesPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ProjectContractChange | null>(null)
+  const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
   const selectedContractId = Form.useWatch('contractId', form)
   const increaseAmount = Number(Form.useWatch('increaseAmount', form) ?? 0)
@@ -123,6 +126,7 @@ export default function ProjectContractChangesPage() {
   useEffect(() => {
     loadContracts()
     load()
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   useEffect(() => {
@@ -242,11 +246,13 @@ export default function ProjectContractChangesPage() {
           <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
             编辑
           </Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-            <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
-              删除
-            </Button>
-          </Popconfirm>
+          {canDelete ? (
+            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
@@ -291,11 +297,13 @@ export default function ProjectContractChangesPage() {
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
               编辑
             </Button>
-            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
-                删除
-              </Button>
-            </Popconfirm>
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
             <ApprovalActions
               id={record.id}
               approvalStatus={record.approvalStatus}

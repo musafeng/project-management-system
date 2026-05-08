@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { assertEditable } from '@/lib/approval'
 import { db } from '@/lib/db'
 import {
@@ -108,6 +108,7 @@ const handler = apiHandlerWithMethod({
   },
 
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {

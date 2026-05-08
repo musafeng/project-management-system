@@ -9,8 +9,10 @@ import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import { getCurrentAuthUser } from '@/lib/auth-client'
 import { getIssuanceDisplayStatus, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 interface PettyCash {
   id: string
@@ -53,6 +55,7 @@ export default function PettyCashesPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PettyCash | null>(null)
+  const [canDelete, setCanDelete] = useState(false)
   const [holder, setHolder] = useState('')
   const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
@@ -73,6 +76,7 @@ export default function PettyCashesPage() {
 
   useEffect(() => {
     void load('', null)
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [load])
 
   const handleFinishFailed = () => {
@@ -183,11 +187,13 @@ export default function PettyCashesPage() {
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>
               编辑
             </Button>
-            <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
-                删除
-              </Button>
-            </Popconfirm>
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
             <ApprovalActions
               id={record.id}
               approvalStatus={record.approvalStatus || 'DRAFT'}

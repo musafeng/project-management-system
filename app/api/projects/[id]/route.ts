@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertDirectRecordInCurrentRegion, assertMasterRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
@@ -193,6 +193,7 @@ const handler = apiHandlerWithMethod({
    * 删除规则：如果项目存在关联合同，禁止删除
    */
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {

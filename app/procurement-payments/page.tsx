@@ -28,6 +28,7 @@ import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 import { canUseAsApprovedUpstream } from '@/lib/approval-status'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 /**
  * 采购付款数据类型
@@ -126,7 +127,7 @@ export default function ProcurementPaymentsPage() {
   const isMobile = useMobile()
 
   useEffect(() => {
-    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+    getCurrentAuthUser().then((u) => setIsAdmin(isSystemManagerClientUser(u)))
   }, [])
 
   /**
@@ -353,16 +354,18 @@ export default function ProcurementPaymentsPage() {
         return (
         <Space size="small">
           <ViewRecordButton resource="procurement-payments" id={record.id} />
-          <Popconfirm
-            title="删除付款记录"
-            description="确定删除该付款记录吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-            disabled={locked}
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
-          </Popconfirm>
+          {isAdmin ? (
+            <Popconfirm
+              title="删除付款记录"
+              description="确定删除该付款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+              disabled={locked}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
+            </Popconfirm>
+          ) : null}
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}
@@ -398,25 +401,27 @@ export default function ProcurementPaymentsPage() {
         return (
         <Space size="small" wrap>
           <ViewRecordButton resource="procurement-payments" id={record.id} />
-          <Popconfirm
-            title="删除付款记录"
-            description="确定删除该付款记录吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-            disabled={locked}
-          >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
+          {isAdmin ? (
+            <Popconfirm
+              title="删除付款记录"
+              description="确定删除该付款记录吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
               disabled={locked}
-              title={lockReason}
             >
-              删除
-            </Button>
-          </Popconfirm>
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={locked}
+                title={lockReason}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
           <ApprovalActions
             id={record.id}
             approvalStatus={record.approvalStatus}

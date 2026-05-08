@@ -19,8 +19,8 @@ import {
 import { getCurrentAuthUser, logout } from '@/lib/auth-client'
 import type { AuthUser } from '@/lib/auth-client'
 import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
-import { clientEnv } from '@/lib/env'
 import { MobileProvider, useMobile } from '@/hooks/useMobile'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 const { Sider, Header, Content } = Layout
 
@@ -114,16 +114,6 @@ const MENU_ITEMS: MenuItem[] = [
     ],
   },
 ]
-
-/** 判断用户是否为系统管理员（ADMIN 角色 或 dingUserId 在白名单中） */
-function checkIsSystemManager(user: AuthUser | null): boolean {
-  if (!user) return false
-  if (user.systemRole === 'ADMIN') return true
-  if (user.userid && clientEnv.systemManagerIds.length > 0) {
-    return clientEnv.systemManagerIds.includes(user.userid)
-  }
-  return false
-}
 
 /** 系统管理分组 key，其下子菜单仅系统管理员可见 */
 const ADMIN_ONLY_GROUP = 'system-mgmt'
@@ -261,7 +251,7 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
     loadCurrentUser()
   }, [mounted])
 
-  const filteredMenuItems = filterMenuItemsByRole(MENU_ITEMS, checkIsSystemManager(currentUser))
+  const filteredMenuItems = filterMenuItemsByRole(MENU_ITEMS, isSystemManagerClientUser(currentUser))
 
   const selectedKey = getSelectedKey(pathname)
   const openKeys = getOpenKeys(pathname)

@@ -25,6 +25,8 @@ import ViewRecordButton from '@/components/ViewRecordButton'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
+import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 
 interface DeductionItem {
   type: string
@@ -102,6 +104,7 @@ export default function ContractReceiptsPage() {
   const [contractsLoading, setContractsLoading] = useState(true)
   const [contractId, setContractId] = useState<string | undefined>(undefined)
   const [isModalVisible, setIsModalVisible] = useState(false)
+  const [canDelete, setCanDelete] = useState(false)
   const [deductionItems, setDeductionItems] = useState<DeductionItem[]>([])
   const [form] = Form.useForm()
   const selectedContractId = Form.useWatch('contractId', form)
@@ -158,6 +161,7 @@ export default function ContractReceiptsPage() {
   useEffect(() => {
     loadContracts()
     loadReceipts()
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   const handleSearch = () => {
@@ -327,17 +331,19 @@ export default function ContractReceiptsPage() {
         return (
           <Space size="small" wrap>
             <ViewRecordButton resource="contract-receipts" id={record.id} />
-            <Popconfirm
-              title="删除收款记录"
-              description="确定删除该收款记录吗？"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
-                删除
-              </Button>
-            </Popconfirm>
+            {canDelete ? (
+              <Popconfirm
+                title="删除收款记录"
+                description="确定删除该收款记录吗？"
+                onConfirm={() => handleDelete(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
             <ApprovalActions
               id={record.id}
               approvalStatus={record.approvalStatus || 'DRAFT'}
@@ -399,17 +405,19 @@ export default function ContractReceiptsPage() {
         return (
           <Space size="small" wrap>
             <ViewRecordButton resource="contract-receipts" id={record.id} />
-            <Popconfirm
-              title="删除收款记录"
-              description="确定删除该收款记录吗？"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
-                删除
-              </Button>
-            </Popconfirm>
+            {canDelete ? (
+              <Popconfirm
+                title="删除收款记录"
+                description="确定删除该收款记录吗？"
+                onConfirm={() => handleDelete(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
             <ApprovalActions
               id={record.id}
               approvalStatus={record.approvalStatus || 'DRAFT'}

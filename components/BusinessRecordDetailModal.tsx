@@ -241,6 +241,13 @@ function isDateField(key: string) {
   return /Date$|At$/.test(key)
 }
 
+function isValidDateValue(value: unknown) {
+  if (value instanceof Date) return !Number.isNaN(value.getTime())
+  if (typeof value !== 'string' && typeof value !== 'number') return false
+  const date = new Date(value)
+  return !Number.isNaN(date.getTime())
+}
+
 function isMoneyField(key: string) {
   return /(Amount|budget|paid|payable|receipt|payment|expense|issued|returned|receivable|unreceived|unpaid|changed)$/i.test(key) &&
     !/Rate$/i.test(key)
@@ -262,11 +269,17 @@ function renderValue(key: string, value: unknown) {
   if (isEmpty(value)) return <Text type="secondary">-</Text>
   if (typeof value === 'boolean') return value ? '是' : '否'
   if (typeof value === 'string' && key.toLowerCase().includes('status')) return renderStatus(key, value)
-  if (isDateField(key)) return fmtDate(String(value))
+  if (isDateField(key)) return isValidDateValue(value) ? fmtDate(String(value)) : <Text type="secondary">-</Text>
   if (isMoneyField(key)) return fmtMoney(Number(value))
   if (key === 'retentionRate') return `${Number(value)}%`
   if (Array.isArray(value)) return `${value.length} 条`
-  if (typeof value === 'object') return <Text code>{JSON.stringify(value)}</Text>
+  if (typeof value === 'object') {
+    try {
+      return <Text code>{JSON.stringify(value)}</Text>
+    } catch {
+      return <Text type="secondary">[复杂对象]</Text>
+    }
+  }
   return String(value)
 }
 
@@ -346,6 +359,7 @@ export default function BusinessRecordDetailModal({
   const [loading, setLoading] = useState(false)
   const [record, setRecord] = useState<DetailRecord | null>(null)
   const [formFields, setFormFields] = useState<FormFieldDefinition[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !resource || !id) return
@@ -355,6 +369,7 @@ export default function BusinessRecordDetailModal({
       setLoading(true)
       setRecord(null)
       setFormFields([])
+      setLoadError(null)
       const [detailResult, formResult] = await Promise.all([
         requestApi<DetailRecord>(`/api/${resource}/${id}`, {
           credentials: 'include',
@@ -370,11 +385,15 @@ export default function BusinessRecordDetailModal({
       if (detailResult.success && detailResult.data) {
         setRecord(detailResult.data)
       } else {
-        message.error(detailResult.error || '加载单据详情失败，请稍后重试')
+        const nextError = detailResult.error || '加载单据详情失败，请稍后重试'
+        setLoadError(nextError)
+        message.error(nextError)
       }
 
       if (formResult.success && formResult.data?.FormField) {
         setFormFields(formResult.data.FormField)
+      } else if (!formResult.success) {
+        console.warn('加载表单配置失败:', formResult.error)
       }
       setLoading(false)
     }
@@ -400,7 +419,7 @@ export default function BusinessRecordDetailModal({
     >
       <Spin spinning={loading}>
         {!loading && !record ? (
-          <Alert type="warning" showIcon message="未加载到单据详情" />
+          <Alert type="warning" showIcon message={loadError || '未加载到单据详情'} />
         ) : (
           <>
             <Descriptions bordered size="small" column={{ xs: 1, sm: 1, md: 2 }}>

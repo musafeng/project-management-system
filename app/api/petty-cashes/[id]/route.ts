@@ -3,6 +3,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
+  requireDeletePermission,
   success,
 } from '@/lib/api'
 import { assertEditable } from '@/lib/approval'
@@ -118,6 +119,7 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
     },
 
     DELETE: async (req) => {
+      await requireDeletePermission()
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('pettyCash', id)
 
