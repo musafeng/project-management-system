@@ -339,7 +339,7 @@ export default function ContractReceiptsPage() {
                 okText="确定"
                 cancelText="取消"
               >
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
                   删除
                 </Button>
               </Popconfirm>
@@ -413,7 +413,7 @@ export default function ContractReceiptsPage() {
                 okText="确定"
                 cancelText="取消"
               >
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
                   删除
                 </Button>
               </Popconfirm>

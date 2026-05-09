@@ -358,8 +358,8 @@ export default function SubcontractPaymentsPage() {
         return (
         <Space size="small">
           <ViewRecordButton resource="subcontract-payments" id={record.id} />
-          <Popconfirm title="删除分包付款" description="确定删除该分包付款记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
+          <Popconfirm title="删除分包付款" description="确定删除该分包付款记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
@@ -402,15 +402,12 @@ export default function SubcontractPaymentsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={locked}
           >
             <Button
               type="link"
               size="small"
               danger
               icon={<DeleteOutlined />}
-              disabled={locked}
-              title={lockReason}
             >
               删除
             </Button>

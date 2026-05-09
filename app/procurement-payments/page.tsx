@@ -361,9 +361,8 @@ export default function ProcurementPaymentsPage() {
               onConfirm={() => handleDelete(record.id)}
               okText="确定"
               cancelText="取消"
-              disabled={locked}
             >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked} title={lockReason}>删除</Button>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
           ) : null}
           <ApprovalActions
@@ -408,15 +407,12 @@ export default function ProcurementPaymentsPage() {
               onConfirm={() => handleDelete(record.id)}
               okText="确定"
               cancelText="取消"
-              disabled={locked}
             >
               <Button
                 type="link"
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                disabled={locked}
-                title={lockReason}
               >
                 删除
               </Button>

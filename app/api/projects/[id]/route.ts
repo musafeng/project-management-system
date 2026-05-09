@@ -207,12 +207,6 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('项目不存在')
     }
 
-    try {
-      assertEditable(project.approvalStatus, project.approvedAt)
-    } catch (err) {
-      throw new ForbiddenError(err instanceof Error ? err.message : '无法删除')
-    }
-
     // 检查是否存在关联合同
     const contractCount = await db.projectContract.count({
       where: { projectId: id },

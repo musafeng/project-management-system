@@ -147,7 +147,7 @@ function MobileProjectCard({
               okText="确定"
               cancelText="取消"
             >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
           ) : null}
         </Space>
@@ -314,7 +314,7 @@ export default function ProjectsPage() {
           />
           {canDelete ? (
             <Popconfirm title="删除项目" description="确定删除该项目吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
           ) : null}
         </Space>

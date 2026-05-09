@@ -130,12 +130,6 @@ const handler = apiHandlerWithMethod({
       throw new NotFoundError('付款记录不存在')
     }
 
-    try {
-      assertEditable(payment.approvalStatus, payment.approvedAt)
-    } catch (err) {
-      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
-    }
-
     const contract = await assertProcurementContractInCurrentRegion(payment.contractId)
 
     if (!contract) {

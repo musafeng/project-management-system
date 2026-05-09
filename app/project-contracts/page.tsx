@@ -366,7 +366,7 @@ export default function ProjectContractsPage() {
               onConfirm={() => handleDelete(row.id)}
               okText="确认" cancelText="取消" okButtonProps={{ danger: true }}
             >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
           ) : null}
         </Space>
@@ -532,7 +532,7 @@ export default function ProjectContractsPage() {
                 cancelText="取消"
                 okButtonProps={{ danger: true }}
               >
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isApprovalLocked(item)}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
                   删除
                 </Button>
               </Popconfirm>

@@ -503,8 +503,8 @@ export default function LaborContractsPage() {
         <Space size="small">
           <ViewRecordButton resource="labor-contracts" id={record.id} />
           <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} title={lockReason} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <Popconfirm title="删除劳务合同" description="确定删除该劳务合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+          <Popconfirm title="删除劳务合同" description="确定删除该劳务合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
           <ApprovalActions
             id={record.id}
@@ -559,9 +559,8 @@ export default function LaborContractsPage() {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={locked}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>

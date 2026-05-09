@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
@@ -194,6 +194,7 @@ const handler = apiHandlerWithMethod({
    * 删除规则：如果存在采购合同、劳务合同、分包合同，禁止删除
    */
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {
@@ -205,13 +206,6 @@ const handler = apiHandlerWithMethod({
 
     if (!approval) {
       throw new NotFoundError('施工立项不存在')
-    }
-
-    // 审批状态锁定校验
-    try {
-      assertEditable(approval.approvalStatus, approval.approvedAt)
-    } catch (err) {
-      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
     }
 
     // 检查是否存在采购合同

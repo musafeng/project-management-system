@@ -3,7 +3,7 @@
  */
 
 import { cookies } from 'next/headers'
-import { checkAuth, isSystemManager, type AuthenticatedUser } from '@/lib/api/auth'
+import { checkAuth, type AuthenticatedUser } from '@/lib/api/auth'
 import { ForbiddenError, NotFoundError } from '@/lib/api/errors'
 import { db } from './db'
 import { getDbTableColumns } from './db-column-compat'
@@ -131,16 +131,11 @@ export async function getAccessibleRegions(
     return []
   }
 
-  if (authUser && isSystemManager(authUser)) {
-    return db.region.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, code: true, isActive: true },
-      orderBy: [{ code: 'asc' }, { createdAt: 'asc' }],
-    })
-  }
-
-  const fallbackRegion = await getDefaultRegion()
-  return fallbackRegion ? [fallbackRegion] : []
+  return db.region.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, code: true, isActive: true },
+    orderBy: [{ code: 'asc' }, { createdAt: 'asc' }],
+  })
 }
 
 export async function getAccessibleRegionIds(
@@ -174,8 +169,8 @@ export async function resolveCurrentRegionContext(
 /**
  * 获取当前区域 ID（服务端）
  * 规则：
- * 1. 管理员可在自己有权访问的激活区域之间切换
- * 2. 普通用户固定落到默认区域（当前系统暂无用户-区域授权关系）
+ * 1. 登录用户可在激活区域之间切换
+ * 2. 当前系统暂无用户-区域授权关系，因此区域选择不再按角色收窄
  */
 export async function getCurrentRegionId(): Promise<string | null> {
   const context = await resolveCurrentRegionContext()

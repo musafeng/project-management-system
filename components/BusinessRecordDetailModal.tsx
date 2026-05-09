@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Descriptions, Divider, Modal, Space, Spin, Table, Tag, Typography, message } from 'antd'
+import { Alert, Button, Descriptions, Divider, Modal, Space, Spin, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { FileTextOutlined } from '@ant-design/icons'
 import { getAttachmentDisplayName, getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
@@ -333,12 +333,16 @@ function getItemColumns(items: Array<Record<string, any>>): ColumnsType<Record<s
 
 function AttachmentLinks({ urls }: { urls: string[] }) {
   if (urls.length === 0) return <Text type="secondary">暂无附件</Text>
+  const handleOpen = (url: string) => {
+    window.open(getAttachmentOpenUrl(url), '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <Space direction="vertical" size={4}>
       {urls.map((url) => (
-        <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+        <Button key={url} type="link" size="small" style={{ height: 'auto', padding: 0, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => handleOpen(url)}>
           {getAttachmentDisplayName(url) || url}
-        </a>
+        </Button>
       ))}
     </Space>
   )

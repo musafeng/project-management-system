@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import {
@@ -236,18 +236,13 @@ const handler = apiHandlerWithMethod({
   },
 
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) throw new BadRequestError('缺少合同 ID')
 
     const contract = await assertDirectRecordInCurrentRegion('procurementContract', id)
     if (!contract) throw new NotFoundError('采购合同不存在')
-
-    try {
-      assertEditable(contract.approvalStatus, contract.approvedAt)
-    } catch (err) {
-      throw new ForbiddenError(err instanceof Error ? err.message : '无法修改')
-    }
 
     const paymentCount = await db.procurementPayment.count({
       where: { contractId: id },

@@ -191,12 +191,6 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const id = getIdFromRequest(req)
       const existing = await assertDirectRecordInCurrentRegion('projectContractChange', id)
       if (!existing) throw new NotFoundError('合同变更不存在')
-      try {
-        assertEditable(existing.approvalStatus, existing.approvedAt)
-      } catch (error) {
-        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法修改')
-      }
-
       await deleteCompatRecord('ProjectContractChange', id)
       return success({ id })
     },

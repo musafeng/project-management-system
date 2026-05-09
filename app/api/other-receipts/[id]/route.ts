@@ -104,12 +104,6 @@ export const { GET, PUT, DELETE } = apiHandlerWithPermissionAndLog(
       const existing = await assertDirectRecordInCurrentRegion('otherReceipt', id)
 
       if (!existing) throw new NotFoundError('记录不存在')
-      try {
-        assertEditable(existing.approvalStatus, existing.approvedAt)
-      } catch (error) {
-        throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
-      }
-
       await deleteCompatRecord('OtherReceipt', id)
       return success({ id })
     },

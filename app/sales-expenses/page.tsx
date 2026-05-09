@@ -195,7 +195,7 @@ export default function SalesExpensesPage() {
             </Button>
             {canDelete ? (
               <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
-                <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>
+                <Button size="small" danger icon={<DeleteOutlined />}>
                   删除
                 </Button>
               </Popconfirm>

@@ -210,6 +210,8 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
         const currentJson = await currentRes.json()
         if (regionsJson.success) {
           setRegions(regionsJson.data.filter((r: any) => r.isActive))
+        } else if (currentJson.success && Array.isArray(currentJson.data?.accessibleRegions)) {
+          setRegions(currentJson.data.accessibleRegions.filter((r: any) => r.isActive))
         }
         if (currentJson.success && currentJson.data?.regionId) {
           setCurrentRegionId(currentJson.data.regionId)

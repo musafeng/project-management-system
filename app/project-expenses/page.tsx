@@ -198,7 +198,7 @@ export default function ProjectExpensesPage() {
             <ViewRecordButton resource="project-expenses" id={r.id} />
             <Button size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(r)}>编辑</Button>
             <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)} okText="是" cancelText="否">
-              <Button size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
             <ApprovalActions
               id={r.id}

@@ -119,12 +119,6 @@ const handler = apiHandlerWithMethod({
     if (!receipt) {
       throw new NotFoundError('收款记录不存在')
     }
-    try {
-      assertEditable(receipt.approvalStatus, receipt.approvedAt)
-    } catch (error) {
-      throw new ForbiddenError(error instanceof Error ? error.message : '当前单据无法删除')
-    }
-
     const contract = await assertProjectContractInCurrentRegion(receipt.contractId)
 
     if (!contract) {

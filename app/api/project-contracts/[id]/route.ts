@@ -1,4 +1,4 @@
-import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '@/lib/api'
+import { apiHandlerWithMethod, success, BadRequestError, NotFoundError, ConflictError, ForbiddenError, requireDeletePermission } from '@/lib/api'
 import { db } from '@/lib/db'
 import { assertEditable } from '@/lib/approval'
 import { assertDirectRecordInCurrentRegion, requireCurrentRegionId } from '@/lib/region'
@@ -260,6 +260,7 @@ const handler = apiHandlerWithMethod({
    * 删除规则：如果合同已产生业务数据（收款、施工立项），禁止删除
    */
   DELETE: async (req) => {
+    await requireDeletePermission()
     const id = req.url.split('/').pop()
 
     if (!id) {
@@ -271,12 +272,6 @@ const handler = apiHandlerWithMethod({
 
     if (!contract) {
       throw new NotFoundError('合同不存在')
-    }
-
-    try {
-      assertEditable(contract.approvalStatus, contract.approvedAt)
-    } catch (err) {
-      throw new ForbiddenError(err instanceof Error ? err.message : '无法删除')
     }
 
     // 检查是否存在收款记录
