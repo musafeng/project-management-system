@@ -24,6 +24,8 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface ExpenseItem {
   type: string
@@ -70,6 +72,7 @@ export default function ManagementExpensesPage() {
   const [submitter, setSubmitter] = useState('')
   const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
@@ -213,6 +216,42 @@ export default function ManagementExpensesPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<Expense>
+      data={data}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.submitter || '管理费用报销'}
+      getDescription={(item) => `日期：${fmtDate(item.expenseDate)}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'totalAmount', label: '总金额', render: (item) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(Number(item.totalAmount))}</span>, fullWidth: true },
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="management-expenses" id={record.id} />
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+            {canDelete ? (
+              <Popconfirm title="删除管理费用报销" description="确定删除该报销记录吗？" onConfirm={() => void handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              </Popconfirm>
+            ) : null}
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="management-expenses"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      }}
+      empty={<EmptyHint title="暂无管理费用报销数据" desc="新增管理费用报销后，可在此管理审批进度。" />}
+    />
+  )
+
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
@@ -241,14 +280,18 @@ export default function ManagementExpensesPage() {
         ))}
       </div>
 
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 700 }} size="small" />
+      {isMobile ? (
+        mobileCards
+      ) : (
+        <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 700 }} size="small" />
+      )}
 
       <Modal
         title={editing ? '编辑管理费用报销' : '新增管理费用报销'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={620}
+        width={isMobile ? '95vw' : 620}
         okText="确定"
         cancelText="取消"
       >
