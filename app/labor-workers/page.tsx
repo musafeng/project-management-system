@@ -15,6 +15,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 /**
  * 劳务人员数据类型
@@ -74,6 +76,7 @@ export default function LaborWorkersPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   /**
    * 加载劳务人员列表
@@ -309,6 +312,39 @@ export default function LaborWorkersPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<LaborWorker>
+      data={workers}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      fields={[
+        { key: 'phone', label: '联系电话', render: (item) => item.phone || '-' },
+        { key: 'idNumber', label: '身份证号', render: (item) => item.idNumber || '-', fullWidth: true },
+        { key: 'bankAccount', label: '银行卡号', render: (item) => item.bankAccount || '-', fullWidth: true },
+        { key: 'bankName', label: '开户行', render: (item) => item.bankName || '-', fullWidth: true },
+        { key: 'createdAt', label: '创建时间', render: (item) => formatDate(item.createdAt) },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          {canDelete ? (
+            <Popconfirm title="删除劳务人员" description="确定删除该劳务人员吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无劳务人员数据"
+          desc="新增劳务人员后，可在此管理身份证与开户信息。"
+          action={<Button type="primary" onClick={handleAddClick}>新增劳务人员</Button>}
+        />
+      )}
+    />
+  )
+
   return (
     <div
       style={{
@@ -348,7 +384,7 @@ export default function LaborWorkersPage() {
             prefix={<SearchOutlined />}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: 200 }}
+            style={{ width: isMobile ? '100%' : 200 }}
             onPressEnter={handleSearch}
           />
 
@@ -369,26 +405,30 @@ export default function LaborWorkersPage() {
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleAddClick}
-            style={{ marginLeft: 'auto' }}
+            style={{ marginLeft: isMobile ? 0 : 'auto', width: isMobile ? '100%' : 'auto' }}
           >
             新增劳务人员
           </Button>
         </Space>
       </div>
 
-      {/* 表格 */}
-      <Table<LaborWorker>
-        rowKey="id"
-        columns={columns}
-        dataSource={workers}
-        loading={loading}
-        pagination={false}
-        scroll={{ x: 1100 }}
-        size="small"
-        locale={{
-          emptyText: '暂无劳务人员数据',
-        }}
-      />
+      {/* 列表 */}
+      {isMobile ? (
+        mobileCards
+      ) : (
+        <Table<LaborWorker>
+          rowKey="id"
+          columns={columns}
+          dataSource={workers}
+          loading={loading}
+          pagination={false}
+          scroll={{ x: 1100 }}
+          size="small"
+          locale={{
+            emptyText: '暂无劳务人员数据',
+          }}
+        />
+      )}
 
       {/* 新增/编辑弹窗 */}
       <Modal
@@ -399,7 +439,7 @@ export default function LaborWorkersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={620}
+        width={isMobile ? '95vw' : 620}
         okText="确定"
         cancelText="取消"
       >

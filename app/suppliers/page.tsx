@@ -17,6 +17,8 @@ import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant
 import { requestApi } from '@/lib/client-request'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 /**
  * 供应商数据类型
@@ -67,6 +69,7 @@ export default function SuppliersPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   /**
    * 加载供应商列表
@@ -277,6 +280,40 @@ export default function SuppliersPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<Supplier>
+      data={suppliers}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      fields={[
+        { key: 'contact', label: '联系人', render: (item) => item.contact || '-' },
+        { key: 'phone', label: '联系电话', render: (item) => item.phone || '-' },
+        { key: 'address', label: '地址', render: (item) => item.address || '-', fullWidth: true },
+        { key: 'bankAccount', label: '银行卡号', render: (item) => item.bankAccount || '-', fullWidth: true },
+        { key: 'bankName', label: '开户行', render: (item) => item.bankName || '-', fullWidth: true },
+        { key: 'createdAt', label: '创建时间', render: (item) => formatDate(item.createdAt) },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          {canDelete ? (
+            <Popconfirm title="删除供应商" description="确定删除该供应商吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无供应商数据"
+          desc="新增供应商后，可在此管理联系方式与开户信息。"
+          action={<Button type="primary" onClick={handleAddClick}>新增供应商</Button>}
+        />
+      )}
+    />
+  )
+
   return (
     <ConfigProvider
       theme={{
@@ -334,7 +371,7 @@ export default function SuppliersPage() {
                 prefix={<SearchOutlined />}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
+                style={{ width: isMobile ? '100%' : 200 }}
                 onPressEnter={handleSearch}
               />
 
@@ -355,26 +392,30 @@ export default function SuppliersPage() {
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
+                style={{ marginLeft: isMobile ? 0 : 'auto', width: isMobile ? '100%' : 'auto' }}
               >
                 新增供应商
               </Button>
             </Space>
           </div>
 
-          {/* 表格 */}
-          <Table<Supplier>
-            rowKey="id"
-            columns={columns}
-            dataSource={suppliers}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1000 }}
-            size="small"
-            locale={{
-              emptyText: '暂无供应商数据',
-            }}
-          />
+          {/* 列表 */}
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<Supplier>
+              rowKey="id"
+              columns={columns}
+              dataSource={suppliers}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 1000 }}
+              size="small"
+              locale={{
+                emptyText: '暂无供应商数据',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -387,7 +428,7 @@ export default function SuppliersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={560}
+        width={isMobile ? '95vw' : 560}
         okText="确定"
         cancelText="取消"
       >
