@@ -16,6 +16,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 /**
  * 客户数据类型
@@ -72,6 +74,7 @@ export default function CustomersPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   /**
    * 加载客户列表
@@ -278,6 +281,52 @@ export default function CustomersPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<Customer>
+      data={customers}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      fields={[
+        { key: 'contact', label: '联系人', render: (item) => item.contact || '-' },
+        { key: 'phone', label: '联系电话', render: (item) => item.phone || '-' },
+        { key: 'createdAt', label: '创建时间', render: (item) => formatDate(item.createdAt), fullWidth: true },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => handleEditClick(record.id)}
+          >
+            编辑
+          </Button>
+          {canDelete ? (
+            <Popconfirm
+              title="删除客户"
+              description="确定删除该客户吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          title="暂无客户数据"
+          desc="新增客户后，可在此管理客户的联系方式。"
+          action={<Button type="primary" onClick={handleAddClick}>新增客户</Button>}
+        />
+      )}
+    />
+  )
+
   return (
     <ConfigProvider
       theme={{
@@ -292,7 +341,7 @@ export default function CustomersPage() {
         style={{
           minHeight: '100vh',
           background: '#f5f5f5',
-          padding: '16px',
+          padding: isMobile ? '12px' : '16px',
         }}
       >
         <div
@@ -300,17 +349,17 @@ export default function CustomersPage() {
             maxWidth: '100%',
             margin: '0 auto',
             background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
+            borderRadius: isMobile ? 10 : 8,
+            padding: isMobile ? '14px' : '20px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
           {/* 标题 */}
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: isMobile ? 16 : 24 }}>
             <h1
               style={{
                 margin: 0,
-                fontSize: 20,
+                fontSize: isMobile ? 18 : 20,
                 fontWeight: 600,
                 color: '#1d1d1f',
               }}
@@ -329,53 +378,75 @@ export default function CustomersPage() {
               border: '1px solid #f0f0f0',
             }}
           >
-            <Space wrap style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'stretch' : 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
               <Input
                 placeholder="输入客户名称搜索"
                 prefix={<SearchOutlined />}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
+                style={{ width: isMobile ? '100%' : 200 }}
                 onPressEnter={handleSearch}
               />
 
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-                loading={loading}
-              >
-                查询
-              </Button>
+              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+                <Button
+                  type="primary"
+                  icon={<SearchOutlined />}
+                  onClick={handleSearch}
+                  loading={loading}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  查询
+                </Button>
 
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
+                <Button
+                  onClick={handleReset}
+                  loading={loading}
+                  style={{ flex: isMobile ? 1 : undefined }}
+                >
+                  重置
+                </Button>
+              </div>
 
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
+                style={{
+                  width: isMobile ? '100%' : 'auto',
+                  marginLeft: isMobile ? 0 : 'auto',
+                }}
               >
                 新增客户
               </Button>
-            </Space>
+            </div>
           </div>
 
-          {/* 表格 */}
-          <Table<Customer>
-            rowKey="id"
-            columns={columns}
-            dataSource={customers}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 800 }}
-            size="small"
-            locale={{
-              emptyText: '暂无客户数据',
-            }}
-          />
+          {/* 列表 */}
+          {isMobile ? (
+            mobileCards
+          ) : (
+            <Table<Customer>
+              rowKey="id"
+              columns={columns}
+              dataSource={customers}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 800 }}
+              size="small"
+              locale={{
+                emptyText: '暂无客户数据',
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -388,7 +459,7 @@ export default function CustomersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={500}
+        width={isMobile ? '95vw' : 500}
         okText="确定"
         cancelText="取消"
       >
