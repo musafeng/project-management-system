@@ -25,8 +25,20 @@ export interface DingTalkUser {
 
 /**
  * 获取企业内部应用 access_token
+ * 使用新版 POST /v1.0/oauth2/accessToken 接口，避免 appSecret 出现在 URL / 日志
+ * 进程内缓存 token 至过期前 60 秒，减少钉钉侧调用次数
  * 文档：https://open.dingtalk.com/document/orgapp/obtain-orgapp-token
  */
+interface AccessTokenCache {
+  token: string
+  expiresAt: number
+}
+
+let accessTokenCache: AccessTokenCache | null = null
+let inflightAccessToken: Promise<string> | null = null
+
+const ACCESS_TOKEN_REFRESH_MARGIN_MS = 60 * 1000
+
 export async function getAccessToken(): Promise<string> {
   const { clientId, clientSecret } = serverEnv.dingtalk
 
@@ -34,25 +46,46 @@ export async function getAccessToken(): Promise<string> {
     throw new Error('钉钉配置缺失：clientId 或 clientSecret 未设置')
   }
 
-  try {
-    const response = await fetch(
-      `${DINGTALK_API_BASE}/gettoken?appkey=${clientId}&appsecret=${clientSecret}`,
-      {
-        method: 'GET',
-      }
-    )
-
-    const result = await response.json()
-
-    if (result.errcode !== 0) {
-      throw new Error(`获取 access_token 失败: ${result.errmsg}`)
-    }
-
-    return result.access_token
-  } catch (error) {
-    console.error('获取钉钉 access_token 失败:', error)
-    throw error
+  const now = Date.now()
+  if (accessTokenCache && accessTokenCache.expiresAt - ACCESS_TOKEN_REFRESH_MARGIN_MS > now) {
+    return accessTokenCache.token
   }
+
+  if (inflightAccessToken) {
+    return inflightAccessToken
+  }
+
+  inflightAccessToken = (async () => {
+    try {
+      const response = await fetch('https://api.dingtalk.com/v1.0/oauth2/accessToken', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appKey: clientId, appSecret: clientSecret }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.accessToken) {
+        const message = result?.message || result?.errmsg || `HTTP ${response.status}`
+        throw new Error(`获取 access_token 失败: ${message}`)
+      }
+
+      const expireInSec = Number(result.expireIn) > 0 ? Number(result.expireIn) : 7200
+      accessTokenCache = {
+        token: result.accessToken as string,
+        expiresAt: Date.now() + expireInSec * 1000,
+      }
+      return accessTokenCache.token
+    } catch (error) {
+      accessTokenCache = null
+      console.error('获取钉钉 access_token 失败:', error)
+      throw error
+    } finally {
+      inflightAccessToken = null
+    }
+  })()
+
+  return inflightAccessToken
 }
 
 /**
