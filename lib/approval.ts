@@ -4,9 +4,10 @@
  */
 
 import { db } from './db'
+import { prisma } from './prisma'
 import { createActionLog } from './action-log'
 import { ActionType } from '@prisma/client'
-import type { SystemUserRole } from '@prisma/client'
+import type { Prisma, SystemUserRole } from '@prisma/client'
 import { requireRole, getCurrentUser } from './api'
 import { updateCompatRecord } from './db-write-compat'
 import {
@@ -17,6 +18,8 @@ import {
 } from './dingtalk-notify'
 import { getApprovalLockReason } from './approval-status'
 import { assertResourceInCurrentRegion, requireCurrentRegionId } from './region'
+
+export type ApprovalTxClient = Prisma.TransactionClient
 
 export const ApprovalStatus = {
   DRAFT: 'DRAFT',
@@ -168,20 +171,22 @@ async function getLatestInstance(model: ApprovalModel, resourceId: string) {
 async function updateApprovalStatus(
   model: ApprovalModel,
   id: string,
-  data: Record<string, any>
+  data: Record<string, any>,
+  tx?: ApprovalTxClient
 ): Promise<void> {
-  await updateCompatRecord(MODEL_TABLE[model], id, data)
+  await updateCompatRecord(MODEL_TABLE[model], id, data, tx)
 }
 
 async function updateBusinessStatusForApproval(
   model: ApprovalModel,
   id: string,
-  event: 'submit' | 'approve' | 'reject'
+  event: 'submit' | 'approve' | 'reject',
+  tx?: ApprovalTxClient
 ): Promise<void> {
   if (!CONTRACT_STATUS_MODELS.has(model)) return
 
   const status = event === 'submit' ? 'PENDING' : event === 'approve' ? 'APPROVED' : 'DRAFT'
-  await updateCompatRecord(MODEL_TABLE[model], id, { status })
+  await updateCompatRecord(MODEL_TABLE[model], id, { status }, tx)
 }
 
 async function getSubmitterDingUserId(
@@ -310,38 +315,40 @@ export async function handleSubmit(
 
   const firstNode = definition.ProcessNode[0]
 
-  // 创建流程实例 + 第一个任务
-  await db.processInstance.create({
-    data: {
-      id: crypto.randomUUID(),
-      definitionId: definition.id,
-      resourceType,
-      resourceId: id,
-      submitterUserId: submitter.userid,
-      submitterName: submitter.name,
-      status: 'PENDING',
-      ProcessTask: {
-        create: [
-          {
-            id: crypto.randomUUID(),
-            nodeId: firstNode.id,
-            nodeOrder: firstNode.order,
-            approverType: firstNode.approverType,
-            approverRole: firstNode.approverRole,
-            approverUserId: firstNode.approverUserId,
-            status: 'PENDING',
-          },
-        ],
+  // 创建流程实例 + 第一个任务，回写审批状态、业务状态放在同一事务内
+  await prisma.$transaction(async (tx) => {
+    await tx.processInstance.create({
+      data: {
+        id: crypto.randomUUID(),
+        definitionId: definition.id,
+        resourceType,
+        resourceId: id,
+        submitterUserId: submitter.userid,
+        submitterName: submitter.name,
+        status: 'PENDING',
+        ProcessTask: {
+          create: [
+            {
+              id: crypto.randomUUID(),
+              nodeId: firstNode.id,
+              nodeOrder: firstNode.order,
+              approverType: firstNode.approverType,
+              approverRole: firstNode.approverRole,
+              approverUserId: firstNode.approverUserId,
+              status: 'PENDING',
+            },
+          ],
+        },
       },
-    },
-  })
+    })
 
-  await updateApprovalStatus(model, id, {
-    approvalStatus: ApprovalStatus.PENDING,
-    submittedAt: new Date(),
-    rejectedReason: null,
+    await updateApprovalStatus(model, id, {
+      approvalStatus: ApprovalStatus.PENDING,
+      submittedAt: new Date(),
+      rejectedReason: null,
+    }, tx)
+    await updateBusinessStatusForApproval(model, id, 'submit', tx)
   })
-  await updateBusinessStatusForApproval(model, id, 'submit')
 
   await createActionLog({
     action: ActionType.UPDATE,
@@ -369,11 +376,14 @@ export async function handleSubmit(
  * - 校验当前用户是否为当前任务的审批人
  * - 完成当前 task，推进到下一节点
  * - 若无下一节点，approvalStatus = APPROVED
+ * - afterApprove: 审批完全通过（无下一节点）时在同一事务内执行的副作用回调，
+ *   失败会回滚整单审批
  */
 export async function handleApprove(
   model: ApprovalModel,
   id: string,
-  resourcePath: string
+  resourcePath: string,
+  afterApprove?: (tx: ApprovalTxClient) => Promise<void>
 ): Promise<void> {
   await assertResourceInCurrentRegion(MODEL_RESOURCE_TYPE[model], id)
 
@@ -389,44 +399,54 @@ export async function handleApprove(
 
   const approver = await getCurrentUser()
 
-  // 完成当前 task
-  await db.processTask.update({
-    where: { id: task.id },
-    data: { status: 'APPROVED', handledAt: new Date(), handledBy: approver.userid },
-  })
+  await prisma.$transaction(async (tx) => {
+    // 完成当前 task（乐观锁：仅当仍为 PENDING 才能改成功）
+    const { count } = await tx.processTask.updateMany({
+      where: { id: task.id, status: 'PENDING' },
+      data: { status: 'APPROVED', handledAt: new Date(), handledBy: approver.userid },
+    })
+    if (count === 0) {
+      throw new Error('该审批已被其他人处理，请刷新后重试')
+    }
 
-  // 查找下一节点
-  const nextNode = await db.processNode.findFirst({
-    where: { definitionId: instance.definitionId, order: { gt: task.nodeOrder } },
-    orderBy: { order: 'asc' },
-  })
+    // 查找下一节点
+    const nextNode = await tx.processNode.findFirst({
+      where: { definitionId: instance.definitionId, order: { gt: task.nodeOrder } },
+      orderBy: { order: 'asc' },
+    })
 
-  if (nextNode) {
-    // 创建下一个 task
-    await db.processTask.create({
-      data: {
-        id: crypto.randomUUID(),
-        instanceId: instance.id,
-        nodeId: nextNode.id,
-        nodeOrder: nextNode.order,
-        approverType: nextNode.approverType,
-        approverRole: nextNode.approverRole,
-        approverUserId: nextNode.approverUserId,
-        status: 'PENDING',
-      },
-    })
-  } else {
-    // 所有节点完成
-    await db.processInstance.update({
-      where: { id: instance.id },
-      data: { status: 'APPROVED', finishedAt: new Date() },
-    })
-    await updateApprovalStatus(model, id, {
-      approvalStatus: ApprovalStatus.APPROVED,
-      approvedAt: new Date(),
-    })
-    await updateBusinessStatusForApproval(model, id, 'approve')
-  }
+    if (nextNode) {
+      // 创建下一个 task
+      await tx.processTask.create({
+        data: {
+          id: crypto.randomUUID(),
+          instanceId: instance.id,
+          nodeId: nextNode.id,
+          nodeOrder: nextNode.order,
+          approverType: nextNode.approverType,
+          approverRole: nextNode.approverRole,
+          approverUserId: nextNode.approverUserId,
+          status: 'PENDING',
+        },
+      })
+    } else {
+      // 所有节点完成
+      await tx.processInstance.update({
+        where: { id: instance.id },
+        data: { status: 'APPROVED', finishedAt: new Date() },
+      })
+      await updateApprovalStatus(model, id, {
+        approvalStatus: ApprovalStatus.APPROVED,
+        approvedAt: new Date(),
+      }, tx)
+      await updateBusinessStatusForApproval(model, id, 'approve', tx)
+
+      // 业务副作用（例如合同变更金额更新）：同事务内执行，失败整单回滚
+      if (afterApprove) {
+        await afterApprove(tx)
+      }
+    }
+  })
 
   await createActionLog({
     action: ActionType.UPDATE,
@@ -469,22 +489,28 @@ export async function handleReject(
 
   const approver = await getCurrentUser()
 
-  await db.processTask.update({
-    where: { id: task.id },
-    data: { status: 'REJECTED', handledAt: new Date(), handledBy: approver.userid, comment: reason ?? null },
-  })
+  await prisma.$transaction(async (tx) => {
+    // 驳回当前 task（乐观锁：仅当仍为 PENDING 才能改成功）
+    const { count } = await tx.processTask.updateMany({
+      where: { id: task.id, status: 'PENDING' },
+      data: { status: 'REJECTED', handledAt: new Date(), handledBy: approver.userid, comment: reason ?? null },
+    })
+    if (count === 0) {
+      throw new Error('该审批已被其他人处理，请刷新后重试')
+    }
 
-  await db.processInstance.update({
-    where: { id: instance.id },
-    data: { status: 'REJECTED', finishedAt: new Date() },
-  })
+    await tx.processInstance.update({
+      where: { id: instance.id },
+      data: { status: 'REJECTED', finishedAt: new Date() },
+    })
 
-  await updateApprovalStatus(model, id, {
-    approvalStatus: ApprovalStatus.REJECTED,
-    rejectedAt: new Date(),
-    rejectedReason: reason ?? null,
+    await updateApprovalStatus(model, id, {
+      approvalStatus: ApprovalStatus.REJECTED,
+      rejectedAt: new Date(),
+      rejectedReason: reason ?? null,
+    }, tx)
+    await updateBusinessStatusForApproval(model, id, 'reject', tx)
   })
-  await updateBusinessStatusForApproval(model, id, 'reject')
 
   await createActionLog({
     action: ActionType.UPDATE,

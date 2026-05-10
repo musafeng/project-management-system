@@ -25,7 +25,6 @@ export default function AttachmentUploadField({
   const [uploadingCount, setUploadingCount] = useState(0)
   const attachments = useMemo(() => parseAttachmentUrls(value), [value])
   const attachmentsRef = useRef<string[]>(attachments)
-  const uploadQueueRef = useRef<Promise<string | void>>(Promise.resolve())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const uploading = uploadingCount > 0
 
@@ -73,11 +72,7 @@ export default function AttachmentUploadField({
   }
 
   const enqueueUpload = (file: File) => {
-    uploadQueueRef.current = uploadQueueRef.current
-      .catch(() => undefined)
-      .then(() => uploadSingleFile(file))
-
-    return uploadQueueRef.current
+    return uploadSingleFile(file).catch(() => undefined)
   }
 
   const handleSelectFiles = (event: React.ChangeEvent<HTMLInputElement>) => {

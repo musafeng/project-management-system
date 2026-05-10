@@ -19,8 +19,12 @@ export async function POST(
     if (action === 'submit') {
       await handleSubmit(MODEL, id, `${BASE}/${id}/submit`)
     } else if (action === 'approve') {
-      await handleApprove(MODEL, id, `${BASE}/${id}/approve`)
-      await applyApprovedProjectContractChange(id)
+      await handleApprove(
+        MODEL,
+        id,
+        `${BASE}/${id}/approve`,
+        (tx) => applyApprovedProjectContractChange(id, tx),
+      )
     } else if (action === 'reject') {
       const body = await req.json().catch(() => ({}))
       await handleReject(MODEL, id, body.reason, `${BASE}/${id}/reject`)
