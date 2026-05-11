@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Form, Input, InputNumber, DatePicker, Select, Button, Table, Upload, Space } from 'antd'
-import { PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import { Form, Input, InputNumber, DatePicker, Select, Button, Table, Space } from 'antd'
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { FormInstance } from 'antd'
-import { getAttachmentOpenUrl } from '@/lib/attachments'
+import AttachmentUploadField from '@/components/AttachmentUploadField'
+import { getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
 
 export interface FormFieldConfig {
   id: string
@@ -163,79 +164,34 @@ function CascadeSelectField({
   )
 }
 
-/** 文件上传字段（对接阿里云 OSS） */
+/** 文件上传字段（多文件，复用 AttachmentUploadField） */
 function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boolean }) {
   const form = Form.useFormInstance()
-  const [uploading, setUploading] = useState(false)
-  const [fileName, setFileName] = useState<string>('')
+  const currentValue: string = form.getFieldValue(['formData', field.fieldKey]) || ''
 
-  const currentUrl: string = form.getFieldValue(['formData', field.fieldKey]) || ''
-  useEffect(() => {
-    if (currentUrl && !fileName) {
-      const parts = currentUrl.split('/')
-      const raw = parts[parts.length - 1] || ''
-      const name = raw.replace(/^\d+-/, '')
-      setFileName(decodeURIComponent(name))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUrl])
-
-  const handleUpload = useCallback(async (file: File) => {
-    setUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) {
-        const { message } = await import('antd')
-        message.error(json.error || '上传失败')
-        return false
-      }
-      form.setFieldValue(['formData', field.fieldKey], json.url)
-      setFileName(json.name)
-      const { message } = await import('antd')
-      message.success(`${json.name} 上传成功`)
-    } catch {
-      const { message } = await import('antd')
-      message.error('上传失败，请检查网络')
-    } finally {
-      setUploading(false)
-    }
-    return false
-  }, [field.fieldKey, form])
-
-  const handleClear = useCallback(() => {
-    form.setFieldValue(['formData', field.fieldKey], '')
-    setFileName('')
+  const handleChange = useCallback((value: string | null) => {
+    form.setFieldValue(['formData', field.fieldKey], value ?? '')
   }, [field.fieldKey, form])
 
   if (disabled) {
-    return currentUrl
-      ? <a href={getAttachmentOpenUrl(currentUrl)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{fileName || currentUrl}</a>
-      : <span style={{ color: '#999' }}>暂无附件</span>
+    const urls = parseAttachmentUrls(currentValue)
+    if (urls.length === 0) return <span style={{ color: '#999' }}>暂无附件</span>
+    return (
+      <Space direction="vertical" size={4}>
+        {urls.map((url) => (
+          <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+            {url.split('/').pop()?.replace(/^\d+-/, '') || '查看附件'}
+          </a>
+        ))}
+      </Space>
+    )
   }
 
   return (
-    <Space>
-      <Upload
-        beforeUpload={handleUpload}
-        showUploadList={false}
-        disabled={uploading}
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
-      >
-        <Button icon={<UploadOutlined />} loading={uploading}>
-          {uploading ? '上传中...' : '选择文件'}
-        </Button>
-      </Upload>
-      {fileName && (
-        <Space size={4}>
-          <a href={getAttachmentOpenUrl(currentUrl)} target="_blank" rel="noreferrer">{fileName}</a>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={handleClear} />
-        </Space>
-      )}
-      {!fileName && <span style={{ color: '#999', fontSize: 12 }}>支持 图片 / PDF / Word / Excel / ZIP，最大 100MB</span>}
-    </Space>
+    <AttachmentUploadField
+      value={currentValue || null}
+      onChange={handleChange}
+    />
   )
 }
 

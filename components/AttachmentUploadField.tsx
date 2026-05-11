@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Space, message } from 'antd'
+import { Button, Progress, Space, message } from 'antd'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
@@ -23,6 +23,7 @@ export default function AttachmentUploadField({
   disabled,
 }: AttachmentUploadFieldProps) {
   const [uploadingCount, setUploadingCount] = useState(0)
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const attachments = useMemo(() => parseAttachmentUrls(value), [value])
   const attachmentsRef = useRef<string[]>(attachments)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -47,32 +48,69 @@ export default function AttachmentUploadField({
     return '上传失败，请检查网络后重试'
   }
 
-  const uploadSingleFile = async (file: File) => {
-    setUploadingCount((count) => count + 1)
-    try {
+  const uploadSingleFile = (file: File): Promise<string | undefined> => {
+    const key = `${file.name}-${Date.now()}`
+    setUploadingCount((c) => c + 1)
+    setUploadProgress((prev) => ({ ...prev, [key]: 0 }))
+
+    return new Promise((resolve) => {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(getFriendlyUploadErrorMessage((json as { error?: unknown }).error))
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100)
+          setUploadProgress((prev) => ({ ...prev, [key]: pct }))
+        }
       }
-      if (!json.url || typeof json.url !== 'string') {
-        throw new Error('上传成功但未返回附件地址')
+
+      xhr.onload = () => {
+        setUploadingCount((c) => Math.max(0, c - 1))
+        setUploadProgress((prev) => {
+          const next = { ...prev }
+          delete next[key]
+          return next
+        })
+        try {
+          const json = JSON.parse(xhr.responseText)
+          if (xhr.status >= 200 && xhr.status < 300) {
+            if (!json.url || typeof json.url !== 'string') {
+              message.error('上传成功但未返回附件地址')
+              resolve(undefined)
+              return
+            }
+            emitChange([...attachmentsRef.current, json.url])
+            message.success(`${json.name || '文件'} 上传成功`)
+            resolve(json.url)
+          } else {
+            message.error(getFriendlyUploadErrorMessage(json.error))
+            resolve(undefined)
+          }
+        } catch {
+          message.error('上传失败，请检查网络后重试')
+          resolve(undefined)
+        }
       }
-      emitChange([...attachmentsRef.current, json.url])
-      message.success(`${json.name || '文件'} 上传成功`)
-      return json.url
-    } catch (err) {
-      message.error(getFriendlyUploadErrorMessage(err))
-      throw err
-    } finally {
-      setUploadingCount((count) => Math.max(0, count - 1))
-    }
+
+      xhr.onerror = () => {
+        setUploadingCount((c) => Math.max(0, c - 1))
+        setUploadProgress((prev) => {
+          const next = { ...prev }
+          delete next[key]
+          return next
+        })
+        message.error('上传失败，请检查网络后重试')
+        resolve(undefined)
+      }
+
+      xhr.open('POST', '/api/upload')
+      xhr.send(fd)
+    })
   }
 
   const enqueueUpload = (file: File) => {
-    return uploadSingleFile(file).catch(() => undefined)
+    return uploadSingleFile(file)
   }
 
   const handleSelectFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,6 +163,11 @@ export default function AttachmentUploadField({
       <span style={{ color: '#999', fontSize: 12 }}>
         支持多选；图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，单文件最大 100MB
       </span>
+      {Object.entries(uploadProgress).map(([key, pct]) => (
+        <div key={key} style={{ width: '100%', minWidth: 200 }}>
+          <Progress percent={pct} size="small" status={pct < 100 ? 'active' : 'success'} />
+        </div>
+      ))}
       {attachments.length > 0 ? (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           {attachments.map((url) => (
