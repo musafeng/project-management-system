@@ -10,6 +10,8 @@ import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
 import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface ExpenseItem {
   type: string
@@ -67,6 +69,7 @@ export default function ProjectExpensesPage() {
   const [submitter, setSubmitter] = useState('')
   const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
@@ -213,6 +216,42 @@ export default function ProjectExpensesPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<Expense>
+      data={data}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.submitter || '项目费用报销'}
+      getDescription={(item) => `日期：${fmtDate(item.expenseDate)}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'totalAmount', label: '总金额', render: (item) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(Number(item.totalAmount))}</span>, fullWidth: true },
+        { key: 'projectName', label: '项目', render: (item) => item.projectName || '-' },
+        { key: 'constructionName', label: '施工立项', render: (item) => item.constructionName || '-' },
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="project-expenses" id={record.id} />
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+            <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(record.id)} okText="是" cancelText="否">
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+            </Popconfirm>
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="project-expenses"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      }}
+      empty={<EmptyHint title="暂无项目费用报销数据" desc="新增项目费用报销后，可在此管理审批进度。" />}
+    />
+  )
+
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
@@ -237,8 +276,12 @@ export default function ProjectExpensesPage() {
           </div>
         ))}
       </div>
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
-      <Modal title={editing ? '编辑项目费用报销' : '新增项目费用报销'} open={modalOpen} onOk={() => form.submit()} onCancel={() => setModalOpen(false)} width={620} okText="确定" cancelText="取消">
+      {isMobile ? (
+        mobileCards
+      ) : (
+        <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
+      )}
+      <Modal title={editing ? '编辑项目费用报销' : '新增项目费用报销'} open={modalOpen} onOk={() => form.submit()} onCancel={() => setModalOpen(false)} width={isMobile ? '95vw' : 620} okText="确定" cancelText="取消">
         <Form
           form={form}
           layout="vertical"

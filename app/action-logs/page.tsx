@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Table, Input, Select, Button, Space, Spin, message, Card, Alert, Empty } from 'antd'
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
+import { MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 
@@ -62,6 +64,7 @@ export default function ActionLogsPage() {
   const [action, setAction] = useState<string | undefined>()
   const [resource, setResource] = useState('')
   const [accessError, setAccessError] = useState<string | null>(null)
+  const isMobile = useMobile()
 
   /**
    * 加载日志列表
@@ -325,6 +328,30 @@ export default function ActionLogsPage() {
         <Spin spinning={loading}>
           {accessError ? (
             <Empty description={accessError} />
+          ) : isMobile ? (
+            <>
+              <MobileCardList<ActionLog>
+                data={logs}
+                loading={false}
+                getKey={(item) => item.id}
+                getTitle={(item) => `${item.userName} · ${item.action === 'CREATE' ? '创建' : item.action === 'UPDATE' ? '更新' : item.action === 'DELETE' ? '删除' : item.action}`}
+                getDescription={(item) => {
+                  const date = parseValidDate(item.createdAt)
+                  return date ? formatDistanceToNow(date, { locale: zhCN, addSuffix: true }) : '-'
+                }}
+                fields={[
+                  { key: 'resource', label: '资源', render: (item) => item.resource || '-' },
+                  { key: 'method', label: '方法', render: (item) => item.method || '-' },
+                  { key: 'path', label: '路径', render: (item) => <span style={{ fontSize: 11, color: '#666', wordBreak: 'break-all' }}>{item.path || '-'}</span>, fullWidth: true },
+                  { key: 'detail', label: '详情', render: (item) => item.detail || '-', fullWidth: true },
+                ]}
+              />
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <Button disabled={pagination.page <= 1} onClick={() => loadLogs(pagination.page - 1)} style={{ marginRight: 8 }}>上一页</Button>
+                <span style={{ color: '#8c8c8c', fontSize: 13 }}>{pagination.page} / {pagination.totalPages || 1}</span>
+                <Button disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => loadLogs(pagination.page + 1)} style={{ marginLeft: 8 }}>下一页</Button>
+              </div>
+            </>
           ) : (
             <Table
               columns={columns}

@@ -13,6 +13,8 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 import { getIssuanceDisplayStatus, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface PettyCash {
   id: string
@@ -59,6 +61,7 @@ export default function PettyCashesPage() {
   const [holder, setHolder] = useState('')
   const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
   const load = useCallback(async (searchHolder: string, searchMonth: dayjs.Dayjs | null) => {
     setLoading(true)
@@ -207,6 +210,48 @@ export default function PettyCashesPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<PettyCash>
+      data={data}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.holder || '备用金申请'}
+      getDescription={(item) => `日期：${fmtDate(item.issueDate)}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'issuedAmount', label: '申请金额', render: (item) => <span style={{ color: '#fa8c16', fontWeight: 600 }}>{fmt(Number(item.issuedAmount))}</span> },
+        { key: 'returnedAmount', label: '已退回', render: (item) => fmt(Number(item.returnedAmount)) },
+        { key: 'applyReason', label: '申请事由', render: (item) => item.applyReason || '-', fullWidth: true },
+        { key: 'status', label: '状态', render: (item) => {
+          const displayStatus = getIssuanceDisplayStatus(item.status, item)
+          return <Tag color={CASH_STATUS[displayStatus]?.color}>{CASH_STATUS[displayStatus]?.label || displayStatus}</Tag>
+        }},
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="petty-cashes" id={record.id} />
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(record.id)} okText="是" cancelText="否">
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              </Popconfirm>
+            ) : null}
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="petty-cashes"
+              onSuccess={() => void load(holder, month)}
+            />
+          </Space>
+        )
+      }}
+      empty={<EmptyHint title="暂无备用金申请数据" desc="新增备用金申请后，可在此管理审批进度。" />}
+    />
+  )
+
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
@@ -225,14 +270,18 @@ export default function PettyCashesPage() {
 
       <AmountSummaryCards items={[{ label: '总金额', value: fmt(total), color: '#fa8c16' }]} />
 
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
+      {isMobile ? (
+        mobileCards
+      ) : (
+        <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
+      )}
 
       <Modal
         title={editing ? '编辑备用金申请' : '新增备用金申请'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={520}
+        width={isMobile ? '95vw' : 520}
         okText="确定"
         cancelText="取消"
       >

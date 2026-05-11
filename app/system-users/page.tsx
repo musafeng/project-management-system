@@ -15,6 +15,8 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
+import { MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface SystemUser {
   id: string
@@ -66,6 +68,7 @@ export default function SystemUsersPage() {
   const [users, setUsers] = useState<SystemUser[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const isMobile = useMobile()
 
   const loadUsers = async () => {
     setLoading(true)
@@ -178,6 +181,43 @@ export default function SystemUsersPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<SystemUser>
+      data={users}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      fields={[
+        { key: 'mobile', label: '手机号', render: (item) => item.mobile || '-' },
+        { key: 'deptNames', label: '部门', render: (item) => item.deptNames?.filter(Boolean).join('、') || '-' },
+        { key: 'lastLoginAt', label: '最后登录', render: (item) => formatDateTime(item.lastLoginAt), fullWidth: true },
+      ]}
+      actions={(record) => (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Select
+            value={record.role}
+            size="small"
+            style={{ width: 130 }}
+            loading={updatingId === record.id}
+            disabled={updatingId !== null && updatingId !== record.id}
+            options={ROLE_OPTIONS}
+            onChange={(val) => updateUser(record.id, { role: val })}
+            popupMatchSelectWidth={false}
+          />
+          <Switch
+            checked={record.isActive}
+            size="small"
+            loading={updatingId === record.id}
+            disabled={updatingId !== null && updatingId !== record.id}
+            checkedChildren="启用"
+            unCheckedChildren="禁用"
+            onChange={(val) => updateUser(record.id, { isActive: val })}
+          />
+        </div>
+      )}
+    />
+  )
+
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -208,17 +248,21 @@ export default function SystemUsersPage() {
       )}
 
       <Spin spinning={loading}>
-        <Table<SystemUser>
-          rowKey="id"
-          columns={columns}
-          dataSource={users}
-          loading={false}
-          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-          scroll={{ x: 1000 }}
-          size="small"
-          locale={{ emptyText: '暂无系统用户' }}
-          rowClassName={(record) => (!record.isActive ? 'opacity-50' : '')}
-        />
+        {isMobile ? (
+          mobileCards
+        ) : (
+          <Table<SystemUser>
+            rowKey="id"
+            columns={columns}
+            dataSource={users}
+            loading={false}
+            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+            scroll={{ x: 1000 }}
+            size="small"
+            locale={{ emptyText: '暂无系统用户' }}
+            rowClassName={(record) => (!record.isActive ? 'opacity-50' : '')}
+          />
+        )}
       </Spin>
     </div>
   )

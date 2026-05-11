@@ -25,6 +25,8 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
 interface OtherPayment {
   id: string
@@ -77,6 +79,7 @@ export default function OtherPaymentsPage() {
   const [submitter, setSubmitter] = useState('')
   const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
   const selectedSupplierId = Form.useWatch('supplierId', form)
 
   const loadSuppliers = async () => {
@@ -257,6 +260,44 @@ export default function OtherPaymentsPage() {
     },
   ]
 
+  const mobileCards = (
+    <MobileCardList<OtherPayment>
+      data={data}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.paymentType || '其他付款'}
+      getDescription={(item) => `日期：${fmtDate(item.paymentDate)}`}
+      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+      fields={[
+        { key: 'paymentAmount', label: '金额', render: (item) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(Number(item.paymentAmount))}</span>, fullWidth: true },
+        { key: 'submitterName', label: '填报人', render: (item) => item.submitterName || '-' },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+      ]}
+      actions={(record) => {
+        const locked = isApprovalLocked(record)
+        return (
+          <Space size="small" wrap>
+            <ViewRecordButton resource="other-payments" id={record.id} />
+            <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+            {canDelete ? (
+              <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(record.id)} okText="是" cancelText="否">
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+              </Popconfirm>
+            ) : null}
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus || 'DRAFT'}
+              approvedAt={record.approvedAt}
+              resource="other-payments"
+              onSuccess={() => void load(submitter, month)}
+            />
+          </Space>
+        )
+      }}
+      empty={<EmptyHint title="暂无其他付款数据" desc="新增其他付款后，可在此管理审批进度。" />}
+    />
+  )
+
   return (
     <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
@@ -287,14 +328,18 @@ export default function OtherPaymentsPage() {
 
       <AmountSummaryCards items={summaryItems} />
 
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 860 }} size="small" />
+      {isMobile ? (
+        mobileCards
+      ) : (
+        <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 860 }} size="small" />
+      )}
 
       <Modal
         title={editing ? '编辑其他付款' : '新增其他付款'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={560}
+        width={isMobile ? '95vw' : 560}
         okText="确定"
         cancelText="取消"
       >
