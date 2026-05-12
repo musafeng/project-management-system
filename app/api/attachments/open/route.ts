@@ -73,7 +73,7 @@ export const { GET } = apiHandlerWithPermissionAndLog({
     const signedUrl = client.signatureUrl(objectKey, {
       expires: SIGNED_URL_EXPIRES_SECONDS,
       method: 'GET',
-      ...(isInline ? { 'response-content-disposition': 'inline' } : {}),
+      ...(isInline ? { response: { 'content-disposition': 'inline' } } : {}),
     })
 
     const response = NextResponse.redirect(signedUrl, 302)

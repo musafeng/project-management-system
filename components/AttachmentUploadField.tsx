@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Progress, Space, message } from 'antd'
-import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FileOutlined, PictureOutlined, UploadOutlined } from '@ant-design/icons'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
   getAttachmentDisplayName,
@@ -17,6 +17,11 @@ interface AttachmentUploadFieldProps {
   disabled?: boolean
 }
 
+function isMobileDevice() {
+  if (typeof navigator === 'undefined') return false
+  return /android|iphone|ipad|ipod|dingtalk/i.test(navigator.userAgent)
+}
+
 export default function AttachmentUploadField({
   value,
   onChange,
@@ -24,10 +29,16 @@ export default function AttachmentUploadField({
 }: AttachmentUploadFieldProps) {
   const [uploadingCount, setUploadingCount] = useState(0)
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [isMobile, setIsMobile] = useState(false)
   const attachments = useMemo(() => parseAttachmentUrls(value), [value])
   const attachmentsRef = useRef<string[]>(attachments)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const uploading = uploadingCount > 0
+
+  useEffect(() => {
+    setIsMobile(isMobileDevice())
+  }, [])
 
   useEffect(() => {
     attachmentsRef.current = attachments
@@ -42,7 +53,7 @@ export default function AttachmentUploadField({
   const getFriendlyUploadErrorMessage = (input: unknown) => {
     const text = typeof input === 'string' ? input : input instanceof Error ? input.message : ''
     const translated = toChineseErrorMessage(text)
-    if (/[\u4e00-\u9fa5]/.test(translated)) {
+    if (/[一-龥]/.test(translated)) {
       return translated
     }
     return '上传失败，请检查网络后重试'
@@ -109,17 +120,11 @@ export default function AttachmentUploadField({
     })
   }
 
-  const enqueueUpload = (file: File) => {
-    return uploadSingleFile(file)
-  }
-
   const handleSelectFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     for (const file of files) {
-      void enqueueUpload(file)
+      void uploadSingleFile(file)
     }
-
-    // 同一批文件再次选择时，也要确保 change 事件还能触发
     event.target.value = ''
   }
 
@@ -143,25 +148,62 @@ export default function AttachmentUploadField({
 
   return (
     <Space wrap>
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
-        style={{ display: 'none' }}
-        onChange={handleSelectFiles}
-        disabled={disabled}
-      />
-      <Button
-        icon={<UploadOutlined />}
-        loading={uploading}
-        disabled={disabled}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {uploading ? '上传中...' : '选择文件'}
-      </Button>
+      {isMobile ? (
+        <>
+          {/* 手机端拆成两个按钮：钉钉 WebView 不支持混合 accept 同时选图片和文件 */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleSelectFiles}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
+            style={{ display: 'none' }}
+            onChange={handleSelectFiles}
+          />
+          <Button
+            icon={<PictureOutlined />}
+            loading={uploading}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            选择图片
+          </Button>
+          <Button
+            icon={<FileOutlined />}
+            loading={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            选择文件
+          </Button>
+        </>
+      ) : (
+        <>
+          {/* 桌面端单按钮，支持所有类型 */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
+            style={{ display: 'none' }}
+            onChange={handleSelectFiles}
+          />
+          <Button
+            icon={<UploadOutlined />}
+            loading={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? '上传中...' : '选择文件'}
+          </Button>
+        </>
+      )}
       <span style={{ color: '#999', fontSize: 12 }}>
-        支持多选；图片 / PDF / Word / Excel / CSV / ZIP / RAR / 7Z，单文件最大 100MB
+        图片 / PDF / Word / Excel / CSV / ZIP，单文件最大 100MB
       </span>
       {Object.entries(uploadProgress).map(([key, pct]) => (
         <div key={key} style={{ width: '100%', minWidth: 200 }}>
