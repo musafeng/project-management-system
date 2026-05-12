@@ -333,16 +333,19 @@ function getItemColumns(items: Array<Record<string, any>>): ColumnsType<Record<s
 
 function AttachmentLinks({ urls }: { urls: string[] }) {
   if (urls.length === 0) return <Text type="secondary">暂无附件</Text>
-  const handleOpen = (url: string) => {
-    window.open(getAttachmentOpenUrl(url), '_blank', 'noopener,noreferrer')
-  }
 
   return (
     <Space direction="vertical" size={4}>
       {urls.map((url) => (
-        <Button key={url} type="link" size="small" style={{ height: 'auto', padding: 0, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => handleOpen(url)}>
+        <a
+          key={url}
+          href={getAttachmentOpenUrl(url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ wordBreak: 'break-all', fontSize: 13 }}
+        >
           {getAttachmentDisplayName(url) || url}
-        </Button>
+        </a>
       ))}
     </Space>
   )

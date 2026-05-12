@@ -162,11 +162,19 @@ export default function LaborContractsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [form] = Form.useForm()
   const selectedProjectId = Form.useWatch('projectId', form)
+  const watchedContractAmount = Form.useWatch('contractAmount', form)
+  const watchedPaidAmount = Form.useWatch('paidAmount', form)
   const isMobile = useMobile()
 
   useEffect(() => {
     getCurrentAuthUser().then((u) => setIsAdmin(isSystemManagerClientUser(u)))
   }, [])
+
+  useEffect(() => {
+    const contractAmount = Number(watchedContractAmount || 0)
+    const paidAmount = Number(watchedPaidAmount || 0)
+    form.setFieldValue('unpaidAmount', Number((contractAmount - paidAmount).toFixed(2)))
+  }, [watchedContractAmount, watchedPaidAmount, form])
 
   /**
    * 加载项目列表
@@ -323,6 +331,8 @@ export default function LaborContractsPage() {
           constructionId: result.data.constructionId,
           laborWorkerId: result.data.workerId,
           contractAmount: result.data.contractAmount,
+          paidAmount: result.data.paidAmount ?? 0,
+          unpaidAmount: result.data.unpaidAmount ?? 0,
           signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
           attachmentUrl: result.data.attachmentUrl || undefined,
           remark: result.data.remark || undefined,
@@ -855,6 +865,25 @@ export default function LaborContractsPage() {
 
           <Form.Item label="签订日期" name="signDate">
             <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item label="已付款金额" name="paidAmount">
+            <InputNumber
+              placeholder="请输入已付款金额"
+              style={{ width: '100%' }}
+              min={0}
+              precision={2}
+              prefix="¥"
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v) => {
+                const normalized = v?.replace(/,/g, '') || ''
+                return (normalized ? Number(normalized) : undefined) as any
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item label="未付款金额" name="unpaidAmount">
+            <InputNumber style={{ width: '100%' }} precision={2} prefix="¥" disabled />
           </Form.Item>
 
           <Form.Item label="附件" name="attachmentUrl">

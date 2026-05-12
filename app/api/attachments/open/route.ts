@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic'
 const ATTACHMENT_PREFIX = 'attachments/'
 const SIGNED_URL_EXPIRES_SECONDS = 10 * 60
 
+const INLINE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf'])
+
 function getOssClient() {
   const { region, accessKeyId, accessKeySecret, bucket } = serverEnv.oss
   if (!region || !accessKeyId || !accessKeySecret || !bucket) {
@@ -51,6 +53,12 @@ function extractAttachmentObjectKey(rawUrl: string) {
   return objectKey
 }
 
+function getFileExtension(objectKey: string): string {
+  const name = objectKey.split('/').pop() || ''
+  const idx = name.lastIndexOf('.')
+  return idx >= 0 ? name.slice(idx + 1).toLowerCase() : ''
+}
+
 export const { GET } = apiHandlerWithPermissionAndLog({
   GET: async (req) => {
     const rawUrl = new URL(req.url).searchParams.get('url')
@@ -58,9 +66,14 @@ export const { GET } = apiHandlerWithPermissionAndLog({
 
     const objectKey = extractAttachmentObjectKey(rawUrl)
     const client = getOssClient()
+
+    const ext = getFileExtension(objectKey)
+    const isInline = INLINE_EXTENSIONS.has(ext)
+
     const signedUrl = client.signatureUrl(objectKey, {
       expires: SIGNED_URL_EXPIRES_SECONDS,
       method: 'GET',
+      ...(isInline ? { 'response-content-disposition': 'inline' } : {}),
     })
 
     const response = NextResponse.redirect(signedUrl, 302)

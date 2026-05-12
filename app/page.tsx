@@ -23,6 +23,13 @@ const RESOURCE_ROUTE: Record<string, string> = {
   'labor-payments': '/labor-payments',
   'subcontract-contracts': '/subcontract-contracts',
   'subcontract-payments': '/subcontract-payments',
+  'contract-receipts': '/contract-receipts',
+  'other-receipts': '/other-receipts',
+  'other-payments': '/other-payments',
+  'project-expenses': '/project-expenses',
+  'management-expenses': '/management-expenses',
+  'sales-expenses': '/sales-expenses',
+  'petty-cashes': '/petty-cashes',
 }
 
 const RESOURCE_COLOR: Record<string, string> = {

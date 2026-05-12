@@ -80,6 +80,13 @@ const RESOURCE_LABELS: Record<string, string> = {
   'labor-payments': '劳务付款',
   'subcontract-contracts': '分包合同',
   'subcontract-payments': '分包付款',
+  'contract-receipts': '项目合同收款',
+  'other-receipts': '其他收款',
+  'other-payments': '其他付款',
+  'project-expenses': '项目费用报销',
+  'management-expenses': '管理费用报销',
+  'sales-expenses': '销售费用报销',
+  'petty-cashes': '备用金申请',
 }
 
 // ============================================================

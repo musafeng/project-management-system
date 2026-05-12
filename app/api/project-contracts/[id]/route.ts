@@ -174,6 +174,13 @@ const handler = apiHandlerWithMethod({
       updateData.attachmentUrl = body.attachmentUrl?.trim() || null
     }
 
+    if (body.receivedAmount !== undefined) {
+      const receivedAmount = Number(body.receivedAmount ?? 0)
+      const contractAmount = Number(existingContract.contractAmount)
+      updateData.receivedAmount = receivedAmount
+      updateData.unreceivedAmount = Number((contractAmount - receivedAmount).toFixed(2))
+    }
+
     if (body.remark !== undefined) {
       updateData.remark = body.remark?.trim() || null
     }

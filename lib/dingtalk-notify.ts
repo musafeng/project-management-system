@@ -74,11 +74,11 @@ export async function sendWorkNotification(params: WorkNotificationParams): Prom
     const result = await response.json()
 
     if (result.errcode !== 0) {
-      console.error(`[钉钉通知] 发送失败: errcode=${result.errcode}, errmsg=${result.errmsg}`)
+      console.error(`[钉钉通知] 发送失败: errcode=${result.errcode}, errmsg=${result.errmsg}, 接收人: ${useridList.join(',')}, 标题: ${title}`)
       return false
     }
 
-    console.log(`[钉钉通知] 发送成功，taskId=${result.task_id}，接收人: ${useridList.join(',')}`)
+    console.log(`[钉钉通知] 发送成功，taskId=${result.task_id}，接收人: ${useridList.join(',')}，标题: ${title}`)
     return true
   } catch (error) {
     console.error('[钉钉通知] 发送工作通知异常:', error)

@@ -116,6 +116,7 @@ export default function ProjectContractsPage() {
   const watchedContractAmount = Form.useWatch('contractAmount', form)
   const watchedHasRetention = Form.useWatch('hasRetention', form)
   const watchedRetentionRate = Form.useWatch('retentionRate', form)
+  const watchedReceivedAmount = Form.useWatch('receivedAmount', form)
   const isMobile = useMobile()
 
   const openCreateModal = () => {
@@ -176,6 +177,13 @@ export default function ProjectContractsPage() {
   }, [watchedContractAmount, watchedHasRetention, watchedRetentionRate, form])
 
   useEffect(() => {
+    const contractAmount = Number(watchedContractAmount || 0)
+    const receivedAmount = Number(watchedReceivedAmount || 0)
+    const unreceivedAmount = Number((contractAmount - receivedAmount).toFixed(2))
+    form.setFieldValue('unreceivedAmount', unreceivedAmount)
+  }, [watchedContractAmount, watchedReceivedAmount, form])
+
+  useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(contracts.length / MOBILE_PAGE_SIZE))
     if (mobilePage > maxPage) setMobilePage(maxPage)
   }, [contracts.length, mobilePage])
@@ -205,6 +213,8 @@ export default function ProjectContractsPage() {
         hasRetention: Boolean(result.data.hasRetention),
         retentionRate: result.data.retentionRate ?? undefined,
         retentionAmount: result.data.retentionAmount ?? undefined,
+        receivedAmount: result.data.receivedAmount ?? 0,
+        unreceivedAmount: result.data.unreceivedAmount ?? 0,
         attachmentUrl: result.data.attachmentUrl || null,
         remark: result.data.remark || undefined,
       })
@@ -676,6 +686,23 @@ export default function ProjectContractsPage() {
               </Form.Item>
             </>
           ) : null}
+          <Form.Item name="receivedAmount" label="已收款金额（元）">
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              precision={2}
+              prefix="¥"
+              placeholder="请输入已收款金额"
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v) => {
+                const normalized = v?.replace(/,/g, '') || ''
+                return (normalized ? Number(normalized) : undefined) as any
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="unreceivedAmount" label="未收款金额（元）">
+            <InputNumber style={{ width: '100%' }} precision={2} prefix="¥" disabled />
+          </Form.Item>
           <Form.Item name="attachmentUrl" label="合同附件">
             <AttachmentUploadField />
           </Form.Item>

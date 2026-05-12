@@ -147,7 +147,7 @@ export default function AttachmentUploadField({
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.rar,.7z"
         style={{ display: 'none' }}
         onChange={handleSelectFiles}
         disabled={disabled}
