@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { Alert, Button, Descriptions, Divider, Modal, Space, Spin, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { FileTextOutlined } from '@ant-design/icons'
-import { getAttachmentDisplayName, getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
+import { getAttachmentDisplayName, getAttachmentOpenUrl, getAttachmentResolveUrl, parseAttachmentUrls } from '@/lib/attachments'
 import { requestApi } from '@/lib/client-request'
 import { fmtDate, fmtMoney } from '@/lib/utils/format'
 
@@ -334,6 +335,21 @@ function getItemColumns(items: Array<Record<string, any>>): ColumnsType<Record<s
 function AttachmentLinks({ urls }: { urls: string[] }) {
   if (urls.length === 0) return <Text type="secondary">暂无附件</Text>
 
+  const handleOpen = async (event: MouseEvent<HTMLAnchorElement>, url: string) => {
+    event.preventDefault()
+    try {
+      const res = await fetch(getAttachmentResolveUrl(url), { credentials: 'include' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success || !json?.data?.url) {
+        message.error(json?.error || '附件打开失败，请稍后重试')
+        return
+      }
+      window.open(json.data.url, '_blank', 'noopener,noreferrer')
+    } catch {
+      message.error('附件打开失败，请检查网络后重试')
+    }
+  }
+
   return (
     <Space direction="vertical" size={4}>
       {urls.map((url) => (
@@ -343,6 +359,7 @@ function AttachmentLinks({ urls }: { urls: string[] }) {
           target="_blank"
           rel="noopener noreferrer"
           style={{ wordBreak: 'break-all', fontSize: 13 }}
+          onClick={(event) => { void handleOpen(event, url) }}
         >
           {getAttachmentDisplayName(url) || url}
         </a>

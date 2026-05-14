@@ -571,7 +571,7 @@ export async function handleUrge(
     detail: `催办审批：${MODEL_LABEL[model]}（ID: ${id}）`,
   })
 
-  sendApprovalUrgedNotification({
+  const notifyResult = await sendApprovalUrgedNotification({
     submitterName: instance.submitterName,
     submitterDingUserId: instance.submitterUserId,
     modelLabel: MODEL_LABEL[model],
@@ -580,5 +580,17 @@ export async function handleUrge(
     approverType: task.approverType,
     approverRole: task.approverRole ?? undefined,
     approverUserId: task.approverUserId ?? undefined,
-  }).catch((err) => console.error('[钉钉通知] urge 通知异常:', err))
+  })
+
+  if (!notifyResult.ok) {
+    await createActionLog({
+      action: ActionType.UPDATE,
+      resource: MODEL_LABEL[model],
+      resourceId: id,
+      method: 'POST',
+      path: resourcePath,
+      detail: `催办通知发送失败：${notifyResult.message}`,
+    })
+    throw new Error(notifyResult.message || '催办通知发送失败')
+  }
 }

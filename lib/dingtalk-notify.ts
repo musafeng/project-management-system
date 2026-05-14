@@ -29,22 +29,32 @@ export interface WorkNotificationParams {
   content: string
 }
 
+export interface WorkNotificationResult {
+  ok: boolean
+  message: string
+  errcode?: number
+  errmsg?: string
+  taskId?: string
+}
+
 /**
  * 发送工作通知（markdown 消息）
- * 失败时只打印日志，不抛出错误。
+ * 返回可展示结果，调用方决定是否阻断主流程。
  */
-export async function sendWorkNotification(params: WorkNotificationParams): Promise<boolean> {
+export async function sendWorkNotification(params: WorkNotificationParams): Promise<WorkNotificationResult> {
   const { useridList, title, content } = params
 
   if (!useridList || useridList.length === 0) {
-    console.warn('[钉钉通知] useridList 为空，跳过发送')
-    return false
+    const message = '钉钉通知接收人为空'
+    console.warn(`[钉钉通知] ${message}，跳过发送`)
+    return { ok: false, message }
   }
 
   const agentId = serverEnv.dingtalk.agentId
   if (!agentId) {
-    console.warn('[钉钉通知] DINGTALK_AGENT_ID 未配置，跳过发送')
-    return false
+    const message = 'DINGTALK_AGENT_ID 未配置'
+    console.warn(`[钉钉通知] ${message}，跳过发送`)
+    return { ok: false, message }
   }
 
   try {
@@ -74,15 +84,17 @@ export async function sendWorkNotification(params: WorkNotificationParams): Prom
     const result = await response.json()
 
     if (result.errcode !== 0) {
+      const message = `钉钉通知发送失败：${result.errmsg || '未知错误'}`
       console.error(`[钉钉通知] 发送失败: errcode=${result.errcode}, errmsg=${result.errmsg}, 接收人: ${useridList.join(',')}, 标题: ${title}`)
-      return false
+      return { ok: false, message, errcode: result.errcode, errmsg: result.errmsg }
     }
 
     console.log(`[钉钉通知] 发送成功，taskId=${result.task_id}，接收人: ${useridList.join(',')}，标题: ${title}`)
-    return true
+    return { ok: true, message: '钉钉通知发送成功', taskId: result.task_id }
   } catch (error) {
+    const message = error instanceof Error ? error.message : '钉钉通知发送异常'
     console.error('[钉钉通知] 发送工作通知异常:', error)
-    return false
+    return { ok: false, message }
   }
 }
 
@@ -319,7 +331,7 @@ export async function sendApprovalUrgedNotification(params: {
   approverType: string
   approverRole?: string
   approverUserId?: string
-}): Promise<void> {
+}): Promise<WorkNotificationResult> {
   const {
     submitterName,
     submitterDingUserId,
@@ -342,8 +354,9 @@ export async function sendApprovalUrgedNotification(params: {
     const receivers = mergeUserIds(approverIds, [submitterDingUserId])
 
     if (receivers.length === 0) {
-      console.warn('[钉钉通知] 审批催办：无接收人，跳过')
-      return
+      const message = '审批催办没有可通知的钉钉接收人'
+      console.warn(`[钉钉通知] ${message}，跳过`)
+      return { ok: false, message }
     }
 
     const title = `【审批催办】${modelLabel}`
@@ -357,8 +370,10 @@ export async function sendApprovalUrgedNotification(params: {
       `- **发起人：** ${submitterName}`,
     ].join('\n')
 
-    await sendWorkNotification({ useridList: receivers, title, content })
+    return await sendWorkNotification({ useridList: receivers, title, content })
   } catch (error) {
+    const message = error instanceof Error ? error.message : '发送审批催办通知失败'
     console.error('[钉钉通知] 发送审批催办通知失败:', error)
+    return { ok: false, message }
   }
 }

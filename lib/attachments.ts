@@ -14,6 +14,10 @@ export function getAttachmentOpenUrl(url: string): string {
   return `/api/attachments/open?url=${encodeURIComponent(url)}`
 }
 
+export function getAttachmentResolveUrl(url: string): string {
+  return `/api/attachments/open?format=json&url=${encodeURIComponent(url)}`
+}
+
 function normalizeUrl(url: unknown): string | null {
   const value = typeof url === 'string' ? url.trim() : ''
   return value || null
