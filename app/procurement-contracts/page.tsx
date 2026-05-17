@@ -1,36 +1,42 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Table,
   Button,
   Input,
   Select,
   Space,
-  Modal,
   Form,
   message,
-  ConfigProvider,
   Popconfirm,
   DatePicker,
   InputNumber,
+  Pagination,
+  Tooltip,
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { EditOutlined, DeleteOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { ApprovalStatusTag, ApprovalActions } from '@/components/ApprovalActions'
 import { getCurrentAuthUser } from '@/lib/auth-client'
+import { isSystemManagerClientUser } from '@/lib/system-manager'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
-import { EmptyHint, MobileCardList } from '@/components/ledger'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
+import { LedgerPageLayout, FilterBar, EmptyHint, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { fmtMoney, fmtDate } from '@/lib/utils/format'
+import { requestApi } from '@/lib/client-request'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { canUseAsApprovedUpstream, getApprovalLockReason, isApprovalLocked } from '@/lib/approval-status'
 
-/**
- * 采购合同数据类型
- */
+const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
+
 interface ProcurementContract {
   id: string
   code: string
@@ -48,9 +54,6 @@ interface ProcurementContract {
   createdAt: string
 }
 
-/**
- * 采购合同详情类型
- */
 interface ProcurementContractDetail extends ProcurementContract {
   projectId?: string
   constructionId?: string
@@ -65,9 +68,6 @@ interface ProcurementContractDetail extends ProcurementContract {
   updatedAt?: string
 }
 
-/**
- * 项目数据类型
- */
 interface Project {
   id: string
   code: string
@@ -80,9 +80,6 @@ interface Project {
   createdAt: string
 }
 
-/**
- * 施工立项数据类型
- */
 interface ConstructionApproval {
   id: string
   code: string
@@ -95,9 +92,6 @@ interface ConstructionApproval {
   createdAt: string
 }
 
-/**
- * 供应商数据类型
- */
 interface Supplier {
   id: string
   code: string
@@ -109,39 +103,32 @@ interface Supplier {
   createdAt: string
 }
 
-/**
- * API 响应类型
- */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
-const { Text } = Typography
-
-/**
- * 格式化日期
- */
-function formatDate(dateString: string | null): string {
-  if (!dateString) return '-'
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN')
-  } catch {
-    return dateString
+function applyClientFilters(data: ProcurementContract[], filters: FilterValues) {
+  let filtered = data
+  const keyword = (filters.keyword as string)?.trim()
+  if (keyword) {
+    const lower = keyword.toLowerCase()
+    filtered = filtered.filter(
+      (contract) =>
+        contract.code.toLowerCase().includes(lower) ||
+        contract.name.toLowerCase().includes(lower) ||
+        (contract.supplierName || '').toLowerCase().includes(lower) ||
+        (contract.projectName || '').toLowerCase().includes(lower)
+    )
   }
-}
-
-/**
- * 格式化金额
- */
-function formatCurrency(value: number | undefined): string {
-  if (value === undefined || value === null) return '-'
-  return `¥${value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
+  if (filters.dateRange && Array.isArray(filters.dateRange)) {
+    const [start, end] = filters.dateRange as [string, string]
+    if (start && end) {
+      const startDate = dayjs(start)
+      const endDate = dayjs(end)
+      filtered = filtered.filter((contract) => {
+        if (!contract.signDate) return false
+        const sign = dayjs(contract.signDate)
+        return sign.isValid() && !sign.isBefore(startDate, 'day') && !sign.isAfter(endDate, 'day')
+      })
+    }
+  }
+  return filtered
 }
 
 export default function ProcurementContractsPage() {
@@ -153,12 +140,11 @@ export default function ProcurementContractsPage() {
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [constructionsLoading, setConstructionsLoading] = useState(true)
   const [suppliersLoading, setSuppliersLoading] = useState(true)
-  const [keyword, setKeyword] = useState('')
-  const [projectId, setProjectId] = useState<string | undefined>(undefined)
-  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
-  const [isModalVisible, setIsModalVisible] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [canDelete, setCanDelete] = useState(false)
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const [mobilePage, setMobilePage] = useState(1)
   const [form] = Form.useForm()
   const selectedProjectId = Form.useWatch('projectId', form)
   const watchedContractAmount = Form.useWatch('contractAmount', form)
@@ -166,7 +152,7 @@ export default function ProcurementContractsPage() {
   const isMobile = useMobile()
 
   useEffect(() => {
-    getCurrentAuthUser().then((u) => setIsAdmin(u?.systemRole === 'ADMIN'))
+    getCurrentAuthUser().then((u) => setCanDelete(isSystemManagerClientUser(u)))
   }, [])
 
   useEffect(() => {
@@ -175,112 +161,62 @@ export default function ProcurementContractsPage() {
     form.setFieldValue('unpaidAmount', Number((contractAmount - paidAmount).toFixed(2)))
   }, [watchedContractAmount, watchedPaidAmount, form])
 
-  /**
-   * 加载项目列表
-   */
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(contracts.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [contracts.length, mobilePage])
+
   const loadProjects = async () => {
-    try {
-      setProjectsLoading(true)
-      const response = await fetch('/api/projects')
-      const result: ApiResponse<Project[]> = await response.json()
-
-      if (result.success && result.data) {
-        setProjects(result.data)
-      } else {
-        console.error('加载项目列表失败:', result.error)
-      }
-    } catch (err) {
-      console.error('加载项目列表失败:', err)
-    } finally {
-      setProjectsLoading(false)
-    }
+    setProjectsLoading(true)
+    const result = await requestApi<Project[]>('/api/projects', {
+      credentials: 'include',
+      fallbackError: '加载项目列表失败，请稍后重试',
+    })
+    if (result.success) setProjects(result.data || [])
+    else setProjects([])
+    setProjectsLoading(false)
   }
 
-  /**
-   * 加载施工立项列表
-   */
   const loadConstructions = async () => {
-    try {
-      setConstructionsLoading(true)
-      const response = await fetch('/api/construction-approvals')
-      const result: ApiResponse<ConstructionApproval[]> = await response.json()
-
-      if (result.success && result.data) {
-        setConstructions(result.data)
-      } else {
-        console.error('加载施工立项列表失败:', result.error)
-      }
-    } catch (err) {
-      console.error('加载施工立项列表失败:', err)
-    } finally {
-      setConstructionsLoading(false)
-    }
+    setConstructionsLoading(true)
+    const result = await requestApi<ConstructionApproval[]>('/api/construction-approvals', {
+      credentials: 'include',
+      fallbackError: '加载施工立项列表失败，请稍后重试',
+    })
+    if (result.success) setConstructions(result.data || [])
+    else setConstructions([])
+    setConstructionsLoading(false)
   }
 
-  /**
-   * 加载供应商列表
-   */
   const loadSuppliers = async () => {
-    try {
-      setSuppliersLoading(true)
-      const response = await fetch('/api/suppliers')
-      const result: ApiResponse<Supplier[]> = await response.json()
-
-      if (result.success && result.data) {
-        setSuppliers(result.data)
-      } else {
-        console.error('加载供应商列表失败:', result.error)
-      }
-    } catch (err) {
-      console.error('加载供应商列表失败:', err)
-    } finally {
-      setSuppliersLoading(false)
-    }
+    setSuppliersLoading(true)
+    const result = await requestApi<Supplier[]>('/api/suppliers', {
+      credentials: 'include',
+      fallbackError: '加载供应商列表失败，请稍后重试',
+    })
+    if (result.success) setSuppliers(result.data || [])
+    else setSuppliers([])
+    setSuppliersLoading(false)
   }
 
-  /**
-   * 加载采购合同列表
-   */
-  const loadContracts = async (searchKeyword?: string, searchProjectId?: string, searchMonth?: dayjs.Dayjs | null) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      if (searchProjectId) params.append('projectId', searchProjectId)
-      if (searchMonth) params.append('month', searchMonth.format('YYYY-MM'))
-
-      const url = `/api/procurement-contracts${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
-      const result: ApiResponse<ProcurementContract[]> = await response.json()
-
-      if (result.success && result.data) {
-        // 如果有关键词，进行客户端过滤
-        let filtered = result.data
-        if (searchKeyword) {
-          filtered = result.data.filter(
-            (contract) =>
-              contract.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-              contract.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-              contract.supplierName.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-              contract.projectName.toLowerCase().includes(searchKeyword.toLowerCase())
-          )
-        }
-        setContracts(filtered)
-      } else {
-        message.error(result.error || '数据加载失败')
-        setContracts([])
-      }
-    } catch (err) {
-      console.error('加载采购合同列表失败:', err)
-      message.error('数据加载失败，请检查网络连接')
+  const loadContracts = async (filters: FilterValues = {}) => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (filters.projectId) params.set('projectId', filters.projectId as string)
+    const url = `/api/procurement-contracts${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<ProcurementContract[]>(url, {
+      credentials: 'include',
+      fallbackError: '数据加载失败，请稍后重试',
+    })
+    if (result.success) {
+      setContracts(applyClientFilters(result.data || [], filters))
+    } else {
       setContracts([])
-    } finally {
-      setLoading(false)
+      message.error(result.error || '数据加载失败，请稍后重试')
     }
+    setLoading(false)
   }
 
-  /**
-   * 初次加载数据
-   */
   useEffect(() => {
     loadProjects()
     loadConstructions()
@@ -288,171 +224,132 @@ export default function ProcurementContractsPage() {
     loadContracts()
   }, [])
 
-  /**
-   * 查询处理
-   */
-  const handleSearch = () => {
-    loadContracts(keyword, projectId, month)
+  const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
+    setLastFilter(filters)
+    loadContracts(filters)
   }
 
-  /**
-   * 重置处理
-   */
   const handleReset = () => {
-    setKeyword('')
-    setProjectId(undefined)
-    setMonth(null)
-    loadContracts('', undefined, null)
+    setMobilePage(1)
+    setLastFilter({})
+    loadContracts({})
   }
 
-  /**
-   * 打开新增弹窗
-   */
   const handleAddClick = () => {
     setEditingId(null)
     form.resetFields()
-    setIsModalVisible(true)
+    setModalOpen(true)
   }
 
-  /**
-   * 打开编辑弹窗
-   */
   const handleEditClick = async (id: string) => {
-    try {
-      const response = await fetch(`/api/procurement-contracts/${id}`)
-      const result: ApiResponse<ProcurementContractDetail> = await response.json()
-
-      if (result.success && result.data) {
-        setEditingId(id)
-        form.setFieldsValue({
-          name: result.data.name,
-          projectId: result.data.projectId,
-          constructionId: result.data.constructionId,
-          supplierId: result.data.supplierId,
-          contractAmount: result.data.contractAmount,
-          paidAmount: result.data.paidAmount ?? 0,
-          unpaidAmount: result.data.unpaidAmount ?? 0,
-          signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
-          attachmentUrl: result.data.attachmentUrl || undefined,
-          remark: result.data.remark || undefined,
-        })
-        setIsModalVisible(true)
-      } else {
-        message.error(result.error || '获取合同信息失败')
-      }
-    } catch (err) {
-      console.error('获取合同信息失败:', err)
-      message.error('获取合同信息失败')
+    const result = await requestApi<ProcurementContractDetail>(`/api/procurement-contracts/${id}`, {
+      credentials: 'include',
+      fallbackError: '获取合同信息失败',
+    })
+    if (result.success && result.data) {
+      setEditingId(id)
+      form.setFieldsValue({
+        name: result.data.name,
+        projectId: result.data.projectId,
+        constructionId: result.data.constructionId,
+        supplierId: result.data.supplierId,
+        contractAmount: result.data.contractAmount,
+        paidAmount: result.data.paidAmount ?? 0,
+        unpaidAmount: result.data.unpaidAmount ?? 0,
+        signDate: result.data.signDate ? dayjs(result.data.signDate) : undefined,
+        attachmentUrl: result.data.attachmentUrl || undefined,
+        remark: result.data.remark || undefined,
+      })
+      setModalOpen(true)
+    } else {
+      message.error(result.error || '获取合同信息失败')
     }
   }
 
-  /**
-   * 删除采购合同
-   */
   const handleDelete = async (id: string) => {
-    try {
-      const response = await fetch(`/api/procurement-contracts/${id}`, {
-        method: 'DELETE',
-      })
-      const result: ApiResponse<any> = await response.json()
-
-      if (result.success) {
-        message.success('采购合同已删除')
-        loadContracts(keyword, projectId, month)
-      } else {
-        message.error(result.error || '删除失败')
-      }
-    } catch (err) {
-      console.error('删除采购合同失败:', err)
-      message.error('删除失败，请检查网络连接')
+    const result = await requestApi(`/api/procurement-contracts/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      fallbackError: '删除失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success('采购合同已删除')
+      loadContracts(lastFilter)
+    } else {
+      message.error(result.error || '删除失败，请稍后重试')
     }
   }
 
-  /**
-   * 提交表单
-   */
   const handleSubmit = async (values: any) => {
-    try {
-      const url = editingId ? `/api/procurement-contracts/${editingId}` : '/api/procurement-contracts'
-      const method = editingId ? 'PUT' : 'POST'
-
-      const payload = {
-        name: values.name,
-        projectId: values.projectId,
-        constructionId: values.constructionId,
-        supplierId: values.supplierId,
-        contractAmount: values.contractAmount,
-        signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
-        attachmentUrl: values.attachmentUrl || null,
-        remark: values.remark || null,
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-
-      const result: ApiResponse<any> = await response.json()
-
-      if (result.success) {
-        message.success(editingId ? '采购合同已更新' : '采购合同已创建')
-        setIsModalVisible(false)
-        form.resetFields()
-        loadContracts(keyword, projectId, month)
-      } else {
-        message.error(result.error || '操作失败')
-      }
-    } catch (err) {
-      console.error('提交表单失败:', err)
-      message.error('操作失败，请检查网络连接')
+    const url = editingId ? `/api/procurement-contracts/${editingId}` : '/api/procurement-contracts'
+    const payload = {
+      name: values.name,
+      projectId: values.projectId,
+      constructionId: values.constructionId,
+      supplierId: values.supplierId,
+      contractAmount: values.contractAmount,
+      signDate: values.signDate ? values.signDate.format('YYYY-MM-DD') : null,
+      attachmentUrl: values.attachmentUrl || null,
+      remark: values.remark || null,
+    }
+    const result = await requestApi(url, {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '操作失败，请稍后重试',
+    })
+    if (result.success) {
+      message.success(editingId ? '采购合同已更新' : '采购合同已创建')
+      setModalOpen(false)
+      form.resetFields()
+      loadContracts(lastFilter)
+    } else {
+      message.error(result.error || '操作失败，请稍后重试')
     }
   }
 
-  /**
-   * 表格列定义
-   */
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const columns: ColumnsType<ProcurementContract> = [
     {
       title: '合同编号',
       dataIndex: 'code',
       key: 'code',
       width: 130,
-      render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
+      render: (text: string) => <Text code style={{ fontSize: 12 }}>{text}</Text>,
     },
     {
       title: '合同名称',
       dataIndex: 'name',
       key: 'name',
       width: 180,
+      render: (text: string, row) => (
+        <Tooltip title="点击查看详情">
+          <ViewRecordButton
+            resource="procurement-contracts"
+            id={row.id}
+            label={text}
+            type="link"
+            icon={null}
+            style={{ color: '#1677ff', fontWeight: 500, cursor: 'pointer' }}
+          />
+        </Tooltip>
+      ),
     },
-    {
-      title: '项目名称',
-      dataIndex: 'projectName',
-      key: 'projectName',
-      width: 150,
-    },
-    {
-      title: '施工立项',
-      dataIndex: 'constructionName',
-      key: 'constructionName',
-      width: 150,
-    },
-    {
-      title: '供应商',
-      dataIndex: 'supplierName',
-      key: 'supplierName',
-      width: 130,
-    },
+    { title: '项目名称', dataIndex: 'projectName', key: 'projectName', width: 150, ellipsis: true },
+    { title: '施工立项', dataIndex: 'constructionName', key: 'constructionName', width: 150, ellipsis: true },
+    { title: '供应商', dataIndex: 'supplierName', key: 'supplierName', width: 130, ellipsis: true },
     {
       title: '合同金额',
       dataIndex: 'contractAmount',
       key: 'contractAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number) => <Text strong style={{ color: '#1677ff' }}>{fmtMoney(value)}</Text>,
     },
     {
       title: '应付金额',
@@ -460,7 +357,7 @@ export default function ProcurementContractsPage() {
       key: 'payableAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number) => fmtMoney(value),
     },
     {
       title: '已付金额',
@@ -468,7 +365,7 @@ export default function ProcurementContractsPage() {
       key: 'paidAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatCurrency(value)}</span>,
+      render: (value: number) => <Text style={{ color: '#52c41a' }}>{fmtMoney(value)}</Text>,
     },
     {
       title: '未付金额',
@@ -476,22 +373,10 @@ export default function ProcurementContractsPage() {
       key: 'unpaidAmount',
       width: 120,
       align: 'right',
-      render: (value: number) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{formatCurrency(value)}</span>,
+      render: (value: number) => <Text style={{ color: value > 0 ? '#fa8c16' : '#8c8c8c' }}>{fmtMoney(value)}</Text>,
     },
-    {
-      title: '签订日期',
-      dataIndex: 'signDate',
-      key: 'signDate',
-      width: 120,
-      render: (text: string | null) => formatDate(text),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 120,
-      render: (text: string) => formatDate(text),
-    },
+    { title: '签订日期', dataIndex: 'signDate', key: 'signDate', width: 110, render: (text: string | null) => fmtDate(text) },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 110, render: (text: string) => fmtDate(text) },
     {
       title: '审批状态',
       dataIndex: 'approvalStatus',
@@ -502,289 +387,251 @@ export default function ProcurementContractsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 240,
       fixed: 'right',
       render: (_, record) => {
         const locked = isApprovalLocked(record)
         const lockReason = getApprovalLockReason(record) ?? ''
-
         return (
-        <Space size="small">
-          <ViewRecordButton resource="procurement-contracts" id={record.id} />
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} title={lockReason} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <Popconfirm title="删除采购合同" description="确定删除该采购合同吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-          <ApprovalActions
-            id={record.id}
-            approvalStatus={record.approvalStatus}
-            approvedAt={record.approvedAt}
-            resource="procurement-contracts"
-            isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId, month)}
-          />
-        </Space>
-      )},
-    },
-  ]
-
-  const mobileCards = (
-    <MobileCardList<ProcurementContract>
-      data={contracts}
-      loading={loading}
-      getKey={(item) => item.id}
-      getTitle={(item) => item.name}
-      getDescription={(item) => `合同编号：${item.code}`}
-      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
-      fields={[
-        { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
-        { key: 'constructionName', label: '施工立项', render: (item) => item.constructionName || '-' },
-        { key: 'supplierName', label: '供应商', render: (item) => item.supplierName || '-' },
-        { key: 'contractAmount', label: '合同金额', render: (item) => <Text>{formatCurrency(item.contractAmount)}</Text> },
-        { key: 'paidAmount', label: '已付金额', render: (item) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatCurrency(item.paidAmount)}</span> },
-        { key: 'unpaidAmount', label: '未付金额', render: (item) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{formatCurrency(item.unpaidAmount)}</span> },
-        { key: 'signDate', label: '签订日期', render: (item) => formatDate(item.signDate), fullWidth: true },
-      ]}
-      actions={(record) => {
-        const locked = isApprovalLocked(record)
-        const lockReason = getApprovalLockReason(record) ?? ''
-
-        return (
-        <Space size="small" wrap>
-          <ViewRecordButton resource="procurement-contracts" id={record.id} />
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            disabled={locked}
-            title={lockReason}
-            onClick={() => handleEditClick(record.id)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="删除采购合同"
-            description="确定删除该采购合同吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
+          <Space size={2} wrap>
+            <ViewRecordButton resource="procurement-contracts" id={record.id} />
             <Button
               type="link"
               size="small"
-              danger
-              icon={<DeleteOutlined />}
+              icon={<EditOutlined />}
+              disabled={locked}
+              title={lockReason}
+              onClick={() => handleEditClick(record.id)}
             >
-              删除
+              编辑
             </Button>
-          </Popconfirm>
-          <ApprovalActions
-            id={record.id}
-            approvalStatus={record.approvalStatus}
-            approvedAt={record.approvedAt}
-            resource="procurement-contracts"
-            isAdmin={isAdmin}
-            onSuccess={() => loadContracts(keyword, projectId, month)}
-          />
-        </Space>
-      )}}
-      empty={(
-        <EmptyHint
-          title="暂无采购合同数据"
-          desc="新增采购合同后，可在此查看合同金额和付款进度。"
-          action={<Button type="primary" onClick={handleAddClick}>新增合同</Button>}
-        />
-      )}
-    />
-  )
-
-  const summaryItems = [
-    {
-      label: '合同总金额',
-      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0)),
-      color: '#1677ff',
-    },
-    {
-      label: '已付款总金额',
-      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0)),
-      color: '#52c41a',
-    },
-    {
-      label: '未付款总金额',
-      value: formatCurrency(contracts.reduce((sum, item) => sum + Number(item.unpaidAmount || 0), 0)),
-      color: '#f5222d',
+            <ApprovalActions
+              id={record.id}
+              approvalStatus={record.approvalStatus}
+              approvedAt={record.approvedAt}
+              resource="procurement-contracts"
+              onSuccess={() => loadContracts(lastFilter)}
+            />
+            {canDelete ? (
+              <Popconfirm
+                title="确认删除？"
+                description="删除后无法恢复"
+                onConfirm={() => handleDelete(record.id)}
+                okText="确认"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        )
+      },
     },
   ]
 
-  return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 6,
-          fontSize: 14,
+  const summary = useMemo(() => {
+    return contracts.reduce(
+      (acc, item) => {
+        acc.contractAmount += Number(item.contractAmount || 0)
+        acc.paidAmount += Number(item.paidAmount || 0)
+        acc.unpaidAmount += Number(item.unpaidAmount || 0)
+        return acc
+      },
+      { contractAmount: 0, paidAmount: 0, unpaidAmount: 0 }
+    )
+  }, [contracts])
+
+  const summaryCards = (
+    <AmountSummaryCards
+      isMobile={isMobile}
+      items={[
+        { label: '合同总金额', value: fmtMoney(summary.contractAmount), color: '#1677ff' },
+        { label: '已付款总金额', value: fmtMoney(summary.paidAmount), color: '#52c41a' },
+        { label: '未付款总金额', value: fmtMoney(summary.unpaidAmount), color: '#fa8c16' },
+      ]}
+    />
+  )
+
+  const filterBar = (
+    <FilterBar
+      fields={[
+        { type: 'input', key: 'keyword', placeholder: '搜索合同名称 / 编号 / 供应商' },
+        {
+          type: 'select',
+          key: 'projectId',
+          placeholder: '全部项目',
+          width: 180,
+          options: projects
+            .filter((project) => canUseAsApprovedUpstream(project))
+            .map((p) => ({ label: p.name, value: p.id })),
         },
-      }}
-    >
-      <div
-        style={{
-          minHeight: '100vh',
-          background: '#f5f5f5',
-          padding: isMobile ? '12px' : '16px',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '100%',
-            margin: '0 auto',
-            background: '#fff',
-            borderRadius: isMobile ? 10 : 8,
-            padding: isMobile ? '14px' : '20px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        { type: 'dateRange', key: 'dateRange', placeholder: ['签订开始', '签订结束'] },
+      ]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+      extra={
+        <Button
+          size="small"
+          icon={<DownloadOutlined />}
+          type="text"
+          style={{ color: '#8c8c8c' }}
+          onClick={() => {
+            const params = new URLSearchParams({ resourceType: 'procurement-contracts' })
+            if (lastFilter.projectId) params.set('projectId', String(lastFilter.projectId))
+            if (lastFilter.dateRange && Array.isArray(lastFilter.dateRange)) {
+              const [start, end] = lastFilter.dateRange as [string, string]
+              if (start) params.set('startDate', start)
+              if (end) params.set('endDate', end)
+            }
+            window.location.href = `/data-exports?${params.toString()}`
           }}
         >
-          {/* 标题 */}
-          <div style={{ marginBottom: 24 }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: isMobile ? 18 : 20,
-                fontWeight: 600,
-                color: '#1d1d1f',
-              }}
-            >
-              采购合同管理
-            </h1>
-          </div>
+          导出
+        </Button>
+      }
+    />
+  )
 
-          {/* 查询区 */}
-          <div
-            style={{
-              marginBottom: 20,
-              padding: '12px',
-              background: '#fafafa',
-              borderRadius: 6,
-              border: '1px solid #f0f0f0',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
-                flexWrap: 'wrap',
-                gap: 8,
-                width: '100%',
-              }}
-            >
-              <Input
-                placeholder="输入合同编号搜索"
-                prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: isMobile ? '100%' : 200 }}
-                onPressEnter={handleSearch}
-                size={isMobile ? 'middle' : 'middle'}
-              />
+  const table = (
+    <Table<ProcurementContract>
+      rowKey="id"
+      columns={columns}
+      dataSource={contracts}
+      loading={loading}
+      size="small"
+      pagination={{
+        pageSize: 20,
+        showTotal: (t) => `共 ${t} 条`,
+        showSizeChanger: false,
+      }}
+      scroll={{ x: 1600 }}
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无采购合同数据"
+            desc="新增采购合同后，可在此查看合同金额和付款进度。"
+            action={<Button type="primary" onClick={handleAddClick}>新增合同</Button>}
+          />
+        ),
+      }}
+    />
+  )
 
-              <Select
-                placeholder="选择项目"
-                value={projectId || undefined}
-                onChange={setProjectId}
-                allowClear
-                style={{ width: isMobile ? '100%' : 200 }}
-                loading={projectsLoading}
-                size={isMobile ? 'middle' : 'middle'}
-                options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
-                  label: project.name,
-                  value: project.id,
-                }))}
-              />
-
-              <DatePicker
-                picker="month"
-                placeholder="选择月份"
-                value={month}
-                onChange={setMonth}
-                allowClear
-                style={{ width: isMobile ? '100%' : 150 }}
-              />
-
-              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
-                <Button
-                  type="primary"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  loading={loading}
-                  style={{ flex: isMobile ? 1 : undefined }}
-                >
-                  查询
-                </Button>
-
-                <Button onClick={handleReset} loading={loading} style={{ flex: isMobile ? 1 : undefined }}>
-                  重置
-                </Button>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  width: isMobile ? '100%' : 'auto',
-                  marginLeft: isMobile ? 0 : 'auto',
-                  flexWrap: 'wrap',
-                }}
+  const mobileCards = (
+    <>
+      <MobileCardList<ProcurementContract>
+        data={contracts.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.name}
+        getDescription={(item) => `合同编号：${item.code}`}
+        getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus} approvedAt={item.approvedAt} />}
+        fields={[
+          { key: 'projectName', label: '项目名称', render: (item) => item.projectName || '-' },
+          { key: 'constructionName', label: '施工立项', render: (item) => item.constructionName || '-' },
+          { key: 'supplierName', label: '供应商', render: (item) => item.supplierName || '-' },
+          { key: 'contractAmount', label: '合同金额', render: (item) => <Text strong style={{ color: '#1677ff' }}>{fmtMoney(item.contractAmount)}</Text> },
+          { key: 'paidAmount', label: '已付金额', render: (item) => <Text style={{ color: '#52c41a' }}>{fmtMoney(item.paidAmount)}</Text> },
+          { key: 'unpaidAmount', label: '未付金额', render: (item) => <Text style={{ color: item.unpaidAmount > 0 ? '#fa8c16' : '#8c8c8c' }}>{fmtMoney(item.unpaidAmount)}</Text> },
+          { key: 'signDate', label: '签订日期', render: (item) => fmtDate(item.signDate), fullWidth: true },
+        ]}
+        actions={(record) => {
+          const locked = isApprovalLocked(record)
+          const lockReason = getApprovalLockReason(record) ?? ''
+          return (
+            <Space size={2} wrap>
+              <ViewRecordButton resource="procurement-contracts" id={record.id} />
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                disabled={locked}
+                title={lockReason}
+                onClick={() => handleEditClick(record.id)}
               >
-                <Button
-                  onClick={() => { window.location.href = '/data-exports?resourceType=procurement-contracts' }}
-                  style={{ flex: isMobile ? 1 : undefined }}
+                编辑
+              </Button>
+              <ApprovalActions
+                id={record.id}
+                approvalStatus={record.approvalStatus}
+                approvedAt={record.approvedAt}
+                resource="procurement-contracts"
+                onSuccess={() => loadContracts(lastFilter)}
+              />
+              {canDelete ? (
+                <Popconfirm
+                  title="确认删除？"
+                  description="删除后无法恢复"
+                  onConfirm={() => handleDelete(record.id)}
+                  okText="确认"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
                 >
-                  导出数据
-                </Button>
-
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleAddClick}
-                  style={{ flex: isMobile ? 1 : undefined }}
-                >
-                  新增合同
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <AmountSummaryCards items={summaryItems} isMobile={isMobile} />
-
-          {/* 表格 */}
-          {isMobile ? (
-            mobileCards
-          ) : (
-            <Table<ProcurementContract>
-              rowKey="id"
-              columns={columns}
-              dataSource={contracts}
-              loading={loading}
-              pagination={false}
-              scroll={{ x: 1600 }}
-              size="small"
-              locale={{
-                emptyText: '暂无采购合同数据',
-              }}
-            />
-          )}
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                </Popconfirm>
+              ) : null}
+            </Space>
+          )
+        }}
+        empty={
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无采购合同数据"
+            desc="新增采购合同后，可在此查看合同金额和付款进度。"
+            action={<Button type="primary" onClick={handleAddClick}>新增合同</Button>}
+          />
+        }
+      />
+      {contracts.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={contracts.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
         </div>
-      </div>
+      )}
+    </>
+  )
 
-      {/* 新增/编辑弹窗 */}
-      <Modal
+  return (
+    <>
+      <LedgerPageLayout
+        title="采购合同管理"
+        desc="管理项目采购合同，跟踪付款进度"
+        createLabel="新增合同"
+        onCreate={handleAddClick}
+        total={contracts.length}
+        filterBar={filterBar}
+        table={
+          <>
+            {summaryCards}
+            {table}
+          </>
+        }
+        mobileTable={
+          <>
+            {summaryCards}
+            {mobileCards}
+          </>
+        }
+      />
+
+      <ResponsiveModalDrawer
         title={editingId ? '编辑采购合同' : '新增采购合同'}
-        open={isModalVisible}
+        open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => {
-          setIsModalVisible(false)
+          setModalOpen(false)
           form.resetFields()
         }}
-        width={isMobile ? '95vw' : 600}
+        width={560}
         okText="确定"
         cancelText="取消"
       >
@@ -792,38 +639,34 @@ export default function ProcurementContractsPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          style={{ marginTop: 20 }}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
         >
-          <Form.Item
-            label="合同名称"
-            name="name"
-            rules={[{ required: true, message: '请输入合同名称' }]}
-          >
+          <Form.Item label="合同名称" name="name" rules={[{ required: true, message: '请输入合同名称' }]}>
             <Input placeholder="请输入合同名称" />
           </Form.Item>
 
-          <Form.Item
-            label="项目"
-            name="projectId"
-            rules={[{ required: true, message: '请选择项目' }]}
-          >
+          <Form.Item label="项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
             <Select
               placeholder="请选择项目"
+              showSearch
+              optionFilterProp="label"
               loading={projectsLoading}
-              options={projects.filter((project) => canUseAsApprovedUpstream(project)).map((project) => ({
-                label: project.name,
-                value: project.id,
-              }))}
+              options={projects
+                .filter((project) => canUseAsApprovedUpstream(project))
+                .map((project) => ({
+                  label: project.name,
+                  value: project.id,
+                }))}
             />
           </Form.Item>
 
-          <Form.Item
-            label="施工立项"
-            name="constructionId"
-            rules={[{ required: true, message: '请选择施工立项' }]}
-          >
+          <Form.Item label="施工立项" name="constructionId" rules={[{ required: true, message: '请选择施工立项' }]}>
             <Select
               placeholder="请选择施工立项"
+              showSearch
+              optionFilterProp="label"
               loading={constructionsLoading}
               options={constructions
                 .filter(
@@ -838,13 +681,11 @@ export default function ProcurementContractsPage() {
             />
           </Form.Item>
 
-          <Form.Item
-            label="供应商"
-            name="supplierId"
-            rules={[{ required: true, message: '请选择供应商' }]}
-          >
+          <Form.Item label="供应商" name="supplierId" rules={[{ required: true, message: '请选择供应商' }]}>
             <Select
               placeholder="请选择供应商"
+              showSearch
+              optionFilterProp="label"
               loading={suppliersLoading}
               options={suppliers.map((supplier) => ({
                 label: supplier.name,
@@ -866,6 +707,12 @@ export default function ProcurementContractsPage() {
               style={{ width: '100%' }}
               min={0}
               precision={2}
+              prefix="¥"
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v) => {
+                const normalized = v?.replace(/,/g, '') || ''
+                return (normalized ? Number(normalized) : undefined) as any
+              }}
             />
           </Form.Item>
 
@@ -900,7 +747,7 @@ export default function ProcurementContractsPage() {
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
         </Form>
-      </Modal>
-    </ConfigProvider>
+      </ResponsiveModalDrawer>
+    </>
   )
 }
