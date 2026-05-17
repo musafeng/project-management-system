@@ -6,36 +6,35 @@ import {
   Button,
   Input,
   Space,
-  Modal,
   Form,
   message,
   Popconfirm,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { EditOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
+import { requestApi } from '@/lib/client-request'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
-import { EmptyHint, MobileCardList } from '@/components/ledger'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { EmptyHint, FilterBar, LedgerPageLayout, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 
-/**
- * 劳务人员数据类型
- */
 interface LaborWorker {
   id: string
   code: string
   name: string
   phone: string | null
   idNumber?: string | null
+  address?: string | null
   bankAccount?: string | null
   bankName?: string | null
   attachmentUrl?: string | null
+  remark?: string | null
   createdAt: string
 }
 
-/**
- * 劳务人员详情类型
- */
 interface LaborWorkerDetail extends LaborWorker {
   idNumber?: string | null
   address?: string | null
@@ -46,18 +45,6 @@ interface LaborWorkerDetail extends LaborWorker {
   updatedAt?: string
 }
 
-/**
- * API 响应类型
- */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
-/**
- * 格式化日期
- */
 function formatDate(dateString: string | null): string {
   if (!dateString) return '-'
   try {
@@ -71,171 +58,129 @@ function formatDate(dateString: string | null): string {
 export default function LaborWorkersPage() {
   const [workers, setWorkers] = useState<LaborWorker[]>([])
   const [loading, setLoading] = useState(true)
-  const [keyword, setKeyword] = useState('')
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
   const isMobile = useMobile()
 
-  /**
-   * 加载劳务人员列表
-   */
-  const loadWorkers = async (searchKeyword?: string) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      if (searchKeyword) params.append('keyword', searchKeyword)
+  const loadWorkers = async (filters: FilterValues = {}) => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    const keyword = (filters.keyword as string)?.trim()
+    if (keyword) params.append('keyword', keyword)
 
-      const url = `/api/labor-workers${params.toString() ? `?${params.toString()}` : ''}`
-      const response = await fetch(url)
-      const result: ApiResponse<LaborWorker[]> = await response.json()
+    const url = `/api/labor-workers${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<LaborWorker[]>(url, {
+      fallbackError: '数据加载失败，请稍后重试',
+    })
 
-      if (result.success && result.data) {
-        setWorkers(result.data)
-      } else {
-        message.error(result.error || '数据加载失败')
-        setWorkers([])
-      }
-    } catch (err) {
-      console.error('加载劳务人员列表失败:', err)
-      message.error('数据加载失败，请检查网络连接')
+    if (result.success && result.data) {
+      setWorkers(result.data)
+    } else {
       setWorkers([])
-    } finally {
-      setLoading(false)
+      message.error(result.error || '数据加载失败，请稍后重试')
     }
+    setLoading(false)
   }
 
-  /**
-   * 初次加载数据
-   */
   useEffect(() => {
     loadWorkers()
     getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
-  /**
-   * 查询处理
-   */
-  const handleSearch = () => {
-    loadWorkers(keyword)
+  const handleSearch = (filters: FilterValues) => {
+    setLastFilter(filters)
+    loadWorkers(filters)
   }
 
-  /**
-   * 重置处理
-   */
   const handleReset = () => {
-    setKeyword('')
-    loadWorkers('')
+    setLastFilter({})
+    loadWorkers({})
   }
 
-  /**
-   * 打开新增弹窗
-   */
   const handleAddClick = () => {
     setEditingId(null)
     form.resetFields()
     setIsModalVisible(true)
   }
 
-  /**
-   * 打开编辑弹窗
-   */
   const handleEditClick = async (id: string) => {
-    try {
-      const response = await fetch(`/api/labor-workers/${id}`)
-      const result: ApiResponse<LaborWorkerDetail> = await response.json()
+    const result = await requestApi<LaborWorkerDetail>(`/api/labor-workers/${id}`, {
+      fallbackError: '获取劳务人员信息失败，请稍后重试',
+    })
 
-      if (result.success && result.data) {
-        setEditingId(id)
-        form.setFieldsValue({
-          name: result.data.name,
-          phone: result.data.phone || undefined,
-          idNumber: result.data.idNumber || undefined,
-          address: result.data.address || undefined,
-          bankAccount: result.data.bankAccount || undefined,
-          bankName: result.data.bankName || undefined,
-          attachmentUrl: result.data.attachmentUrl || undefined,
-          remark: result.data.remark || undefined,
-        })
-        setIsModalVisible(true)
-      } else {
-        message.error(result.error || '获取劳务人员信息失败')
-      }
-    } catch (err) {
-      console.error('获取劳务人员信息失败:', err)
-      message.error('获取劳务人员信息失败')
+    if (result.success && result.data) {
+      setEditingId(id)
+      form.setFieldsValue({
+        name: result.data.name,
+        phone: result.data.phone || undefined,
+        idNumber: result.data.idNumber || undefined,
+        address: result.data.address || undefined,
+        bankAccount: result.data.bankAccount || undefined,
+        bankName: result.data.bankName || undefined,
+        attachmentUrl: result.data.attachmentUrl || undefined,
+        remark: result.data.remark || undefined,
+      })
+      setIsModalVisible(true)
+    } else {
+      message.error(result.error || '获取劳务人员信息失败，请稍后重试')
     }
   }
 
-  /**
-   * 删除劳务人员
-   */
   const handleDelete = async (id: string) => {
-    try {
-      const response = await fetch(`/api/labor-workers/${id}`, {
-        method: 'DELETE',
-      })
-      const result: ApiResponse<any> = await response.json()
+    const result = await requestApi(`/api/labor-workers/${id}`, {
+      method: 'DELETE',
+      fallbackError: '删除失败，请稍后重试',
+    })
 
-      if (result.success) {
-        message.success('劳务人员已删除')
-        loadWorkers(keyword)
-      } else {
-        message.error(result.error || '删除失败')
-      }
-    } catch (err) {
-      console.error('删除劳务人员失败:', err)
-      message.error('删除失败，请检查网络连接')
+    if (result.success) {
+      message.success('劳务人员已删除')
+      loadWorkers(lastFilter)
+    } else {
+      message.error(result.error || '删除失败，请稍后重试')
     }
   }
 
-  /**
-   * 提交表单
-   */
   const handleSubmit = async (values: any) => {
-    try {
-      const url = editingId ? `/api/labor-workers/${editingId}` : '/api/labor-workers'
-      const method = editingId ? 'PUT' : 'POST'
+    const url = editingId ? `/api/labor-workers/${editingId}` : '/api/labor-workers'
+    const method = editingId ? 'PUT' : 'POST'
 
-      const payload = {
-        name: values.name,
-        phone: values.phone || null,
-        idNumber: values.idNumber || null,
-        address: values.address || null,
-        bankAccount: values.bankAccount || null,
-        bankName: values.bankName || null,
-        attachmentUrl: values.attachmentUrl || null,
-        remark: values.remark || null,
-      }
+    const payload = {
+      name: values.name,
+      phone: values.phone || null,
+      idNumber: values.idNumber || null,
+      address: values.address || null,
+      bankAccount: values.bankAccount || null,
+      bankName: values.bankName || null,
+      attachmentUrl: values.attachmentUrl || null,
+      remark: values.remark || null,
+    }
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
+    const result = await requestApi(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      fallbackError: editingId ? '更新劳务人员失败，请稍后重试' : '创建劳务人员失败，请稍后重试',
+    })
 
-      const result: ApiResponse<any> = await response.json()
-
-      if (result.success) {
-        message.success(editingId ? '劳务人员已更新' : '劳务人员已创建')
-        setIsModalVisible(false)
-        form.resetFields()
-        loadWorkers(keyword)
-      } else {
-        message.error(result.error || '操作失败')
-      }
-    } catch (err) {
-      console.error('提交表单失败:', err)
-      message.error('操作失败，请检查网络连接')
+    if (result.success) {
+      message.success(editingId ? '劳务人员已更新' : '劳务人员已创建')
+      setIsModalVisible(false)
+      form.resetFields()
+      loadWorkers(lastFilter)
+    } else {
+      message.error(result.error || (editingId ? '更新劳务人员失败，请稍后重试' : '创建劳务人员失败，请稍后重试'))
     }
   }
 
-  /**
-   * 表格列定义
-   */
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const columns: ColumnsType<LaborWorker> = [
     {
       title: '名称',
@@ -312,6 +257,37 @@ export default function LaborWorkersPage() {
     },
   ]
 
+  const filterBar = (
+    <FilterBar
+      fields={[{ type: 'input', key: 'keyword', placeholder: '搜索劳务人员姓名' }]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+    />
+  )
+
+  const table = (
+    <Table<LaborWorker>
+      rowKey="id"
+      columns={columns}
+      dataSource={workers}
+      loading={loading}
+      pagination={false}
+      scroll={{ x: 1100 }}
+      size="small"
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无劳务人员数据"
+            desc="新增劳务人员后，可在此管理身份证与开户信息。"
+            action={<Button type="primary" onClick={handleAddClick}>新增劳务人员</Button>}
+          />
+        ),
+      }}
+    />
+  )
+
   const mobileCards = (
     <MobileCardList<LaborWorker>
       data={workers}
@@ -322,7 +298,8 @@ export default function LaborWorkersPage() {
         { key: 'phone', label: '联系电话', render: (item) => item.phone || '-' },
         { key: 'idNumber', label: '身份证号', render: (item) => item.idNumber || '-', fullWidth: true },
         { key: 'bankAccount', label: '银行卡号', render: (item) => item.bankAccount || '-', fullWidth: true },
-        { key: 'bankName', label: '开户行', render: (item) => item.bankName || '-', fullWidth: true },
+        { key: 'bankName', label: '开户银行', render: (item) => item.bankName || '-', fullWidth: true },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
         { key: 'createdAt', label: '创建时间', render: (item) => formatDate(item.createdAt) },
       ]}
       actions={(record) => (
@@ -337,6 +314,7 @@ export default function LaborWorkersPage() {
       )}
       empty={(
         <EmptyHint
+          icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
           title="暂无劳务人员数据"
           desc="新增劳务人员后，可在此管理身份证与开户信息。"
           action={<Button type="primary" onClick={handleAddClick}>新增劳务人员</Button>}
@@ -346,92 +324,19 @@ export default function LaborWorkersPage() {
   )
 
   return (
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: 8,
-        padding: '20px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-      }}
-    >
-      {/* 标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 20,
-            fontWeight: 600,
-            color: '#1d1d1f',
-          }}
-        >
-          劳务人员管理
-        </h1>
-      </div>
+    <>
+      <LedgerPageLayout
+        title="劳务人员管理"
+        desc="维护劳务人员档案，记录身份证、开户信息与备注"
+        createLabel="新增劳务人员"
+        onCreate={handleAddClick}
+        total={workers.length}
+        filterBar={filterBar}
+        table={table}
+        mobileTable={mobileCards}
+      />
 
-      {/* 查询区 */}
-      <div
-        style={{
-          marginBottom: 20,
-          padding: '12px',
-          background: '#fafafa',
-          borderRadius: 6,
-          border: '1px solid #f0f0f0',
-        }}
-      >
-        <Space wrap style={{ width: '100%' }}>
-          <Input
-            placeholder="输入劳务人员名称搜索"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: isMobile ? '100%' : 200 }}
-            onPressEnter={handleSearch}
-          />
-
-          <Button
-            type="primary"
-            icon={<SearchOutlined />}
-            onClick={handleSearch}
-            loading={loading}
-          >
-            查询
-          </Button>
-
-          <Button onClick={handleReset} loading={loading}>
-            重置
-          </Button>
-
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddClick}
-            style={{ marginLeft: isMobile ? 0 : 'auto', width: isMobile ? '100%' : 'auto' }}
-          >
-            新增劳务人员
-          </Button>
-        </Space>
-      </div>
-
-      {/* 列表 */}
-      {isMobile ? (
-        mobileCards
-      ) : (
-        <Table<LaborWorker>
-          rowKey="id"
-          columns={columns}
-          dataSource={workers}
-          loading={loading}
-          pagination={false}
-          scroll={{ x: 1100 }}
-          size="small"
-          locale={{
-            emptyText: '暂无劳务人员数据',
-          }}
-        />
-      )}
-
-      {/* 新增/编辑弹窗 */}
-      <Modal
+      <ResponsiveModalDrawer
         title={editingId ? '编辑劳务人员' : '新增劳务人员'}
         open={isModalVisible}
         onOk={() => form.submit()}
@@ -439,7 +344,7 @@ export default function LaborWorkersPage() {
           setIsModalVisible(false)
           form.resetFields()
         }}
-        width={isMobile ? '95vw' : 620}
+        width={620}
         okText="确定"
         cancelText="取消"
       >
@@ -447,7 +352,9 @@ export default function LaborWorkersPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          style={{ marginTop: 20 }}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
         >
           <Form.Item
             label="名称"
@@ -497,7 +404,7 @@ export default function LaborWorkersPage() {
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
         </Form>
-      </Modal>
-    </div>
+      </ResponsiveModalDrawer>
+    </>
   )
 }
