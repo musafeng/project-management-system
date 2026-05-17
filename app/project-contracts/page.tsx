@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Table, Modal, Form, message, Popconfirm, Pagination,
+  Table, Form, message, Popconfirm, Pagination,
   DatePicker, InputNumber, Input, Select, Button, Space, Tooltip, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -19,6 +19,7 @@ import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
@@ -596,13 +597,13 @@ export default function ProjectContractsPage() {
         }
       />
 
-      <Modal
+      <ResponsiveModalDrawer
         title={editingId ? '编辑合同' : '新增合同'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => { setModalOpen(false); form.resetFields() }}
         okText="保存" cancelText="取消"
-        width={isMobile ? '95vw' : 560}
+        width={560}
       >
         <Form
           form={form}
@@ -710,7 +711,7 @@ export default function ProjectContractsPage() {
             <Input.TextArea rows={3} placeholder="选填" />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </>
   )
 }

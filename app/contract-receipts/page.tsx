@@ -5,7 +5,6 @@ import {
   Table,
   Button,
   Select,
-  Modal,
   Form,
   message,
   ConfigProvider,
@@ -22,6 +21,7 @@ import dayjs from 'dayjs'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { EmptyHint, MobileCardList } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
 import { canUseAsApprovedUpstream, isApprovalLocked } from '@/lib/approval-status'
@@ -599,7 +599,7 @@ export default function ContractReceiptsPage() {
         </div>
       </div>
 
-      <Modal
+      <ResponsiveModalDrawer
         title="新增收款"
         open={isModalVisible}
         onOk={() => form.submit()}
@@ -608,7 +608,7 @@ export default function ContractReceiptsPage() {
           form.resetFields()
           setDeductionItems([])
         }}
-        width={isMobile ? '95vw' : 640}
+        width={640}
         okText="确定"
         cancelText="取消"
       >
@@ -748,7 +748,7 @@ export default function ContractReceiptsPage() {
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </ConfigProvider>
   )
 }

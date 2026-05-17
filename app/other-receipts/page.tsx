@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Space,
   Table,
@@ -20,6 +19,7 @@ import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
@@ -276,12 +276,12 @@ export default function OtherReceiptsPage() {
         <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 860 }} size="small" />
       )}
 
-      <Modal
+      <ResponsiveModalDrawer
         title={editing ? '编辑其他收款' : '新增其他收款'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={isMobile ? '95vw' : 560}
+        width={560}
         okText="确定"
         cancelText="取消"
       >
@@ -313,7 +313,7 @@ export default function OtherReceiptsPage() {
             <Input.TextArea rows={3} placeholder="请输入备注" />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </div>
   )
 }

@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -20,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
@@ -286,12 +286,12 @@ export default function SalesExpensesPage() {
         <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 700 }} size="small" />
       )}
 
-      <Modal
+      <ResponsiveModalDrawer
         title={editing ? '编辑销售费用报销' : '新增销售费用报销'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={isMobile ? '95vw' : 620}
+        width={620}
         okText="确定"
         cancelText="取消"
       >
@@ -393,7 +393,7 @@ export default function SalesExpensesPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </div>
   )
 }

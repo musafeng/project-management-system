@@ -3,17 +3,20 @@
 import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import {
   Table, Tabs, Tag, Space, Button, Input, Select,
-  Modal, message, Tooltip, Badge, Pagination,
+  Modal, message, Tooltip, Badge, Pagination, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   SearchOutlined, CheckOutlined, CloseOutlined,
   RollbackOutlined, ReloadOutlined, ClockCircleOutlined,
+  InboxOutlined,
 } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
-import { MobileCardList } from '@/components/ledger'
+import { MobileCardList, StatusTag, APPROVAL_STATUS, EmptyHint } from '@/components/ledger'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { useMobile } from '@/hooks/useMobile'
+const { Title, Text } = Typography
 
 // ============================================================
 // TypeScript 类型
@@ -86,12 +89,7 @@ const RESOURCE_COLOR: Record<string, string> = {
   'petty-cashes': '#fa8c16',
 }
 
-const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  PENDING:  { color: 'orange',  label: '审批中' },
-  APPROVED: { color: 'green',   label: '已通过' },
-  REJECTED: { color: 'red',     label: '已驳回' },
-  CANCELLED:{ color: 'default', label: '已撤销' },
-}
+const STATUS_CONFIG = APPROVAL_STATUS
 
 // ============================================================
 // 工具函数
@@ -212,10 +210,7 @@ function buildColumns(
       dataIndex: 'status',
       key: 'status',
       width: 90,
-      render: (v: string) => {
-        const cfg = STATUS_CONFIG[v] ?? { color: 'default', label: v }
-        return <Tag color={cfg.color} style={{ fontSize: 11 }}>{cfg.label}</Tag>
-      },
+      render: (v: string) => <StatusTag status={v} map={STATUS_CONFIG} size="small" />,
     },
     {
       title: '发起时间',
@@ -400,10 +395,7 @@ export default function ApprovalCenterPage() {
         getKey={(item) => item.id}
         getTitle={(item) => item.resourceLabel}
         getDescription={(item) => `发起人：${item.submitterName}`}
-        getStatus={(item) => {
-          const cfg = STATUS_CONFIG[item.status] ?? { color: 'default', label: item.status }
-          return <Tag color={cfg.color} style={{ fontSize: 11 }}>{cfg.label}</Tag>
-        }}
+        getStatus={(item) => <StatusTag status={item.status} map={STATUS_CONFIG} size="small" />}
         fields={[
           {
             key: 'resourceType',
@@ -427,7 +419,13 @@ export default function ApprovalCenterPage() {
           },
         ]}
         actions={renderActions}
-        empty={tab === 'cc' ? '抄送功能即将开放' : '暂无数据'}
+        empty={
+          <EmptyHint
+            icon={<InboxOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title={tab === 'cc' ? '抄送功能即将开放' : tab === 'pending' ? '没有待处理的审批' : '暂无审批记录'}
+            desc={tab === 'pending' ? '当前没有需要您处理的审批，可在「我发起的」查看自己提交的单据' : undefined}
+          />
+        }
       />
       {items.length > MOBILE_PAGE_SIZE && (
         <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
@@ -452,7 +450,7 @@ export default function ApprovalCenterPage() {
       ),
     },
     { key: 'done' as TabKey, label: '我已处理' },
-    { key: 'cc' as TabKey, label: '抄送我' },
+    { key: 'cc' as TabKey, label: '抄送我的' },
     { key: 'mine' as TabKey, label: '我发起的' },
   ]
 
@@ -466,9 +464,19 @@ export default function ApprovalCenterPage() {
       }}
     >
       {/* 标题 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <ClockCircleOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
-        <span style={{ fontSize: 18, fontWeight: 700, color: '#1d1d1f' }}>审批中心</span>
+      <div style={{ marginBottom: isMobile ? 6 : 2 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            <ClockCircleOutlined style={{ color: '#fa8c16', fontSize: 18, marginInlineEnd: 8 }} />
+            审批中心
+          </Title>
+          {items.length > 0 && (
+            <Text type="secondary" style={{ fontSize: 13 }}>共 {items.length} 条</Text>
+          )}
+        </div>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }}>
+          集中处理待我审批、我发起的、抄送我的、已处理记录
+        </Text>
       </div>
 
       {/* Tabs */}
@@ -502,6 +510,7 @@ export default function ApprovalCenterPage() {
                   scroll={{ x: 700 }}
                   locale={{ emptyText: tab === 'cc' ? '抄送功能即将开放' : '暂无数据' }}
                   rowClassName={(row) => {
+                    if (tab === 'mine' && row.status === 'REJECTED') return 'approval-row-rejected'
                     if (tab === 'pending' && diffDays(row.startedAt) >= 3) return 'approval-row-urgent'
                     return ''
                   }}
@@ -513,7 +522,7 @@ export default function ApprovalCenterPage() {
       />
 
       {/* 驳回弹窗 */}
-      <Modal
+      <ResponsiveModalDrawer
         title="驳回原因"
         open={!!rejectTarget}
         onOk={handleRejectConfirm}
@@ -521,7 +530,6 @@ export default function ApprovalCenterPage() {
         okText="确认驳回"
         cancelText="取消"
         okButtonProps={{ danger: true, loading: actionLoading }}
-        width={isMobile ? '95vw' : undefined}
       >
         <Input.TextArea
           rows={3}
@@ -530,12 +538,14 @@ export default function ApprovalCenterPage() {
           onChange={(e) => setRejectReason(e.target.value)}
           style={{ marginTop: 12 }}
         />
-      </Modal>
+      </ResponsiveModalDrawer>
 
-      {/* 紧急行样式注入 */}
+      {/* 紧急行 / 被驳回行样式注入 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .approval-row-urgent td { background: #fff7e6 !important; }
         .approval-row-urgent:hover td { background: #fff1d6 !important; }
+        .approval-row-rejected td { background: #fff1f0 !important; }
+        .approval-row-rejected:hover td { background: #ffe7e3 !important; }
       ` }} />
     </div>
   )

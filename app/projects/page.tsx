@@ -7,26 +7,38 @@ import {
   Input,
   Select,
   Space,
-  Modal,
   Form,
   message,
-  ConfigProvider,
   Popconfirm,
-  Tag,
   DatePicker,
   InputNumber,
-  Card,
+  Pagination,
+  Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { requestApi } from '@/lib/client-request'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { useMobile } from '@/hooks/useMobile'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
+import {
+  LedgerPageLayout,
+  FilterBar,
+  StatusTag,
+  EmptyHint,
+  MobileCardList,
+  PROJECT_STATUS,
+} from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
+import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { getApprovalStatusMeta, isApprovalLocked as isApprovalRecordLocked } from '@/lib/approval-status'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+
+const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
 
 interface Project {
   id: string
@@ -61,106 +73,28 @@ interface Customer {
   createdAt: string
 }
 
-const PROJECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  PLANNING: { label: '规划中', color: 'default' },
-  APPROVED: { label: '已批准', color: 'processing' },
-  IN_PROGRESS: { label: '进行中', color: 'processing' },
-  SUSPENDED: { label: '暂停', color: 'warning' },
-  COMPLETED: { label: '已完成', color: 'success' },
-  CANCELLED: { label: '已取消', color: 'error' },
-}
-
-function formatDate(dateString: string | null): string {
-  if (!dateString) return '-'
-  try {
-    return new Date(dateString).toLocaleDateString('zh-CN')
-  } catch {
-    return dateString
-  }
-}
-
-function getStatusTag(status: string) {
-  const statusInfo = PROJECT_STATUS_MAP[status]
-  if (statusInfo) return <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
-  return <Tag>{status}</Tag>
-}
-
-function formatCurrency(value: number | undefined): string {
-  if (value === undefined || value === null) return '-'
-  return `¥${value.toLocaleString('zh-CN')}`
-}
+const PROJECT_STATUS_OPTIONS = [
+  { label: '规划中', value: 'PLANNING' },
+  { label: '已批准', value: 'APPROVED' },
+  { label: '进行中', value: 'IN_PROGRESS' },
+  { label: '暂停中', value: 'SUSPENDED' },
+  { label: '已完成', value: 'COMPLETED' },
+  { label: '已取消', value: 'CANCELLED' },
+]
 
 function getApprovalTag(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
   const statusMeta = getApprovalStatusMeta(project)
-  return <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+  return (
+    <StatusTag
+      status={statusMeta.label}
+      map={{ [statusMeta.label]: statusMeta }}
+      size="small"
+    />
+  )
 }
 
 function isApprovalLocked(project: Pick<Project, 'approvalStatus' | 'approvedAt'>) {
   return isApprovalRecordLocked(project)
-}
-
-// 移动端单项目卡片
-function MobileProjectCard({
-  item,
-  onEdit,
-  onDelete,
-  onRefresh,
-  canDelete,
-}: {
-  item: Project
-  onEdit: (id: string) => void
-  onDelete: (id: string) => void
-  onRefresh: () => void
-  canDelete: boolean
-}) {
-  const locked = isApprovalLocked(item)
-
-  return (
-    <Card
-      size="small"
-      style={{ marginBottom: 12, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.08)' }}
-      title={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</span>
-          <Space size={4}>
-            {getStatusTag(item.status)}
-            {getApprovalTag(item)}
-          </Space>
-        </div>
-      }
-      extra={
-        <Space size="small" wrap>
-          <ViewRecordButton resource="projects" id={item.id} />
-          <Button type="link" size="small" onClick={() => window.location.href = `/projects/${item.id}`}>详情</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => onEdit(item.id)}>编辑</Button>
-          <ApprovalActions
-            id={item.id}
-            approvalStatus={item.approvalStatus}
-            approvedAt={item.approvedAt}
-            resource="projects"
-            onSuccess={onRefresh}
-          />
-          {canDelete ? (
-            <Popconfirm
-              title="确定删除该项目吗？"
-              onConfirm={() => onDelete(item.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-          ) : null}
-        </Space>
-      }
-    >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13, color: '#595959' }}>
-        <div><span style={{ color: '#999' }}>编码：</span>{item.code}</div>
-        <div><span style={{ color: '#999' }}>客户：</span>{item.customerName}</div>
-        <div><span style={{ color: '#999' }}>预算：</span>{formatCurrency(item.budget)}</div>
-        <div><span style={{ color: '#999' }}>创建：</span>{formatDate(item.createdAt)}</div>
-      </div>
-    </Card>
-  )
 }
 
 export default function ProjectsPage() {
@@ -168,11 +102,11 @@ export default function ProjectsPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [customersLoading, setCustomersLoading] = useState(true)
-  const [keyword, setKeyword] = useState('')
-  const [status, setStatus] = useState<string | undefined>(undefined)
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
+  const [mobilePage, setMobilePage] = useState(1)
   const [form] = Form.useForm()
   const isMobile = useMobile()
 
@@ -189,11 +123,11 @@ export default function ProjectsPage() {
     setCustomersLoading(false)
   }
 
-  const loadProjects = async (searchKeyword?: string, searchStatus?: string) => {
+  const loadProjects = async (filters: FilterValues = {}) => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (searchKeyword) params.append('keyword', searchKeyword)
-    if (searchStatus) params.append('status', searchStatus)
+    if (filters.keyword) params.append('keyword', filters.keyword as string)
+    if (filters.status) params.append('status', filters.status as string)
     const url = `/api/projects${params.toString() ? `?${params.toString()}` : ''}`
     const result = await requestApi<Project[]>(url, {
       fallbackError: '加载项目列表失败，请稍后重试',
@@ -212,11 +146,21 @@ export default function ProjectsPage() {
     getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
-  const handleSearch = () => loadProjects(keyword, status)
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(projects.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [projects.length, mobilePage])
+
+  const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
+    setLastFilter(filters)
+    loadProjects(filters)
+  }
+
   const handleReset = () => {
-    setKeyword('')
-    setStatus(undefined)
-    loadProjects('', undefined)
+    setMobilePage(1)
+    setLastFilter({})
+    loadProjects({})
   }
 
   const handleAddClick = () => {
@@ -252,7 +196,7 @@ export default function ProjectsPage() {
     })
     if (result.success) {
       message.success('项目已删除')
-      loadProjects(keyword, status)
+      loadProjects(lastFilter)
     } else {
       message.error(result.error || '删除项目失败，请稍后重试')
     }
@@ -279,58 +223,212 @@ export default function ProjectsPage() {
       message.success(editingId ? '项目已更新' : '项目已创建')
       setIsModalVisible(false)
       form.resetFields()
-      loadProjects(keyword, status)
+      loadProjects(lastFilter)
     } else {
       message.error(result.error || (editingId ? '更新项目失败，请稍后重试' : '创建项目失败，请稍后重试'))
     }
   }
 
+  const renderActions = (record: Project) => {
+    const locked = isApprovalLocked(record)
+    return (
+      <Space size={2} wrap>
+        <ViewRecordButton resource="projects" id={record.id} />
+        <Button
+          type="link"
+          size="small"
+          onClick={() => { window.location.href = `/projects/${record.id}` }}
+        >
+          详情
+        </Button>
+        <Button
+          type="link"
+          size="small"
+          icon={<EditOutlined />}
+          disabled={locked}
+          onClick={() => handleEditClick(record.id)}
+        >
+          编辑
+        </Button>
+        <ApprovalActions
+          id={record.id}
+          approvalStatus={record.approvalStatus}
+          approvedAt={record.approvedAt}
+          resource="projects"
+          onSuccess={() => loadProjects(lastFilter)}
+        />
+        {canDelete ? (
+          <Popconfirm
+            title="删除项目"
+            description="确定删除该项目吗？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        ) : null}
+      </Space>
+    )
+  }
+
   const columns: ColumnsType<Project> = [
-    { title: '项目编码', dataIndex: 'code', key: 'code', width: 120, render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span> },
-    { title: '项目名称', dataIndex: 'name', key: 'name', width: 180 },
-    { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150 },
-    { title: '项目状态', dataIndex: 'status', key: 'status', width: 100, render: (s: string) => getStatusTag(s) },
-    { title: '审批状态', key: 'approvalStatus', width: 100, render: (_, record) => getApprovalTag(record) },
-    { title: '预算', dataIndex: 'budget', key: 'budget', width: 120, align: 'right', render: (v: number | undefined) => formatCurrency(v) },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (text: string) => formatDate(text) },
+    {
+      title: '项目编码',
+      dataIndex: 'code',
+      key: 'code',
+      width: 130,
+      render: (text: string) => <Text code style={{ fontSize: 12 }}>{text}</Text>,
+    },
+    { title: '项目名称', dataIndex: 'name', key: 'name', width: 180, ellipsis: true },
+    { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150, ellipsis: true },
+    {
+      title: '项目状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (s: string) => <StatusTag status={s} map={PROJECT_STATUS} size="small" />,
+    },
+    {
+      title: '审批状态',
+      key: 'approvalStatus',
+      width: 100,
+      render: (_, record) => getApprovalTag(record),
+    },
+    {
+      title: '预算',
+      dataIndex: 'budget',
+      key: 'budget',
+      width: 130,
+      align: 'right',
+      render: (v: number | undefined) =>
+        <Text strong style={{ color: '#1677ff' }}>{fmtMoney(v ?? null)}</Text>,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 110,
+      render: (text: string) => fmtDate(text),
+    },
     {
       title: '操作',
       key: 'action',
       width: 250,
       fixed: 'right',
-      render: (_, record) => {
-        const locked = isApprovalLocked(record)
-        return (
-        <Space size="small" wrap>
-          <ViewRecordButton resource="projects" id={record.id} />
-          <Button type="link" size="small" onClick={() => window.location.href = `/projects/${record.id}`}>详情</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleEditClick(record.id)}>编辑</Button>
-          <ApprovalActions
-            id={record.id}
-            approvalStatus={record.approvalStatus}
-            approvedAt={record.approvedAt}
-            resource="projects"
-            onSuccess={() => loadProjects(keyword, status)}
-          />
-          {canDelete ? (
-            <Popconfirm title="删除项目" description="确定删除该项目吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-          ) : null}
-        </Space>
-        )
-      },
+      render: (_, record) => renderActions(record),
     },
   ]
 
-  // 新增/编辑弹窗（移动端桌面端共用）
+  const filterBar = (
+    <FilterBar
+      fields={[
+        { type: 'input', key: 'keyword', placeholder: '搜索项目名称 / 编码' },
+        {
+          type: 'select',
+          key: 'status',
+          placeholder: '全部状态',
+          width: 140,
+          options: PROJECT_STATUS_OPTIONS,
+        },
+      ]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+    />
+  )
+
+  const emptyHint = (
+    <EmptyHint
+      icon={<FolderOpenOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+      title="还没有项目"
+      desc="点击右上角「新增项目」创建第一个项目，建立客户与项目的对应关系。"
+      action={<Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick}>新增项目</Button>}
+    />
+  )
+
+  const table = (
+    <Table<Project>
+      rowKey="id"
+      columns={columns}
+      dataSource={projects}
+      loading={loading}
+      size="small"
+      pagination={{
+        pageSize: 20,
+        showTotal: (t) => `共 ${t} 条`,
+        showSizeChanger: false,
+      }}
+      scroll={{ x: 1100 }}
+      locale={{ emptyText: emptyHint }}
+    />
+  )
+
+  const mobileCards = (
+    <>
+      <MobileCardList<Project>
+        data={projects.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.name}
+        getDescription={(item) => `编码：${item.code}`}
+        getStatus={(item) => (
+          <Space size={4} wrap>
+            <StatusTag status={item.status} map={PROJECT_STATUS} size="small" />
+            {getApprovalTag(item)}
+          </Space>
+        )}
+        fields={[
+          {
+            key: 'customerName',
+            label: '客户',
+            render: (item) => item.customerName || '-',
+          },
+          {
+            key: 'budget',
+            label: '预算',
+            render: (item) => (
+              <Text strong style={{ color: '#1677ff' }}>{fmtMoney(item.budget ?? null)}</Text>
+            ),
+          },
+          {
+            key: 'createdAt',
+            label: '创建时间',
+            render: (item) => fmtDate(item.createdAt),
+          },
+          {
+            key: 'period',
+            label: '周期',
+            render: (item) => `${fmtDate(item.startDate)} ~ ${fmtDate(item.endDate)}`,
+            fullWidth: true,
+          },
+        ]}
+        actions={renderActions}
+        empty={emptyHint}
+      />
+      {projects.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={projects.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
+      )}
+    </>
+  )
+
   const formModal = (
-    <Modal
+    <ResponsiveModalDrawer
       title={editingId ? '编辑项目' : '新增项目'}
       open={isModalVisible}
       onOk={() => form.submit()}
       onCancel={() => { setIsModalVisible(false); form.resetFields() }}
-      width={isMobile ? '95vw' : 600}
+      width={600}
       okText="确定"
       cancelText="取消"
     >
@@ -342,6 +440,8 @@ export default function ProjectsPage() {
           <Select
             placeholder="请选择客户"
             loading={customersLoading}
+            showSearch
+            optionFilterProp="label"
             size={isMobile ? 'large' : 'middle'}
             options={customers.map((c) => ({ label: c.name, value: c.id }))}
           />
@@ -359,139 +459,22 @@ export default function ProjectsPage() {
           <Input.TextArea placeholder="请输入备注" rows={3} />
         </Form.Item>
       </Form>
-    </Modal>
+    </ResponsiveModalDrawer>
   )
 
-  // ── 移动端布局 ──
-  if (isMobile) {
-    return (
-      <ConfigProvider theme={{ token: { colorPrimary: '#1677ff', borderRadius: 6, fontSize: 14 } }}>
-        <div style={{ background: '#f5f5f5', minHeight: '100vh', padding: '12px' }}>
-          <div style={{ marginBottom: 16 }}>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1d1d1f' }}>项目管理</h1>
-          </div>
-
-          {/* 筛选区 */}
-          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Input
-              placeholder="输入项目名称搜索"
-              prefix={<SearchOutlined />}
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              onPressEnter={handleSearch}
-              size="large"
-              style={{ marginBottom: 10 }}
-            />
-            <Select
-              placeholder="选择项目状态"
-              value={status || undefined}
-              onChange={setStatus}
-              allowClear
-              size="large"
-              style={{ width: '100%', marginBottom: 10 }}
-              options={[
-                { label: '规划中', value: 'PLANNING' },
-                { label: '已批准', value: 'APPROVED' },
-                { label: '进行中', value: 'IN_PROGRESS' },
-                { label: '暂停', value: 'SUSPENDED' },
-                { label: '已完成', value: 'COMPLETED' },
-                { label: '已取消', value: 'CANCELLED' },
-              ]}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading} size="large" block>查询</Button>
-              <Button onClick={handleReset} loading={loading} size="large" block>重置</Button>
-            </div>
-          </div>
-
-          {/* 新增按钮 */}
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddClick}
-            size="large"
-            block
-            style={{ marginBottom: 12 }}
-          >
-            新增项目
-          </Button>
-
-          {/* 卡片列表 */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#bbb' }}>加载中...</div>
-          ) : projects.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#bbb', padding: '40px 0', fontSize: 15 }}>暂无项目数据</div>
-          ) : (
-            projects.map((item) => (
-              <MobileProjectCard
-                key={item.id}
-                item={item}
-                onEdit={handleEditClick}
-                onDelete={handleDelete}
-                onRefresh={() => loadProjects(keyword, status)}
-                canDelete={canDelete}
-              />
-            ))
-          )}
-        </div>
-        {formModal}
-      </ConfigProvider>
-    )
-  }
-
-  // ── 桌面端布局（完全不变）──
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: '#1677ff', borderRadius: 6, fontSize: 14 } }}>
-      <div style={{ minHeight: '100vh', background: '#f5f5f5', padding: '16px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', background: '#fff', borderRadius: 8, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-          <div style={{ marginBottom: 24 }}>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1d1d1f' }}>项目管理</h1>
-          </div>
-
-          <div style={{ marginBottom: 20, padding: '12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Space wrap style={{ width: '100%' }}>
-              <Input
-                placeholder="输入项目名称搜索"
-                prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
-                onPressEnter={handleSearch}
-              />
-              <Select
-                placeholder="选择项目状态"
-                value={status || undefined}
-                onChange={setStatus}
-                allowClear
-                style={{ width: 150 }}
-                options={[
-                  { label: '规划中', value: 'PLANNING' },
-                  { label: '已批准', value: 'APPROVED' },
-                  { label: '进行中', value: 'IN_PROGRESS' },
-                  { label: '暂停', value: 'SUSPENDED' },
-                  { label: '已完成', value: 'COMPLETED' },
-                  { label: '已取消', value: 'CANCELLED' },
-                ]}
-              />
-              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>查询</Button>
-              <Button onClick={handleReset} loading={loading}>重置</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick} style={{ marginLeft: 'auto' }}>新增项目</Button>
-            </Space>
-          </div>
-
-          <Table<Project>
-            rowKey="id"
-            columns={columns}
-            dataSource={projects}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1200 }}
-            size="small"
-            locale={{ emptyText: '暂无项目数据' }}
-          />
-        </div>
-      </div>
+    <>
+      <LedgerPageLayout
+        title="项目管理"
+        desc="管理所有项目档案、关联客户与审批状态"
+        createLabel="新增项目"
+        onCreate={handleAddClick}
+        total={projects.length}
+        filterBar={filterBar}
+        table={table}
+        mobileTable={mobileCards}
+      />
       {formModal}
-    </ConfigProvider>
+    </>
   )
-} 
+}

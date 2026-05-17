@@ -1,7 +1,7 @@
 'use client'
 
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Tag, message } from 'antd'
+import { Button, DatePicker, Form, Input, InputNumber, Popconfirm, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
@@ -9,6 +9,7 @@ import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { getIssuanceDisplayStatus, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
@@ -276,12 +277,12 @@ export default function PettyCashesPage() {
         <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
       )}
 
-      <Modal
+      <ResponsiveModalDrawer
         title={editing ? '编辑备用金申请' : '新增备用金申请'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
-        width={isMobile ? '95vw' : 520}
+        width={520}
         okText="确定"
         cancelText="取消"
       >
@@ -317,7 +318,7 @@ export default function PettyCashesPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </div>
   )
 }
