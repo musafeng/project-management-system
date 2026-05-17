@@ -5,11 +5,10 @@ import { Button, Progress, Space, message } from 'antd'
 import { DeleteOutlined, FileOutlined, PictureOutlined, UploadOutlined } from '@ant-design/icons'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
 import {
-  getAttachmentDisplayName,
-  getAttachmentOpenUrl,
   parseAttachmentUrls,
   serializeAttachmentUrls,
 } from '@/lib/attachments'
+import AttachmentPreviewLinks from './AttachmentPreviewLinks'
 
 interface AttachmentUploadFieldProps {
   value?: string | null
@@ -133,17 +132,7 @@ export default function AttachmentUploadField({
   }
 
   if (disabled) {
-    return attachments.length > 0 ? (
-      <Space direction="vertical" size={4}>
-        {attachments.map((url) => (
-          <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
-            {getAttachmentDisplayName(url) || url}
-          </a>
-        ))}
-      </Space>
-    ) : (
-      <span style={{ color: '#999' }}>暂无附件</span>
-    )
+    return <AttachmentPreviewLinks urls={attachments} />
   }
 
   return (
@@ -214,9 +203,7 @@ export default function AttachmentUploadField({
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           {attachments.map((url) => (
             <Space key={url} size={4} wrap>
-              <a href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
-                {getAttachmentDisplayName(url) || '查看附件'}
-              </a>
+              <AttachmentPreviewLinks urls={[url]} />
               <Button
                 type="text"
                 danger

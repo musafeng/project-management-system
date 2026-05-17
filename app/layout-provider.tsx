@@ -204,15 +204,9 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
     // 加载区域列表 + 当前区域 cookie
     const loadRegions = async () => {
       try {
-        const [regionsRes, currentRes] = await Promise.all([
-          fetch('/api/regions', { credentials: 'include' }),
-          fetch('/api/current-region', { credentials: 'include' }),
-        ])
-        const regionsJson = await regionsRes.json()
+        const currentRes = await fetch('/api/current-region', { credentials: 'include' })
         const currentJson = await currentRes.json()
-        if (regionsJson.success) {
-          setRegions(regionsJson.data.filter((r: any) => r.isActive))
-        } else if (currentJson.success && Array.isArray(currentJson.data?.accessibleRegions)) {
+        if (currentJson.success && Array.isArray(currentJson.data?.accessibleRegions)) {
           setRegions(currentJson.data.accessibleRegions.filter((r: any) => r.isActive))
         }
         if (currentJson.success && currentJson.data?.regionId) {
@@ -237,7 +231,7 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
           try {
             console.log('[Auth] 未登录，尝试钉钉自动免登录...')
             await getDingTalkUser()
-            user = await getCurrentAuthUser()
+            user = await getCurrentAuthUser({ force: true })
             console.log('[Auth] 钉钉自动免登录成功:', user?.name)
           } catch (dtError) {
             console.warn('[Auth] 钉钉自动免登录失败:', dtError)

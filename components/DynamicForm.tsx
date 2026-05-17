@@ -5,7 +5,8 @@ import { Form, Input, InputNumber, DatePicker, Select, Button, Table, Space } fr
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { FormInstance } from 'antd'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
-import { getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
+import AttachmentPreviewLinks from '@/components/AttachmentPreviewLinks'
+import { parseAttachmentUrls } from '@/lib/attachments'
 
 export interface FormFieldConfig {
   id: string
@@ -175,16 +176,7 @@ function FileField({ field, disabled }: { field: FormFieldConfig; disabled?: boo
 
   if (disabled) {
     const urls = parseAttachmentUrls(currentValue)
-    if (urls.length === 0) return <span style={{ color: '#999' }}>暂无附件</span>
-    return (
-      <Space direction="vertical" size={4}>
-        {urls.map((url) => (
-          <a key={url} href={getAttachmentOpenUrl(url)} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
-            {url.split('/').pop()?.replace(/^\d+-/, '') || '查看附件'}
-          </a>
-        ))}
-      </Space>
-    )
+    return <AttachmentPreviewLinks urls={urls} />
   }
 
   return (

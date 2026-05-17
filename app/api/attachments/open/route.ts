@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import OSS from 'ali-oss'
 import { BadRequestError, getCurrentUser } from '@/lib/api'
+import { getAttachmentDisplayName, getAttachmentPreviewType } from '@/lib/attachments'
 import { serverEnv } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 const ATTACHMENT_PREFIX = 'attachments/'
 const SIGNED_URL_EXPIRES_SECONDS = 10 * 60
 
-const INLINE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf'])
+const INLINE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'csv', 'txt', 'doc', 'docx', 'xls', 'xlsx'])
 
 function getOssClient() {
   const { region, accessKeyId, accessKeySecret, bucket } = serverEnv.oss
@@ -118,6 +119,8 @@ export async function GET(req: Request) {
 
     const ext = getFileExtension(objectKey)
     const isInline = INLINE_EXTENSIONS.has(ext)
+    const name = getAttachmentDisplayName(objectKey)
+    const previewType = getAttachmentPreviewType(objectKey)
 
     const signedUrl = client.signatureUrl(objectKey, {
       expires: SIGNED_URL_EXPIRES_SECONDS,
@@ -126,7 +129,7 @@ export async function GET(req: Request) {
     })
 
     if (wantsJson) {
-      return NextResponse.json({ success: true, data: { url: signedUrl, inline: isInline } })
+      return NextResponse.json({ success: true, data: { url: signedUrl, inline: isInline, name, ext, previewType } })
     }
 
     const response = NextResponse.redirect(signedUrl, 302)
