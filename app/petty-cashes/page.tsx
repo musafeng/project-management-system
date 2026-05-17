@@ -1,10 +1,23 @@
 'use client'
 
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, DatePicker, Form, Input, InputNumber, Popconfirm, Space, Table, Tag, message } from 'antd'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons'
+import {
+  Button,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Pagination,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
@@ -14,8 +27,14 @@ import { getCurrentAuthUser } from '@/lib/auth-client'
 import { getIssuanceDisplayStatus, isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
-import { EmptyHint, MobileCardList } from '@/components/ledger'
+import { EmptyHint, FilterBar, LedgerPageLayout, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
 import { useMobile } from '@/hooks/useMobile'
+import { fmtMoney, fmtDate } from '@/lib/utils/format'
+import { requestApi } from '@/lib/client-request'
+
+const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
 
 interface PettyCash {
   id: string
@@ -41,16 +60,21 @@ const CASH_STATUS: Record<string, { label: string; color: string }> = {
   PARTIAL: { label: '部分退回', color: 'orange' },
 }
 
-function fmt(value: number) {
-  return `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
-}
-
-function fmtDate(value: string) {
-  try {
-    return new Date(value).toLocaleDateString('zh-CN')
-  } catch {
-    return value
+function applyClientFilters(data: PettyCash[], filters: FilterValues) {
+  let filtered = data
+  if (filters.dateRange && Array.isArray(filters.dateRange)) {
+    const [start, end] = filters.dateRange as [string, string]
+    if (start && end) {
+      const startDate = dayjs(start)
+      const endDate = dayjs(end)
+      filtered = filtered.filter((item) => {
+        if (!item.issueDate) return false
+        const d = dayjs(item.issueDate)
+        return d.isValid() && !d.isBefore(startDate, 'day') && !d.isAfter(endDate, 'day')
+      })
+    }
   }
+  return filtered
 }
 
 export default function PettyCashesPage() {
@@ -59,29 +83,55 @@ export default function PettyCashesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PettyCash | null>(null)
   const [canDelete, setCanDelete] = useState(false)
-  const [holder, setHolder] = useState('')
-  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const [mobilePage, setMobilePage] = useState(1)
   const [form] = Form.useForm()
   const isMobile = useMobile()
 
-  const load = useCallback(async (searchHolder: string, searchMonth: dayjs.Dayjs | null) => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (searchHolder.trim()) params.set('holder', searchHolder.trim())
-      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
-      const response = await fetch(`/api/petty-cashes${params.toString() ? `?${params.toString()}` : ''}`)
-      const json = await response.json()
-      if (json.success) setData(json.data)
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   useEffect(() => {
-    void load('', null)
-    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
-  }, [load])
+    const maxPage = Math.max(1, Math.ceil(data.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [data.length, mobilePage])
+
+  const load = async (filters: FilterValues = {}) => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    const keyword = (filters.keyword as string)?.trim()
+    if (keyword) params.set('holder', keyword)
+    const url = `/api/petty-cashes${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<PettyCash[]>(url, {
+      credentials: 'include',
+      fallbackError: '数据加载失败，请稍后重试',
+    })
+    if (result.success) {
+      setData(applyClientFilters(result.data || [], filters))
+    } else {
+      setData([])
+      message.error(result.error || '数据加载失败，请稍后重试')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
+    setLastFilter(filters)
+    load(filters)
+  }
+
+  const handleReset = () => {
+    setMobilePage(1)
+    setLastFilter({})
+    load({})
+  }
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -106,49 +156,62 @@ export default function PettyCashesPage() {
   }
 
   const handleSubmit = async (values: any) => {
-    try {
-      const payload = {
-        ...values,
-        issueDate: values.issueDate?.format('YYYY-MM-DD'),
-      }
+    const payload = {
+      ...values,
+      issueDate: values.issueDate?.format('YYYY-MM-DD'),
+    }
 
-      const url = editing ? `/api/petty-cashes/${editing.id}` : '/api/petty-cashes'
-      const method = editing ? 'PUT' : 'POST'
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await response.json()
+    const url = editing ? `/api/petty-cashes/${editing.id}` : '/api/petty-cashes'
+    const method = editing ? 'PUT' : 'POST'
+    const result = await requestApi(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '操作失败，请稍后重试',
+    })
 
-      if (json.success) {
-        message.success(editing ? '更新成功' : '创建成功')
-        setModalOpen(false)
-        void load(holder, month)
-        return
-      }
-
-      message.error(json.error || '操作失败')
-    } catch (err) {
-      console.error('提交备用金申请失败:', err)
-      message.error('提交失败，请检查表单后重试')
+    if (result.success) {
+      message.success(editing ? '更新成功' : '创建成功')
+      setModalOpen(false)
+      load(lastFilter)
+    } else {
+      message.error(result.error || '操作失败')
     }
   }
 
   const handleDelete = async (id: string) => {
-    const response = await fetch(`/api/petty-cashes/${id}`, { method: 'DELETE' })
-    const json = await response.json()
+    const result = await requestApi(`/api/petty-cashes/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      fallbackError: '删除失败，请稍后重试',
+    })
 
-    if (json.success) {
+    if (result.success) {
       message.success('已删除')
-      void load(holder, month)
-      return
+      load(lastFilter)
+    } else {
+      message.error(result.error || '删除失败')
     }
-
-    message.error(json.error || '删除失败')
   }
 
-  const total = data.reduce((sum, record) => sum + Number(record.issuedAmount || 0), 0)
+  const total = useMemo(
+    () => data.reduce((sum, record) => sum + Number(record.issuedAmount || 0), 0),
+    [data]
+  )
+
+  const summaryCards = (
+    <AmountSummaryCards
+      isMobile={isMobile}
+      items={[{ label: '申请总金额', value: fmtMoney(total), color: '#fa8c16' }]}
+    />
+  )
+
+  const renderStatusTag = (record: PettyCash) => {
+    const displayStatus = getIssuanceDisplayStatus(record.status, record)
+    const meta = CASH_STATUS[displayStatus]
+    return <Tag color={meta?.color}>{meta?.label || displayStatus}</Tag>
+  }
 
   const columns: ColumnsType<PettyCash> = [
     { title: '申请人', dataIndex: 'holder', width: 100 },
@@ -158,18 +221,21 @@ export default function PettyCashesPage() {
       dataIndex: 'issuedAmount',
       width: 120,
       align: 'right',
-      render: (value) => <span style={{ color: '#fa8c16', fontWeight: 600 }}>{fmt(Number(value))}</span>,
+      render: (value) => <Text strong style={{ color: '#fa8c16' }}>{fmtMoney(Number(value))}</Text>,
     },
-    { title: '已退回', dataIndex: 'returnedAmount', width: 110, align: 'right', render: (value) => fmt(Number(value)) },
-    { title: '日期', dataIndex: 'issueDate', width: 110, render: fmtDate },
+    {
+      title: '已退回',
+      dataIndex: 'returnedAmount',
+      width: 110,
+      align: 'right',
+      render: (value) => fmtMoney(Number(value)),
+    },
+    { title: '日期', dataIndex: 'issueDate', width: 110, render: (v) => fmtDate(v) },
     {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (value, record) => {
-        const displayStatus = getIssuanceDisplayStatus(value, record)
-        return <Tag color={CASH_STATUS[displayStatus]?.color}>{CASH_STATUS[displayStatus]?.label || displayStatus}</Tag>
-      },
+      render: (_, record) => renderStatusTag(record),
     },
     {
       title: '审批',
@@ -184,7 +250,6 @@ export default function PettyCashesPage() {
       fixed: 'right',
       render: (_, record) => {
         const locked = isApprovalLocked(record)
-
         return (
           <Space size="small" wrap>
             <ViewRecordButton resource="petty-cashes" id={record.id} />
@@ -203,7 +268,7 @@ export default function PettyCashesPage() {
               approvalStatus={record.approvalStatus || 'DRAFT'}
               approvedAt={record.approvedAt}
               resource="petty-cashes"
-              onSuccess={() => void load(holder, month)}
+              onSuccess={() => load(lastFilter)}
             />
           </Space>
         )
@@ -211,71 +276,143 @@ export default function PettyCashesPage() {
     },
   ]
 
-  const mobileCards = (
-    <MobileCardList<PettyCash>
-      data={data}
-      loading={loading}
-      getKey={(item) => item.id}
-      getTitle={(item) => item.holder || '备用金申请'}
-      getDescription={(item) => `日期：${fmtDate(item.issueDate)}`}
-      getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+  const filterBar = (
+    <FilterBar
       fields={[
-        { key: 'issuedAmount', label: '申请金额', render: (item) => <span style={{ color: '#fa8c16', fontWeight: 600 }}>{fmt(Number(item.issuedAmount))}</span> },
-        { key: 'returnedAmount', label: '已退回', render: (item) => fmt(Number(item.returnedAmount)) },
-        { key: 'applyReason', label: '申请事由', render: (item) => item.applyReason || '-', fullWidth: true },
-        { key: 'status', label: '状态', render: (item) => {
-          const displayStatus = getIssuanceDisplayStatus(item.status, item)
-          return <Tag color={CASH_STATUS[displayStatus]?.color}>{CASH_STATUS[displayStatus]?.label || displayStatus}</Tag>
-        }},
+        { type: 'input', key: 'keyword', placeholder: '搜索申请人' },
+        { type: 'dateRange', key: 'dateRange', placeholder: ['申请开始', '申请结束'] },
       ]}
-      actions={(record) => {
-        const locked = isApprovalLocked(record)
-        return (
-          <Space size="small" wrap>
-            <ViewRecordButton resource="petty-cashes" id={record.id} />
-            <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
-            {canDelete ? (
-              <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(record.id)} okText="是" cancelText="否">
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
-              </Popconfirm>
-            ) : null}
-            <ApprovalActions
-              id={record.id}
-              approvalStatus={record.approvalStatus || 'DRAFT'}
-              approvedAt={record.approvedAt}
-              resource="petty-cashes"
-              onSuccess={() => void load(holder, month)}
-            />
-          </Space>
-        )
-      }}
-      empty={<EmptyHint title="暂无备用金申请数据" desc="新增备用金申请后，可在此管理审批进度。" />}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+      extra={
+        <Button
+          size="small"
+          icon={<DownloadOutlined />}
+          type="text"
+          style={{ color: '#8c8c8c' }}
+          onClick={() => {
+            const params = new URLSearchParams({ resourceType: 'petty-cashes' })
+            const keyword = (lastFilter.keyword as string)?.trim()
+            if (keyword) params.set('holder', keyword)
+            if (lastFilter.dateRange && Array.isArray(lastFilter.dateRange)) {
+              const [start, end] = lastFilter.dateRange as [string, string]
+              if (start) params.set('startDate', start)
+              if (end) params.set('endDate', end)
+            }
+            window.location.href = `/data-exports?${params.toString()}`
+          }}
+        >
+          导出
+        </Button>
+      }
     />
   )
 
-  return (
-    <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>备用金申请</h2>
-        <Space>
-          <Input placeholder="筛选申请人" value={holder} onChange={(event) => setHolder(event.target.value)} style={{ width: 140 }} />
-          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
-          <Button type="primary" onClick={() => void load(holder, month)} loading={loading}>查询</Button>
-          <Button onClick={() => { setHolder(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
-          <Button onClick={() => { window.location.href = '/data-exports?resourceType=petty-cashes' }}>导出数据</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
-            新增
-          </Button>
-        </Space>
-      </div>
+  const table = (
+    <Table<PettyCash>
+      rowKey="id"
+      columns={columns}
+      dataSource={data}
+      loading={loading}
+      size="small"
+      scroll={{ x: 1000 }}
+      pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无备用金申请数据"
+            desc="新增备用金申请后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增申请</Button>}
+          />
+        ),
+      }}
+    />
+  )
 
-      <AmountSummaryCards items={[{ label: '总金额', value: fmt(total), color: '#fa8c16' }]} />
-
-      {isMobile ? (
-        mobileCards
-      ) : (
-        <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 920 }} size="small" />
+  const mobileCards = (
+    <>
+      <MobileCardList<PettyCash>
+        data={data.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.holder || '备用金申请'}
+        getDescription={(item) => `日期：${fmtDate(item.issueDate)}`}
+        getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+        fields={[
+          { key: 'issuedAmount', label: '申请金额', render: (item) => <Text strong style={{ color: '#fa8c16' }}>{fmtMoney(Number(item.issuedAmount))}</Text> },
+          { key: 'returnedAmount', label: '已退回', render: (item) => fmtMoney(Number(item.returnedAmount)) },
+          { key: 'applyReason', label: '申请事由', render: (item) => item.applyReason || '-', fullWidth: true },
+          { key: 'status', label: '发放状态', render: (item) => renderStatusTag(item) },
+        ]}
+        actions={(record) => {
+          const locked = isApprovalLocked(record)
+          return (
+            <Space size="small" wrap>
+              <ViewRecordButton resource="petty-cashes" id={record.id} />
+              <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+              {canDelete ? (
+                <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+                </Popconfirm>
+              ) : null}
+              <ApprovalActions
+                id={record.id}
+                approvalStatus={record.approvalStatus || 'DRAFT'}
+                approvedAt={record.approvedAt}
+                resource="petty-cashes"
+                onSuccess={() => load(lastFilter)}
+              />
+            </Space>
+          )
+        }}
+        empty={
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无备用金申请数据"
+            desc="新增备用金申请后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增申请</Button>}
+          />
+        }
+      />
+      {data.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={data.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
       )}
+    </>
+  )
+
+  return (
+    <>
+      <LedgerPageLayout
+        title="备用金申请"
+        desc="跟踪备用金的发放与退回进度"
+        createLabel="新增申请"
+        onCreate={() => handleOpen()}
+        total={data.length}
+        filterBar={filterBar}
+        table={
+          <>
+            {summaryCards}
+            {table}
+          </>
+        }
+        mobileTable={
+          <>
+            {summaryCards}
+            {mobileCards}
+          </>
+        }
+      />
 
       <ResponsiveModalDrawer
         title={editing ? '编辑备用金申请' : '新增备用金申请'}
@@ -319,6 +456,6 @@ export default function PettyCashesPage() {
           </Form.Item>
         </Form>
       </ResponsiveModalDrawer>
-    </div>
+    </>
   )
 }
