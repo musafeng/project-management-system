@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Descriptions, Divider, Modal, Spin, Table, Tag, Typography, message } from 'antd'
+import { Alert, Descriptions, Divider, Spin, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { FileTextOutlined } from '@ant-design/icons'
 import { parseAttachmentUrls } from '@/lib/attachments'
 import { requestApi } from '@/lib/client-request'
 import { fmtDate, fmtMoney } from '@/lib/utils/format'
 import AttachmentPreviewLinks from './AttachmentPreviewLinks'
+import ResponsiveModalDrawer from './ResponsiveModalDrawer'
 
 const { Text } = Typography
 
@@ -414,7 +415,7 @@ export default function BusinessRecordDetailModal({
   const deductionItems = useMemo(() => normalizeItems(record?.deductionItems), [record])
 
   return (
-    <Modal
+    <ResponsiveModalDrawer
       title={getModalTitle(resource, record)}
       open={open}
       onCancel={onClose}
@@ -493,6 +494,6 @@ export default function BusinessRecordDetailModal({
           </>
         )}
       </Spin>
-    </Modal>
+    </ResponsiveModalDrawer>
   )
 }
