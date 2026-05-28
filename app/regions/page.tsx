@@ -1,9 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Switch, Space, Tag, message } from 'antd'
-import { PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { Table, Button, Form, Input, Switch, Space, Tag, message } from 'antd'
+import { PlusOutlined, EditOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
+import {
+  LedgerPageLayout,
+  MobileCardList,
+  EmptyHint,
+} from '@/components/ledger'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
+import { useMobile } from '@/hooks/useMobile'
 
 interface Region {
   id: string
@@ -20,6 +27,7 @@ export default function RegionsPage() {
   const [editingRegion, setEditingRegion] = useState<Region | null>(null)
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
+  const isMobile = useMobile()
 
   const fetchRegions = async () => {
     setLoading(true)
@@ -103,7 +111,7 @@ export default function RegionsPage() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: Region) => (
+      render: (_: unknown, record: Region) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
           <Button
@@ -118,32 +126,88 @@ export default function RegionsPage() {
     },
   ]
 
-  return (
-    <div style={{ padding: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>区域管理</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增区域</Button>
-      </div>
+  const tableNode = (
+    <Table<Region>
+      rowKey="id"
+      loading={loading}
+      dataSource={regions}
+      columns={columns}
+      pagination={false}
+      size="middle"
+      locale={{
+        emptyText: loading ? <span /> : (
+          <EmptyHint
+            icon={<EnvironmentOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="还没有任何区域"
+            desc="新增区域后，可在此管理项目所属区域与启用状态"
+            action={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增区域</Button>}
+          />
+        ),
+      }}
+    />
+  )
 
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={regions}
-        columns={columns}
-        pagination={false}
-        size="middle"
+  const mobileCards = (
+    <MobileCardList<Region>
+      data={regions}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      getStatus={(item) => (
+        <Tag color={item.isActive ? 'green' : 'default'} style={{ marginRight: 0 }}>
+          {item.isActive ? '启用' : '停用'}
+        </Tag>
+      )}
+      fields={[
+        { key: 'code', label: '区域代码', render: (item) => item.code || '-' },
+        { key: 'createdAt', label: '创建时间', render: (item) => new Date(item.createdAt).toLocaleDateString('zh-CN') },
+      ]}
+      actions={(record) => (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
+          <Button
+            size="small"
+            danger={record.isActive}
+            onClick={() => toggleActive(record)}
+          >
+            {record.isActive ? '停用' : '启用'}
+          </Button>
+        </div>
+      )}
+      empty={(
+        <EmptyHint
+          icon={<EnvironmentOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+          title="还没有任何区域"
+          desc="新增区域后，可在此管理项目所属区域与启用状态"
+          action={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增区域</Button>}
+        />
+      )}
+    />
+  )
+
+  return (
+    <>
+      <LedgerPageLayout
+        title="区域管理"
+        desc="管理项目所属区域，影响项目的展示分组与责任划分"
+        total={regions.length}
+        onCreate={openCreate}
+        createLabel="新增区域"
+        table={tableNode}
+        mobileTable={mobileCards}
       />
 
-      <Modal
-        title={editingRegion ? '编辑区域' : '新增区域'}
+      <ResponsiveModalDrawer
         open={modalOpen}
+        title={editingRegion ? '编辑区域' : '新增区域'}
         onOk={handleSave}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => { if (!saving) setModalOpen(false) }}
         confirmLoading={saving}
         okText="保存"
         cancelText="取消"
+        width={isMobile ? undefined : 520}
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" style={{ marginTop: isMobile ? 4 : 16 }}>
           <Form.Item name="name" label="区域名称" rules={[{ required: true, message: '请输入区域名称' }]}>
             <Input placeholder="例如：华南区、上海分部" />
           </Form.Item>
@@ -156,10 +220,7 @@ export default function RegionsPage() {
             </Form.Item>
           )}
         </Form>
-      </Modal>
-    </div>
+      </ResponsiveModalDrawer>
+    </>
   )
 }
-
-
-

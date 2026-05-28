@@ -21,11 +21,13 @@ import type { AuthUser } from '@/lib/auth-client'
 import { isDingTalkEnvironment, getCurrentUser as getDingTalkUser } from '@/lib/dingtalk-client'
 import { MobileProvider, useMobile } from '@/hooks/useMobile'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import pkg from '../package.json'
 
 const { Sider, Header, Content } = Layout
 
-// 版本号，用于确认钉钉打开的是最新部署
-export const APP_VERSION = 'v1-mobile-fix'
+// 版本号，用于确认钉钉打开的是最新部署。优先取构建时注入的 NEXT_PUBLIC_APP_VERSION，
+// 缺省时回退到 package.json 版本号
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || `v${pkg.version}`
 
 interface MenuItem {
   key: string
@@ -202,15 +204,9 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
     // 加载区域列表 + 当前区域 cookie
     const loadRegions = async () => {
       try {
-        const [regionsRes, currentRes] = await Promise.all([
-          fetch('/api/regions', { credentials: 'include' }),
-          fetch('/api/current-region', { credentials: 'include' }),
-        ])
-        const regionsJson = await regionsRes.json()
+        const currentRes = await fetch('/api/current-region', { credentials: 'include' })
         const currentJson = await currentRes.json()
-        if (regionsJson.success) {
-          setRegions(regionsJson.data.filter((r: any) => r.isActive))
-        } else if (currentJson.success && Array.isArray(currentJson.data?.accessibleRegions)) {
+        if (currentJson.success && Array.isArray(currentJson.data?.accessibleRegions)) {
           setRegions(currentJson.data.accessibleRegions.filter((r: any) => r.isActive))
         }
         if (currentJson.success && currentJson.data?.regionId) {
@@ -235,7 +231,7 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
           try {
             console.log('[Auth] 未登录，尝试钉钉自动免登录...')
             await getDingTalkUser()
-            user = await getCurrentAuthUser()
+            user = await getCurrentAuthUser({ force: true })
             console.log('[Auth] 钉钉自动免登录成功:', user?.name)
           } catch (dtError) {
             console.warn('[Auth] 钉钉自动免登录失败:', dtError)
@@ -279,10 +275,7 @@ function LayoutProviderShell({ children }: { children: React.ReactNode }) {
       if (json.success) {
         setCurrentRegionId(regionId)
         message.success(`已切换到：${json.data.regionName}`)
-        if (typeof window !== 'undefined') {
-          window.location.reload()
-          return
-        }
+        // 软刷新：重新拉取服务端组件数据，保留客户端状态（menu/drawer 等）
         router.refresh()
       } else {
         message.error(json.error || '切换失败')

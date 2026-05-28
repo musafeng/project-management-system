@@ -46,21 +46,21 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
 
   // 客户管理 - 全员可写
   {
-    pattern: /^\/api\/customers(\/\[id\])?$/,
+    pattern: /^\/api\/customers(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 供应商管理 - 全员可写
   {
-    pattern: /^\/api\/suppliers(\/\[id\])?$/,
+    pattern: /^\/api\/suppliers(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 劳务人员管理 - 全员可写
   {
-    pattern: /^\/api\/labor-workers(\/\[id\])?$/,
+    pattern: /^\/api\/labor-workers(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
@@ -71,58 +71,58 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
 
   // 项目管理 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/projects(\/\[id\])?$/,
+    pattern: /^\/api\/projects(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 项目合同管理 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/project-contracts(\/\[id\])?$/,
+    pattern: /^\/api\/project-contracts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 项目合同变更 - FINANCE 专属写权限
   {
     pattern: /^\/api\/project-contract-changes(?:\/[^/]+)?(?:\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 旧项目合同变更兼容接口 - FINANCE 专属写权限
   {
     pattern: /^\/api\/project-contracts\/[^/]+\/changes$/,
     methods: ['POST', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 合同收款管理 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/contract-receipts(\/\[id\])?$/,
+    pattern: /^\/api\/contract-receipts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 施工立项管理 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/construction-approvals(\/\[id\])?$/,
+    pattern: /^\/api\/construction-approvals(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 其他收款 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/other-receipts(\/\[id\])?$/,
+    pattern: /^\/api\/other-receipts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // 其他付款 - FINANCE 专属写权限
   {
-    pattern: /^\/api\/other-payments(\/\[id\])?$/,
+    pattern: /^\/api\/other-payments(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
-    roles: FINANCE_ROLES,
+    roles: ALL_ROLES,
   },
 
   // ============================================================================
@@ -131,42 +131,42 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
 
   // 采购合同管理 - 全员可写
   {
-    pattern: /^\/api\/procurement-contracts(\/\[id\])?$/,
+    pattern: /^\/api\/procurement-contracts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 采购付款管理 - 全员可写
   {
-    pattern: /^\/api\/procurement-payments(\/\[id\])?$/,
+    pattern: /^\/api\/procurement-payments(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 劳务合同管理 - 全员可写
   {
-    pattern: /^\/api\/labor-contracts(\/\[id\])?$/,
+    pattern: /^\/api\/labor-contracts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 劳务付款管理 - 全员可写
   {
-    pattern: /^\/api\/labor-payments(\/\[id\])?$/,
+    pattern: /^\/api\/labor-payments(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 分包合同管理 - 全员可写
   {
-    pattern: /^\/api\/subcontract-contracts(\/\[id\])?$/,
+    pattern: /^\/api\/subcontract-contracts(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 分包付款管理 - 全员可写
   {
-    pattern: /^\/api\/subcontract-payments(\/\[id\])?$/,
+    pattern: /^\/api\/subcontract-payments(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
@@ -177,28 +177,28 @@ export const API_PERMISSION_RULES: ApiPermissionRule[] = [
 
   // 项目费用报销 - 全员可写
   {
-    pattern: /^\/api\/project-expenses(\/\[id\])?$/,
+    pattern: /^\/api\/project-expenses(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 管理费用报销 - 全员可写
   {
-    pattern: /^\/api\/management-expenses(\/\[id\])?$/,
+    pattern: /^\/api\/management-expenses(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 销售费用报销 - 全员可写
   {
-    pattern: /^\/api\/sales-expenses(\/\[id\])?$/,
+    pattern: /^\/api\/sales-expenses(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },
 
   // 备用金申请 - 全员可写
   {
-    pattern: /^\/api\/petty-cashes(\/\[id\])?$/,
+    pattern: /^\/api\/petty-cashes(\/[^/]+)?$/,
     methods: ['POST', 'PUT', 'DELETE'],
     roles: ALL_ROLES,
   },

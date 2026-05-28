@@ -1,30 +1,40 @@
 'use client'
 
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons'
 import {
   Button,
   DatePicker,
   Form,
   Input,
   InputNumber,
-  Modal,
+  Pagination,
   Popconfirm,
   Select,
   Space,
   Table,
+  Typography,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
 import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, FilterBar, LedgerPageLayout, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
+import { fmtMoney, fmtDate } from '@/lib/utils/format'
+import { requestApi } from '@/lib/client-request'
+
+const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
 
 interface OtherPayment {
   id: string
@@ -54,16 +64,21 @@ interface SupplierOption {
   bankName?: string | null
 }
 
-function fmt(value: number) {
-  return `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
-}
-
-function fmtDate(value: string) {
-  try {
-    return new Date(value).toLocaleDateString('zh-CN')
-  } catch {
-    return value
+function applyClientFilters(data: OtherPayment[], filters: FilterValues) {
+  let filtered = data
+  if (filters.dateRange && Array.isArray(filters.dateRange)) {
+    const [start, end] = filters.dateRange as [string, string]
+    if (start && end) {
+      const startDate = dayjs(start)
+      const endDate = dayjs(end)
+      filtered = filtered.filter((item) => {
+        if (!item.paymentDate) return false
+        const d = dayjs(item.paymentDate)
+        return d.isValid() && !d.isBefore(startDate, 'day') && !d.isAfter(endDate, 'day')
+      })
+    }
   }
+  return filtered
 }
 
 export default function OtherPaymentsPage() {
@@ -74,41 +89,56 @@ export default function OtherPaymentsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<OtherPayment | null>(null)
   const [canDelete, setCanDelete] = useState(false)
-  const [submitter, setSubmitter] = useState('')
-  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const [mobilePage, setMobilePage] = useState(1)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
   const selectedSupplierId = Form.useWatch('supplierId', form)
 
-  const loadSuppliers = async () => {
-    setSuppliersLoading(true)
-    try {
-      const response = await fetch('/api/suppliers')
-      const json = await response.json()
-      if (json.success) setSuppliers(json.data || [])
-    } finally {
-      setSuppliersLoading(false)
-    }
-  }
-
-  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
-      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
-      const response = await fetch(`/api/other-payments${params.toString() ? `?${params.toString()}` : ''}`)
-      const json = await response.json()
-      if (json.success) setData(json.data)
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   useEffect(() => {
-    void load('', null)
+    const maxPage = Math.max(1, Math.ceil(data.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [data.length, mobilePage])
+
+  const loadSuppliers = async () => {
+    setSuppliersLoading(true)
+    const result = await requestApi<SupplierOption[]>('/api/suppliers', {
+      credentials: 'include',
+      fallbackError: '加载供应商列表失败',
+    })
+    if (result.success) setSuppliers(result.data || [])
+    else setSuppliers([])
+    setSuppliersLoading(false)
+  }
+
+  const load = async (filters: FilterValues = {}) => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    const keyword = (filters.keyword as string)?.trim()
+    if (keyword) params.set('submitter', keyword)
+    const url = `/api/other-payments${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<OtherPayment[]>(url, {
+      credentials: 'include',
+      fallbackError: '数据加载失败，请稍后重试',
+    })
+    if (result.success) {
+      setData(applyClientFilters(result.data || [], filters))
+    } else {
+      setData([])
+      message.error(result.error || '数据加载失败，请稍后重试')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
     loadSuppliers()
-    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
-  }, [load])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!selectedSupplierId) {
@@ -132,6 +162,18 @@ export default function OtherPaymentsPage() {
       bankName: supplier.bankName || undefined,
     })
   }, [selectedSupplierId, suppliers, form, editing])
+
+  const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
+    setLastFilter(filters)
+    load(filters)
+  }
+
+  const handleReset = () => {
+    setMobilePage(1)
+    setLastFilter({})
+    load({})
+  }
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -160,50 +202,56 @@ export default function OtherPaymentsPage() {
   }
 
   const handleSubmit = async (values: any) => {
-    try {
-      const payload = {
-        ...values,
-        paymentDate: values.paymentDate?.format('YYYY-MM-DD'),
-      }
+    const payload = {
+      ...values,
+      paymentDate: values.paymentDate?.format('YYYY-MM-DD'),
+    }
 
-      const url = editing ? `/api/other-payments/${editing.id}` : '/api/other-payments'
-      const method = editing ? 'PUT' : 'POST'
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await response.json()
+    const url = editing ? `/api/other-payments/${editing.id}` : '/api/other-payments'
+    const method = editing ? 'PUT' : 'POST'
+    const result = await requestApi(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '操作失败，请稍后重试',
+    })
 
-      if (json.success) {
-        message.success(editing ? '更新成功' : '创建成功')
-        setModalOpen(false)
-        void load(submitter, month)
-        return
-      }
-
-      message.error(json.error || '操作失败')
-    } catch (err) {
-      console.error('提交其他付款失败:', err)
-      message.error('提交失败，请检查表单后重试')
+    if (result.success) {
+      message.success(editing ? '更新成功' : '创建成功')
+      setModalOpen(false)
+      load(lastFilter)
+    } else {
+      message.error(result.error || '操作失败')
     }
   }
 
   const handleDelete = async (id: string) => {
-    const response = await fetch(`/api/other-payments/${id}`, { method: 'DELETE' })
-    const json = await response.json()
+    const result = await requestApi(`/api/other-payments/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      fallbackError: '删除失败，请稍后重试',
+    })
 
-    if (json.success) {
+    if (result.success) {
       message.success('已删除')
-      void load(submitter, month)
-      return
+      load(lastFilter)
+    } else {
+      message.error(result.error || '删除失败')
     }
-
-    message.error(json.error || '删除失败')
   }
 
-  const total = data.reduce((sum, record) => sum + Number(record.paymentAmount || 0), 0)
-  const summaryItems = [{ label: '总金额', value: fmt(total), color: '#ff4d4f' }]
+  const total = useMemo(
+    () => data.reduce((sum, record) => sum + Number(record.paymentAmount || 0), 0),
+    [data]
+  )
+
+  const summaryCards = (
+    <AmountSummaryCards
+      isMobile={isMobile}
+      items={[{ label: '总金额', value: fmtMoney(total), color: '#ff4d4f' }]}
+    />
+  )
 
   const columns: ColumnsType<OtherPayment> = [
     { title: '付款事由', dataIndex: 'paymentType', width: 180 },
@@ -212,9 +260,10 @@ export default function OtherPaymentsPage() {
       dataIndex: 'paymentAmount',
       width: 120,
       align: 'right',
-      render: (value) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(Number(value))}</span>,
+      render: (value) => <Text strong style={{ color: '#ff4d4f' }}>{fmtMoney(Number(value))}</Text>,
     },
-    { title: '日期', dataIndex: 'paymentDate', width: 110, render: fmtDate },
+    { title: '供应商', dataIndex: 'supplierName', width: 140, render: (value) => value || '-' },
+    { title: '日期', dataIndex: 'paymentDate', width: 110, render: (v) => fmtDate(v) },
     {
       title: '审批状态',
       dataIndex: 'approvalStatus',
@@ -230,7 +279,6 @@ export default function OtherPaymentsPage() {
       fixed: 'right',
       render: (_, record) => {
         const locked = isApprovalLocked(record)
-
         return (
           <Space size="small" wrap>
             <ViewRecordButton resource="other-payments" id={record.id} />
@@ -249,7 +297,7 @@ export default function OtherPaymentsPage() {
               approvalStatus={record.approvalStatus || 'DRAFT'}
               approvedAt={record.approvedAt}
               resource="other-payments"
-              onSuccess={() => void load(submitter, month)}
+              onSuccess={() => load(lastFilter)}
             />
           </Space>
         )
@@ -257,39 +305,145 @@ export default function OtherPaymentsPage() {
     },
   ]
 
+  const filterBar = (
+    <FilterBar
+      fields={[
+        { type: 'input', key: 'keyword', placeholder: '搜索填报人' },
+        { type: 'dateRange', key: 'dateRange', placeholder: ['付款开始', '付款结束'] },
+      ]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+      extra={
+        <Button
+          size="small"
+          icon={<DownloadOutlined />}
+          type="text"
+          style={{ color: '#8c8c8c' }}
+          onClick={() => {
+            const params = new URLSearchParams({ resourceType: 'other-payments' })
+            const keyword = (lastFilter.keyword as string)?.trim()
+            if (keyword) params.set('submitter', keyword)
+            if (lastFilter.dateRange && Array.isArray(lastFilter.dateRange)) {
+              const [start, end] = lastFilter.dateRange as [string, string]
+              if (start) params.set('startDate', start)
+              if (end) params.set('endDate', end)
+            }
+            window.location.href = `/data-exports?${params.toString()}`
+          }}
+        >
+          导出
+        </Button>
+      }
+    />
+  )
+
+  const table = (
+    <Table<OtherPayment>
+      rowKey="id"
+      columns={columns}
+      dataSource={data}
+      loading={loading}
+      size="small"
+      scroll={{ x: 1000 }}
+      pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无其他付款数据"
+            desc="新增其他付款后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增付款</Button>}
+          />
+        ),
+      }}
+    />
+  )
+
+  const mobileCards = (
+    <>
+      <MobileCardList<OtherPayment>
+        data={data.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.paymentType || '其他付款'}
+        getDescription={(item) => `日期：${fmtDate(item.paymentDate)}`}
+        getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+        fields={[
+          { key: 'paymentAmount', label: '金额', render: (item) => <Text strong style={{ color: '#ff4d4f' }}>{fmtMoney(Number(item.paymentAmount))}</Text>, fullWidth: true },
+          { key: 'supplierName', label: '供应商', render: (item) => item.supplierName || '-' },
+          { key: 'submitterName', label: '填报人', render: (item) => item.submitterName || '-' },
+          { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+        ]}
+        actions={(record) => {
+          const locked = isApprovalLocked(record)
+          return (
+            <Space size="small" wrap>
+              <ViewRecordButton resource="other-payments" id={record.id} />
+              <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+              {canDelete ? (
+                <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="是" cancelText="否">
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+                </Popconfirm>
+              ) : null}
+              <ApprovalActions
+                id={record.id}
+                approvalStatus={record.approvalStatus || 'DRAFT'}
+                approvedAt={record.approvedAt}
+                resource="other-payments"
+                onSuccess={() => load(lastFilter)}
+              />
+            </Space>
+          )
+        }}
+        empty={
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无其他付款数据"
+            desc="新增其他付款后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增付款</Button>}
+          />
+        }
+      />
+      {data.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={data.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
+      )}
+    </>
+  )
+
   return (
-    <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>其他付款</h2>
-        <Space>
-          <Input
-            placeholder="筛选填报人"
-            value={submitter}
-            onChange={(event) => setSubmitter(event.target.value)}
-            style={{ width: 140 }}
-          />
-          <DatePicker
-            picker="month"
-            placeholder="选择月份"
-            value={month}
-            onChange={setMonth}
-            allowClear
-            style={{ width: 140 }}
-          />
-          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
-          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
-          <Button onClick={() => { window.location.href = '/data-exports?resourceType=other-payments' }}>导出数据</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
-            新增
-          </Button>
-        </Space>
-      </div>
+    <>
+      <LedgerPageLayout
+        title="其他付款"
+        desc="管理项目无关或非合同的其他付款记录"
+        createLabel="新增付款"
+        onCreate={() => handleOpen()}
+        total={data.length}
+        filterBar={filterBar}
+        table={
+          <>
+            {summaryCards}
+            {table}
+          </>
+        }
+        mobileTable={
+          <>
+            {summaryCards}
+            {mobileCards}
+          </>
+        }
+      />
 
-      <AmountSummaryCards items={summaryItems} />
-
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 860 }} size="small" />
-
-      <Modal
+      <ResponsiveModalDrawer
         title={editing ? '编辑其他付款' : '新增其他付款'}
         open={modalOpen}
         onOk={() => form.submit()}
@@ -356,7 +510,7 @@ export default function OtherPaymentsPage() {
             <Input.TextArea rows={3} placeholder="请输入备注" />
           </Form.Item>
         </Form>
-      </Modal>
-    </div>
+      </ResponsiveModalDrawer>
+    </>
   )
 }

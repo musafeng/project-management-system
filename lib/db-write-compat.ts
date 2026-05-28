@@ -1,4 +1,9 @@
 import { prisma } from './prisma'
+import type { Prisma } from '@prisma/client'
+
+type PrismaExecClient = Pick<typeof prisma, '$executeRawUnsafe' | '$queryRawUnsafe'>
+
+type MaybeTx = Prisma.TransactionClient | undefined
 
 interface ColumnMeta {
   column_name: string
@@ -45,9 +50,11 @@ function normalizeWriteData(data: Record<string, unknown>) {
 
 export async function insertCompatRecord(
   tableName: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  tx?: MaybeTx
 ) {
   assertIdentifier(tableName)
+  const client: PrismaExecClient = tx ?? prisma
   const meta = await getTableMeta(tableName)
   const compatible = normalizeWriteData(
     Object.fromEntries(
@@ -72,7 +79,7 @@ export async function insertCompatRecord(
     .join(', ')
   const values = entries.map(([, value]) => value)
 
-  await prisma.$executeRawUnsafe(
+  await client.$executeRawUnsafe(
     `INSERT INTO ${quoteIdentifier(tableName)} (${columns}) VALUES (${placeholders})`,
     ...values
   )
@@ -81,9 +88,11 @@ export async function insertCompatRecord(
 export async function updateCompatRecord(
   tableName: string,
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  tx?: MaybeTx
 ) {
   assertIdentifier(tableName)
+  const client: PrismaExecClient = tx ?? prisma
   const meta = await getTableMeta(tableName)
   const compatible = normalizeWriteData(
     Object.fromEntries(
@@ -108,16 +117,17 @@ export async function updateCompatRecord(
     .join(', ')
   const values = entries.map(([, value]) => value)
 
-  await prisma.$executeRawUnsafe(
+  await client.$executeRawUnsafe(
     `UPDATE ${quoteIdentifier(tableName)} SET ${assignments} WHERE "id" = $${entries.length + 1}`,
     ...values,
     id
   )
 }
 
-export async function deleteCompatRecord(tableName: string, id: string) {
+export async function deleteCompatRecord(tableName: string, id: string, tx?: MaybeTx) {
   assertIdentifier(tableName)
-  await prisma.$executeRawUnsafe(
+  const client: PrismaExecClient = tx ?? prisma
+  await client.$executeRawUnsafe(
     `DELETE FROM ${quoteIdentifier(tableName)} WHERE "id" = $1`,
     id
   )

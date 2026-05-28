@@ -9,6 +9,7 @@ BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-1800}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-60}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
 LOCK_FILE="${LOCK_FILE:-/tmp/project-manager-deploy.lock}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 
 log() {
   echo "[$1/9] $2"
@@ -46,8 +47,8 @@ fi
 
 cd "$PROJECT_DIR"
 
-log 1 "同步控制仓库"
-git fetch --depth 1 origin main
+log 1 "同步控制仓库（分支：${DEPLOY_BRANCH}）"
+git fetch --depth 1 origin "$DEPLOY_BRANCH"
 TARGET_SHA="$(git rev-parse FETCH_HEAD)"
 git reset --hard "$TARGET_SHA"
 git worktree prune >/dev/null 2>&1 || true

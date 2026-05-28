@@ -5,6 +5,7 @@ import { insertCompatRecord } from './db-write-compat'
 import { assertProjectContractInCurrentRegion, requireCurrentRegionId } from './region'
 import { assertApprovedUpstream } from './approval-gates'
 import { canUseAsApprovedUpstream } from './approval-status'
+import type { Prisma } from '@prisma/client'
 
 async function getProjectContractChangeSelect() {
   const columns = await getDbTableColumns('ProjectContractChange')
@@ -91,8 +92,12 @@ export async function createProjectContractChangeRecord(input: {
   return created
 }
 
-export async function applyApprovedProjectContractChange(id: string) {
-  const change = await db.projectContractChange.findUnique({
+export async function applyApprovedProjectContractChange(
+  id: string,
+  tx?: Prisma.TransactionClient
+) {
+  const client = tx ?? db
+  const change = await client.projectContractChange.findUnique({
     where: { id },
     select: {
       id: true,
@@ -118,7 +123,7 @@ export async function applyApprovedProjectContractChange(id: string) {
   const increaseAmount = Number(change.increaseAmount ?? 0)
   const receivedAmount = Number(change.ProjectContract.receivedAmount)
 
-  await db.projectContract.update({
+  await client.projectContract.update({
     where: { id: change.contractId },
     data: {
       contractAmount: totalAmount,

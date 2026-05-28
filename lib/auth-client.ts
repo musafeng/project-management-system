@@ -25,10 +25,24 @@ interface ApiResponse<T> {
   error?: string
 }
 
+let currentUserCache: AuthUser | null = null
+let currentUserCacheAt = 0
+let currentUserPromise: Promise<AuthUser | null> | null = null
+const CURRENT_USER_CACHE_MS = 30 * 1000
+
 /**
  * 获取当前登录用户
  */
-export async function getCurrentAuthUser(): Promise<AuthUser | null> {
+export async function getCurrentAuthUser(options: { force?: boolean } = {}): Promise<AuthUser | null> {
+  if (!options.force && currentUserCache && Date.now() - currentUserCacheAt < CURRENT_USER_CACHE_MS) {
+    return currentUserCache
+  }
+
+  if (!options.force && currentUserPromise) {
+    return currentUserPromise
+  }
+
+  currentUserPromise = (async () => {
   try {
     const response = await fetch('/api/auth/me', {
       method: 'GET',
@@ -38,14 +52,25 @@ export async function getCurrentAuthUser(): Promise<AuthUser | null> {
     const result: ApiResponse<AuthUser> = await response.json()
 
     if (result.success && result.data) {
+      currentUserCache = result.data
+      currentUserCacheAt = Date.now()
       return result.data
     }
 
+    currentUserCache = null
+    currentUserCacheAt = 0
     return null
   } catch (error) {
     console.error('获取当前登录用户失败:', error)
+    currentUserCache = null
+    currentUserCacheAt = 0
     return null
+  } finally {
+    currentUserPromise = null
   }
+  })()
+
+  return currentUserPromise
 }
 
 /**
@@ -59,10 +84,11 @@ export async function logout(): Promise<boolean> {
     })
 
     const result: ApiResponse<any> = await response.json()
+    currentUserCache = null
+    currentUserCacheAt = 0
     return result.success
   } catch (error) {
     console.error('退出登录失败:', error)
     return false
   }
 }
-

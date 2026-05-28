@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Descriptions, Divider, Modal, Space, Spin, Table, Tag, Typography, message } from 'antd'
+import { Alert, Descriptions, Divider, Spin, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { FileTextOutlined } from '@ant-design/icons'
-import { getAttachmentDisplayName, getAttachmentOpenUrl, parseAttachmentUrls } from '@/lib/attachments'
+import { parseAttachmentUrls } from '@/lib/attachments'
 import { requestApi } from '@/lib/client-request'
 import { fmtDate, fmtMoney } from '@/lib/utils/format'
+import AttachmentPreviewLinks from './AttachmentPreviewLinks'
+import ResponsiveModalDrawer from './ResponsiveModalDrawer'
 
 const { Text } = Typography
 
@@ -28,6 +30,8 @@ interface BusinessRecordDetailModalProps {
   id: string | null
   onClose: () => void
 }
+
+const formFieldsCache = new Map<string, Promise<FormFieldDefinition[]>>()
 
 const RESOURCE_LABELS: Record<string, string> = {
   projects: '项目新增',
@@ -332,20 +336,25 @@ function getItemColumns(items: Array<Record<string, any>>): ColumnsType<Record<s
 }
 
 function AttachmentLinks({ urls }: { urls: string[] }) {
-  if (urls.length === 0) return <Text type="secondary">暂无附件</Text>
-  const handleOpen = (url: string) => {
-    window.open(getAttachmentOpenUrl(url), '_blank', 'noopener,noreferrer')
+  return <AttachmentPreviewLinks urls={urls} />
+}
+
+async function loadFormFields(resource: string): Promise<FormFieldDefinition[]> {
+  if (!formFieldsCache.has(resource)) {
+    formFieldsCache.set(
+      resource,
+      requestApi<any>(`/api/form-definitions?code=${resource}`, {
+        credentials: 'include',
+        fallbackError: '加载表单配置失败',
+      }).then((result) => {
+        if (result.success && result.data?.FormField) return result.data.FormField
+        if (!result.success) console.warn('加载表单配置失败:', result.error)
+        return []
+      })
+    )
   }
 
-  return (
-    <Space direction="vertical" size={4}>
-      {urls.map((url) => (
-        <Button key={url} type="link" size="small" style={{ height: 'auto', padding: 0, whiteSpace: 'normal', textAlign: 'left' }} onClick={() => handleOpen(url)}>
-          {getAttachmentDisplayName(url) || url}
-        </Button>
-      ))}
-    </Space>
-  )
+  return formFieldsCache.get(resource)!
 }
 
 function getModalTitle(resource: string | null, record: DetailRecord | null) {
@@ -374,15 +383,12 @@ export default function BusinessRecordDetailModal({
       setRecord(null)
       setFormFields([])
       setLoadError(null)
-      const [detailResult, formResult] = await Promise.all([
+      const [detailResult, nextFormFields] = await Promise.all([
         requestApi<DetailRecord>(`/api/${resource}/${id}`, {
           credentials: 'include',
           fallbackError: '加载单据详情失败，请稍后重试',
         }),
-        requestApi<any>(`/api/form-definitions?code=${resource}`, {
-          credentials: 'include',
-          fallbackError: '加载表单配置失败',
-        }),
+        loadFormFields(resource),
       ])
 
       if (cancelled) return
@@ -394,11 +400,7 @@ export default function BusinessRecordDetailModal({
         message.error(nextError)
       }
 
-      if (formResult.success && formResult.data?.FormField) {
-        setFormFields(formResult.data.FormField)
-      } else if (!formResult.success) {
-        console.warn('加载表单配置失败:', formResult.error)
-      }
+      setFormFields(nextFormFields)
       setLoading(false)
     }
 
@@ -413,7 +415,7 @@ export default function BusinessRecordDetailModal({
   const deductionItems = useMemo(() => normalizeItems(record?.deductionItems), [record])
 
   return (
-    <Modal
+    <ResponsiveModalDrawer
       title={getModalTitle(resource, record)}
       open={open}
       onCancel={onClose}
@@ -492,6 +494,6 @@ export default function BusinessRecordDetailModal({
           </>
         )}
       </Spin>
-    </Modal>
+    </ResponsiveModalDrawer>
   )
 }

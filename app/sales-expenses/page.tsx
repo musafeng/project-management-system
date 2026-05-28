@@ -1,29 +1,40 @@
 'use client'
 
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   Button,
   DatePicker,
   Form,
   Input,
   InputNumber,
-  Modal,
+  Pagination,
   Popconfirm,
   Select,
   Space,
   Table,
+  Typography,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ApprovalActions, ApprovalStatusTag } from '@/components/ApprovalActions'
+import AmountSummaryCards from '@/components/AmountSummaryCards'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isApprovalLocked } from '@/lib/approval-status'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import { EmptyHint, FilterBar, LedgerPageLayout, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
+import { fmtMoney, fmtDate } from '@/lib/utils/format'
+import { requestApi } from '@/lib/client-request'
+
+const { Text } = Typography
+const MOBILE_PAGE_SIZE = 20
 
 interface ExpenseItem {
   type: string
@@ -48,16 +59,21 @@ interface Expense {
 
 const EXPENSE_TYPES = ['烟酒费', '餐费', '饭局', '其他']
 
-function fmt(value: number) {
-  return `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
-}
-
-function fmtDate(value: string) {
-  try {
-    return new Date(value).toLocaleDateString('zh-CN')
-  } catch {
-    return value
+function applyClientFilters(data: Expense[], filters: FilterValues) {
+  let filtered = data
+  if (filters.dateRange && Array.isArray(filters.dateRange)) {
+    const [start, end] = filters.dateRange as [string, string]
+    if (start && end) {
+      const startDate = dayjs(start)
+      const endDate = dayjs(end)
+      filtered = filtered.filter((item) => {
+        if (!item.expenseDate) return false
+        const d = dayjs(item.expenseDate)
+        return d.isValid() && !d.isBefore(startDate, 'day') && !d.isAfter(endDate, 'day')
+      })
+    }
   }
+  return filtered
 }
 
 export default function SalesExpensesPage() {
@@ -67,28 +83,55 @@ export default function SalesExpensesPage() {
   const [editing, setEditing] = useState<Expense | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [items, setItems] = useState<ExpenseItem[]>([{ type: '餐费', amount: 0 }])
-  const [submitter, setSubmitter] = useState('')
-  const [month, setMonth] = useState<dayjs.Dayjs | null>(null)
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
+  const [mobilePage, setMobilePage] = useState(1)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
-  const load = useCallback(async (searchSubmitter: string, searchMonth: dayjs.Dayjs | null) => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (searchSubmitter.trim()) params.set('submitter', searchSubmitter.trim())
-      if (searchMonth) params.set('month', searchMonth.format('YYYY-MM'))
-      const response = await fetch(`/api/sales-expenses${params.toString() ? `?${params.toString()}` : ''}`)
-      const json = await response.json()
-      if (json.success) setData(json.data)
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
   useEffect(() => {
-    void load('', null)
-    getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
-  }, [load])
+    const maxPage = Math.max(1, Math.ceil(data.length / MOBILE_PAGE_SIZE))
+    if (mobilePage > maxPage) setMobilePage(maxPage)
+  }, [data.length, mobilePage])
+
+  const load = async (filters: FilterValues = {}) => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    const keyword = (filters.keyword as string)?.trim()
+    if (keyword) params.set('submitter', keyword)
+    const url = `/api/sales-expenses${params.toString() ? `?${params.toString()}` : ''}`
+    const result = await requestApi<Expense[]>(url, {
+      credentials: 'include',
+      fallbackError: '数据加载失败，请稍后重试',
+    })
+    if (result.success) {
+      setData(applyClientFilters(result.data || [], filters))
+    } else {
+      setData([])
+      message.error(result.error || '数据加载失败，请稍后重试')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSearch = (filters: FilterValues) => {
+    setMobilePage(1)
+    setLastFilter(filters)
+    load(filters)
+  }
+
+  const handleReset = () => {
+    setMobilePage(1)
+    setLastFilter({})
+    load({})
+  }
 
   const handleFinishFailed = () => {
     message.error('请先完善表单必填项后再提交')
@@ -120,48 +163,63 @@ export default function SalesExpensesPage() {
       return
     }
 
-    try {
-      const payload = {
-        ...values,
-        expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
-        expenseItems: items,
-      }
+    const payload = {
+      ...values,
+      expenseDate: values.expenseDate?.format('YYYY-MM-DD'),
+      expenseItems: items,
+    }
 
-      const url = editing ? `/api/sales-expenses/${editing.id}` : '/api/sales-expenses'
-      const method = editing ? 'PUT' : 'POST'
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await response.json()
+    const url = editing ? `/api/sales-expenses/${editing.id}` : '/api/sales-expenses'
+    const method = editing ? 'PUT' : 'POST'
+    const result = await requestApi(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '操作失败，请稍后重试',
+    })
 
-      if (json.success) {
-        message.success(editing ? '更新成功' : '创建成功')
-        setModalOpen(false)
-        void load(submitter, month)
-        return
-      }
-
-      message.error(json.error || '操作失败')
-    } catch (err) {
-      console.error('提交销售费用报销失败:', err)
-      message.error('提交失败，请检查表单后重试')
+    if (result.success) {
+      message.success(editing ? '更新成功' : '创建成功')
+      setModalOpen(false)
+      load(lastFilter)
+    } else {
+      message.error(result.error || '操作失败')
     }
   }
 
   const handleDelete = async (id: string) => {
-    const response = await fetch(`/api/sales-expenses/${id}`, { method: 'DELETE' })
-    const json = await response.json()
+    const result = await requestApi(`/api/sales-expenses/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      fallbackError: '删除失败，请稍后重试',
+    })
 
-    if (json.success) {
+    if (result.success) {
       message.success('已删除')
-      void load(submitter, month)
-      return
+      load(lastFilter)
+    } else {
+      message.error(result.error || '删除失败')
     }
-
-    message.error(json.error || '删除失败')
   }
+
+  const summary = useMemo(
+    () => ({
+      count: data.length,
+      total: data.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0),
+    }),
+    [data]
+  )
+
+  const summaryCards = (
+    <AmountSummaryCards
+      isMobile={isMobile}
+      items={[
+        { label: '报销单数', value: `${summary.count} 单`, color: '#8c8c8c' },
+        { label: '报销总金额', value: fmtMoney(summary.total), color: '#ff4d4f' },
+      ]}
+    />
+  )
 
   const columns: ColumnsType<Expense> = [
     { title: '报销人', dataIndex: 'submitter', width: 120 },
@@ -170,9 +228,9 @@ export default function SalesExpensesPage() {
       dataIndex: 'totalAmount',
       width: 120,
       align: 'right',
-      render: (value) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{fmt(Number(value))}</span>,
+      render: (value) => <Text strong style={{ color: '#ff4d4f' }}>{fmtMoney(Number(value))}</Text>,
     },
-    { title: '日期', dataIndex: 'expenseDate', width: 120, render: fmtDate },
+    { title: '日期', dataIndex: 'expenseDate', width: 120, render: (v) => fmtDate(v) },
     {
       title: '审批状态',
       dataIndex: 'approvalStatus',
@@ -186,7 +244,6 @@ export default function SalesExpensesPage() {
       fixed: 'right',
       render: (_, record) => {
         const locked = isApprovalLocked(record)
-
         return (
           <Space size="small" wrap>
             <ViewRecordButton resource="sales-expenses" id={record.id} />
@@ -205,7 +262,7 @@ export default function SalesExpensesPage() {
               approvalStatus={record.approvalStatus || 'DRAFT'}
               approvedAt={record.approvedAt}
               resource="sales-expenses"
-              onSuccess={() => void load(submitter, month)}
+              onSuccess={() => load(lastFilter)}
             />
           </Space>
         )
@@ -213,37 +270,144 @@ export default function SalesExpensesPage() {
     },
   ]
 
+  const filterBar = (
+    <FilterBar
+      fields={[
+        { type: 'input', key: 'keyword', placeholder: '搜索报销人' },
+        { type: 'dateRange', key: 'dateRange', placeholder: ['报销开始', '报销结束'] },
+      ]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+      extra={
+        <Button
+          size="small"
+          icon={<DownloadOutlined />}
+          type="text"
+          style={{ color: '#8c8c8c' }}
+          onClick={() => {
+            const params = new URLSearchParams({ resourceType: 'sales-expenses' })
+            const keyword = (lastFilter.keyword as string)?.trim()
+            if (keyword) params.set('submitter', keyword)
+            if (lastFilter.dateRange && Array.isArray(lastFilter.dateRange)) {
+              const [start, end] = lastFilter.dateRange as [string, string]
+              if (start) params.set('startDate', start)
+              if (end) params.set('endDate', end)
+            }
+            window.location.href = `/data-exports?${params.toString()}`
+          }}
+        >
+          导出
+        </Button>
+      }
+    />
+  )
+
+  const table = (
+    <Table<Expense>
+      rowKey="id"
+      columns={columns}
+      dataSource={data}
+      loading={loading}
+      size="small"
+      scroll={{ x: 800 }}
+      pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条`, showSizeChanger: false }}
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无销售费用报销数据"
+            desc="新增销售费用报销后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增报销</Button>}
+          />
+        ),
+      }}
+    />
+  )
+
+  const mobileCards = (
+    <>
+      <MobileCardList<Expense>
+        data={data.slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)}
+        loading={loading}
+        getKey={(item) => item.id}
+        getTitle={(item) => item.submitter || '销售费用报销'}
+        getDescription={(item) => `日期：${fmtDate(item.expenseDate)}`}
+        getStatus={(item) => <ApprovalStatusTag status={item.approvalStatus || 'DRAFT'} approvedAt={item.approvedAt} />}
+        fields={[
+          { key: 'totalAmount', label: '总金额', render: (item) => <Text strong style={{ color: '#ff4d4f' }}>{fmtMoney(Number(item.totalAmount))}</Text>, fullWidth: true },
+          { key: 'projectName', label: '项目', render: (item) => item.projectName || '-' },
+          { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+        ]}
+        actions={(record) => {
+          const locked = isApprovalLocked(record)
+          return (
+            <Space size="small" wrap>
+              <ViewRecordButton resource="sales-expenses" id={record.id} />
+              <Button type="link" size="small" icon={<EditOutlined />} disabled={locked} onClick={() => handleOpen(record)}>编辑</Button>
+              {canDelete ? (
+                <Popconfirm title="删除销售费用报销" description="确定删除该报销记录吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消" disabled={locked}>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={locked}>删除</Button>
+                </Popconfirm>
+              ) : null}
+              <ApprovalActions
+                id={record.id}
+                approvalStatus={record.approvalStatus || 'DRAFT'}
+                approvedAt={record.approvedAt}
+                resource="sales-expenses"
+                onSuccess={() => load(lastFilter)}
+              />
+            </Space>
+          )
+        }}
+        empty={
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无销售费用报销数据"
+            desc="新增销售费用报销后，可在此管理审批进度。"
+            action={<Button type="primary" onClick={() => handleOpen()}>新增报销</Button>}
+          />
+        }
+      />
+      {data.length > MOBILE_PAGE_SIZE && (
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            current={mobilePage}
+            pageSize={MOBILE_PAGE_SIZE}
+            total={data.length}
+            onChange={setMobilePage}
+            showSizeChanger={false}
+            size="small"
+          />
+        </div>
+      )}
+    </>
+  )
+
   return (
-    <div style={{ background: '#fff', borderRadius: 8, padding: 20, minHeight: '80vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>销售费用报销</h2>
-        <Space>
-          <Input placeholder="筛选报销人" value={submitter} onChange={(event) => setSubmitter(event.target.value)} style={{ width: 140 }} />
-          <DatePicker picker="month" placeholder="选择月份" value={month} onChange={setMonth} allowClear style={{ width: 140 }} />
-          <Button type="primary" onClick={() => void load(submitter, month)} loading={loading}>查询</Button>
-          <Button onClick={() => { setSubmitter(''); setMonth(null); void load('', null) }} loading={loading}>重置</Button>
-          <Button onClick={() => { window.location.href = '/data-exports?resourceType=sales-expenses' }}>导出数据</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpen()}>
-            新增
-          </Button>
-        </Space>
-      </div>
+    <>
+      <LedgerPageLayout
+        title="销售费用报销"
+        desc="提交并跟踪销售费用报销的审批进度"
+        createLabel="新增报销"
+        onCreate={() => handleOpen()}
+        total={data.length}
+        filterBar={filterBar}
+        table={
+          <>
+            {summaryCards}
+            {table}
+          </>
+        }
+        mobileTable={
+          <>
+            {summaryCards}
+            {mobileCards}
+          </>
+        }
+      />
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        {[
-          { label: '报销单数', value: data.length, color: '#8c8c8c', formatter: (v: number) => `${v} 单` },
-          { label: '报销总金额', value: data.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0), color: '#ff4d4f', formatter: fmt },
-        ].map((item) => (
-          <div key={item.label} style={{ minWidth: 160, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '10px 12px' }}>
-            <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>{item.label}</div>
-            <div style={{ color: item.color, fontWeight: 700 }}>{item.formatter(item.value)}</div>
-          </div>
-        ))}
-      </div>
-
-      <Table rowKey="id" columns={columns} dataSource={data} loading={loading} scroll={{ x: 700 }} size="small" />
-
-      <Modal
+      <ResponsiveModalDrawer
         title={editing ? '编辑销售费用报销' : '新增销售费用报销'}
         open={modalOpen}
         onOk={() => form.submit()}
@@ -266,7 +430,7 @@ export default function SalesExpensesPage() {
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ marginBottom: 6, fontWeight: 500 }}>
-              费用明细 <span style={{ color: '#1677ff' }}>合计：{fmt(totalAmount)}</span>
+              费用明细 <span style={{ color: '#1677ff' }}>合计：{fmtMoney(totalAmount)}</span>
             </div>
             {items.map((item, index) => (
               <div key={index} style={{ marginBottom: 12, padding: 12, border: '1px solid #f0f0f0', borderRadius: 8 }}>
@@ -350,7 +514,7 @@ export default function SalesExpensesPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
-      </Modal>
-    </div>
+      </ResponsiveModalDrawer>
+    </>
   )
 }

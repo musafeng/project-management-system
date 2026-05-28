@@ -112,7 +112,7 @@ export const { GET } = apiHandlerWithPermissionAndLog({
       // 合同汇总
       db.projectContract.findMany({
         where: { projectId: { in: projectIds }, regionId },
-        select: { projectId: true, contractAmount: true, receivedAmount: true, unreceivedAmount: true },
+        select: { id: true, projectId: true, contractAmount: true, receivedAmount: true, unreceivedAmount: true },
       }),
       db.procurementContract.findMany({
         where: { projectId: { in: projectIds }, regionId },
@@ -128,13 +128,9 @@ export const { GET } = apiHandlerWithPermissionAndLog({
       }),
     ])
 
-    // 查合同收款需要先获取合同的projectId映射
-    const allContracts = await db.projectContract.findMany({
-      where: { projectId: { in: projectIds }, regionId },
-      select: { id: true, projectId: true },
-    })
+    // 从 projectContracts 直接构造 contractId -> projectId 映射，避免重复查询
     const contractToProject: Record<string, string> = {}
-    for (const c of allContracts) contractToProject[c.id] = c.projectId
+    for (const c of projectContracts) contractToProject[c.id] = c.projectId
 
     // 按项目聚合
     const byProject: Record<string, any> = {}

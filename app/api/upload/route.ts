@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OSS from 'ali-oss'
 import { serverEnv } from '@/lib/env'
 import { toChineseErrorMessage } from '@/lib/api/error-message'
+import { getAuthCookie } from '@/lib/auth'
 
 export const maxDuration = 60
 
@@ -77,6 +78,11 @@ function getUploadErrorMessage(input: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthCookie()
+    if (!user) {
+      return NextResponse.json({ error: '未登录或登录态已过期' }, { status: 401 })
+    }
+
     const formData = await req.formData()
     const file = formData.get('file') as File | null
 

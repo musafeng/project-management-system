@@ -4,6 +4,12 @@ const tableColumnsCache = new Map<string, Promise<Set<string>>>()
 
 type RecordLike = Record<string, unknown>
 
+function assertIdentifier(name: string) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(`非法标识符: ${name}`)
+  }
+}
+
 export function pickExistingDbFieldsFromColumns<T extends RecordLike>(
   columns: Iterable<string>,
   data: T
@@ -15,11 +21,13 @@ export function pickExistingDbFieldsFromColumns<T extends RecordLike>(
 }
 
 export async function getDbTableColumns(tableName: string): Promise<Set<string>> {
+  assertIdentifier(tableName)
   if (!tableColumnsCache.has(tableName)) {
     tableColumnsCache.set(
       tableName,
       prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '${tableName}'`
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+        tableName
       ).then((rows: Array<{ column_name: string }>) => new Set(rows.map((row: { column_name: string }) => row.column_name)))
     )
   }

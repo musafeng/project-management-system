@@ -2,7 +2,7 @@ export function getAttachmentDisplayName(url?: string | null) {
   if (!url) return ''
   const parts = url.split('/')
   const raw = parts[parts.length - 1] || ''
-  const name = raw.replace(/^\d+-/, '')
+  const name = raw.replace(/^\d+-/, '').replace(/^[0-9a-f-]{36}-/i, '')
   try {
     return decodeURIComponent(name)
   } catch {
@@ -10,8 +10,39 @@ export function getAttachmentDisplayName(url?: string | null) {
   }
 }
 
+export type AttachmentPreviewType = 'image' | 'pdf' | 'office' | 'text' | 'download'
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
+const PDF_EXTENSIONS = new Set(['pdf'])
+const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'xls', 'xlsx'])
+const TEXT_EXTENSIONS = new Set(['csv', 'txt'])
+
+export function getAttachmentExtension(url?: string | null): string {
+  const name = getAttachmentDisplayName(url)
+  const cleanName = name.split('?')[0].split('#')[0]
+  const index = cleanName.lastIndexOf('.')
+  return index >= 0 ? cleanName.slice(index + 1).toLowerCase() : ''
+}
+
+export function getAttachmentPreviewType(url?: string | null): AttachmentPreviewType {
+  const ext = getAttachmentExtension(url)
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image'
+  if (PDF_EXTENSIONS.has(ext)) return 'pdf'
+  if (OFFICE_EXTENSIONS.has(ext)) return 'office'
+  if (TEXT_EXTENSIONS.has(ext)) return 'text'
+  return 'download'
+}
+
+export function canPreviewAttachmentInline(url?: string | null): boolean {
+  return getAttachmentPreviewType(url) !== 'download'
+}
+
 export function getAttachmentOpenUrl(url: string): string {
   return `/api/attachments/open?url=${encodeURIComponent(url)}`
+}
+
+export function getAttachmentResolveUrl(url: string): string {
+  return `/api/attachments/open?format=json&url=${encodeURIComponent(url)}`
 }
 
 function normalizeUrl(url: unknown): string | null {

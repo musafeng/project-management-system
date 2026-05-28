@@ -13,6 +13,9 @@ import {
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { canUseAsApprovedUpstream } from '@/lib/approval-status'
+import { fmtMoney } from '@/lib/utils/format'
+import { requestApi } from '@/lib/client-request'
+import { useMobile } from '@/hooks/useMobile'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -91,9 +94,6 @@ interface FormValues {
   remark: string
 }
 
-// ============================================================
-import { fmtMoney } from '@/lib/utils/format'
-
 function getPartyName(contract: ContractOption, type: PaymentType) {
   if (type === 'procurement') return contract.supplierName || '—'
   if (type === 'labor') return contract.laborWorkerName || contract.workerName || '—'
@@ -114,6 +114,7 @@ function StepOne({
   onTypeChange,
   onProjectChange,
   onContractChange,
+  isMobile,
 }: {
   form: ReturnType<typeof Form.useForm>[0]
   projects: ProjectOption[]
@@ -124,6 +125,7 @@ function StepOne({
   onTypeChange: (v: PaymentType) => void
   onProjectChange: (v: string) => void
   onContractChange: (v: string) => void
+  isMobile: boolean
 }) {
   const cfg = selectedType ? PAYMENT_TYPE_CONFIG[selectedType] : null
 
@@ -133,7 +135,15 @@ function StepOne({
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>请先选择本次付款的业务类型，再选择对应的项目和合同。</Paragraph>
 
       {/* 付款类型卡片选择 */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          marginBottom: 24,
+          flexWrap: 'wrap',
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
         {(Object.keys(PAYMENT_TYPE_CONFIG) as PaymentType[]).map((type) => {
           const c = PAYMENT_TYPE_CONFIG[type]
           const active = selectedType === type
@@ -142,8 +152,8 @@ function StepOne({
               key={type}
               onClick={() => onTypeChange(type)}
               style={{
-                flex: '1 1 140px',
-                minWidth: 140,
+                flex: isMobile ? '1 1 100%' : '1 1 140px',
+                minWidth: isMobile ? '100%' : 140,
                 padding: '14px 16px',
                 border: `2px solid ${active ? c.color : '#e8e8e8'}`,
                 borderRadius: 10,
@@ -234,7 +244,6 @@ function StepTwo({
   const contractAmt = Number(contract.contractAmount)
 
   const paidPercent = payable > 0 ? Math.round((paid / payable) * 100) : 0
-  const remainPercent = 100 - paidPercent
 
   return (
     <div>
@@ -252,7 +261,7 @@ function StepTwo({
           </Space>
         }
       >
-        <Descriptions column={2} size="small" styles={{ label: { color: '#8c8c8c' } }}>
+        <Descriptions column={{ xs: 1, sm: 2 }} size="small" styles={{ label: { color: '#8c8c8c' } }}>
           <Descriptions.Item label="合同名称" span={2}>{contract.name}</Descriptions.Item>
           <Descriptions.Item label={cfg.partyLabel}>
             <Text strong>{getPartyName(contract, paymentType)}</Text>
@@ -308,10 +317,12 @@ function StepThree({
   form,
   maxAmount,
   paymentType,
+  isMobile,
 }: {
   form: ReturnType<typeof Form.useForm>[0]
   maxAmount: number
   paymentType: PaymentType
+  isMobile: boolean
 }) {
   return (
     <div>
@@ -319,7 +330,7 @@ function StepThree({
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>请填写本次付款的详细信息，带 <Text type="danger">*</Text> 为必填项。</Paragraph>
 
       <Form form={form} layout="vertical">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0 16px' }}>
           <Form.Item
             name="amount"
             label="本次付款金额（元）"
@@ -372,7 +383,7 @@ function StepThree({
 
         <Divider orientation="left" style={{ fontSize: 13, color: '#8c8c8c' }}>收款账户信息（选填）</Divider>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0 16px' }}>
           <Form.Item name="accountName" label="收款方户名">
             <Input placeholder="请输入银行账户名称" />
           </Form.Item>
@@ -411,7 +422,7 @@ function StepFour({
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>提交前请再次核对以下信息，提交后将自动进入审批流程。</Paragraph>
 
       <Card bordered style={{ borderRadius: 10, marginBottom: 16 }}>
-        <Descriptions column={2} size="small" styles={{ label: { color: '#8c8c8c', width: 110 } }}>
+        <Descriptions column={{ xs: 1, sm: 2 }} size="small" styles={{ label: { color: '#8c8c8c', width: 110 } }}>
           <Descriptions.Item label="付款类型">
             <Tag color={cfg.color}>{cfg.label}</Tag>
           </Descriptions.Item>
@@ -469,6 +480,7 @@ function StepFour({
 // ============================================================
 
 export default function PaymentApplyPage() {
+  const isMobile = useMobile()
   const [step, setStep] = useState(0)
   const [form1] = Form.useForm()
   const [form3] = Form.useForm()
@@ -487,12 +499,14 @@ export default function PaymentApplyPage() {
   useEffect(() => {
     if (!selectedType) return
     setLoadingProjects(true)
-    fetch('/api/projects', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.success) setProjects(j.data || [])
+    requestApi<ProjectOption[]>('/api/projects', {
+      credentials: 'include',
+      fallbackError: '加载项目失败',
+    })
+      .then((result) => {
+        if (result.success) setProjects(result.data || [])
+        else message.error(result.error || '加载项目失败')
       })
-      .catch(() => message.error('加载项目失败'))
       .finally(() => setLoadingProjects(false))
   }, [selectedType])
 
@@ -510,15 +524,13 @@ export default function PaymentApplyPage() {
     setContracts([])
     setLoadingContracts(true)
     const cfg = PAYMENT_TYPE_CONFIG[selectedType]
-    try {
-      const res = await fetch(`${cfg.contractApi}?projectId=${projectId}`, { credentials: 'include' })
-      const j = await res.json()
-      if (j.success) setContracts(j.data || [])
-    } catch {
-      message.error('加载合同失败')
-    } finally {
-      setLoadingContracts(false)
-    }
+    const result = await requestApi<ContractOption[]>(`${cfg.contractApi}?projectId=${projectId}`, {
+      credentials: 'include',
+      fallbackError: '加载合同失败',
+    })
+    if (result.success) setContracts(result.data || [])
+    else message.error(result.error || '加载合同失败')
+    setLoadingContracts(false)
   }, [selectedType, form1])
 
   const handleContractChange = useCallback((contractId: string) => {
@@ -578,58 +590,76 @@ export default function PaymentApplyPage() {
     }
 
     setSubmitting(true)
-    try {
-      const res = await fetch(cfg.submitApi, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
-      const j = await res.json()
-      if (j.success) {
-        // 自动提交审批
-        if (j.data?.id) {
-          const resourceType = {
-            procurement: 'procurement-payments',
-            labor: 'labor-payments',
-            subcontract: 'subcontract-payments',
-          }[selectedType]
-          await fetch(`/api/${resourceType}/${j.data.id}/submit`, {
-            method: 'POST',
-            credentials: 'include',
-          }).catch(() => {}) // 审批流程提交失败不阻断主流程
-        }
-        setDone(true)
-      } else {
-        message.error(j.error || '提交失败，请稍后重试')
+    const result = await requestApi<{ id: string }>(cfg.submitApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      fallbackError: '提交失败，请稍后重试',
+    })
+    if (result.success) {
+      // 自动提交审批，失败不阻断主流程
+      if (result.data?.id) {
+        const resourceType = {
+          procurement: 'procurement-payments',
+          labor: 'labor-payments',
+          subcontract: 'subcontract-payments',
+        }[selectedType]
+        await requestApi(`/api/${resourceType}/${result.data.id}/submit`, {
+          method: 'POST',
+          credentials: 'include',
+          fallbackError: '审批提交失败',
+        })
       }
-    } catch {
-      message.error('网络异常，请检查网络后重试')
-    } finally {
-      setSubmitting(false)
+      setDone(true)
+    } else {
+      message.error(result.error || '提交失败，请稍后重试')
     }
+    setSubmitting(false)
   }
 
   // 提交成功页
   if (done) {
+    const handleAgain = () => {
+      setDone(false); setStep(0); setSelectedType(null)
+      setSelectedContract(null); setContracts([])
+      form1.resetFields(); form3.resetFields(); form4.resetFields()
+    }
+    const handleViewApproval = () => { window.location.href = '/approval?tab=mine' }
+
     return (
-      <div style={{ background: '#fff', borderRadius: 12, padding: '48px 24px', textAlign: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 12,
+          padding: isMobile ? '32px 16px' : '48px 24px',
+          textAlign: 'center',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+        }}
+      >
         <Result
           status="success"
           title="付款申请已提交！"
           subTitle="系统已将您的付款申请推送给审批人，请耐心等待审批结果。审批进度可在「审批中心 → 我发起的」中查看。"
-          extra={[
-            <Button type="primary" key="approval" onClick={() => window.location.href = '/approval?tab=mine'}>
-              查看审批进度
-            </Button>,
-            <Button key="new" onClick={() => {
-              setDone(false); setStep(0); setSelectedType(null)
-              setSelectedContract(null); setContracts([])
-              form1.resetFields(); form3.resetFields(); form4.resetFields()
-            }}>
-              再次申请
-            </Button>,
-          ]}
+          extra={
+            isMobile
+              ? [
+                  <Button type="primary" size="large" block key="approval" onClick={handleViewApproval}>
+                    查看审批进度
+                  </Button>,
+                  <Button size="large" block key="new" style={{ marginTop: 8, marginInlineStart: 0 }} onClick={handleAgain}>
+                    再次申请
+                  </Button>,
+                ]
+              : [
+                  <Button type="primary" key="approval" onClick={handleViewApproval}>
+                    查看审批进度
+                  </Button>,
+                  <Button key="new" onClick={handleAgain}>
+                    再次申请
+                  </Button>,
+                ]
+          }
         />
       </div>
     )
@@ -646,9 +676,18 @@ export default function PaymentApplyPage() {
   ]
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', maxWidth: 780, margin: '0 auto' }}>
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 12,
+        padding: isMobile ? '16px 12px' : '24px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+        maxWidth: isMobile ? '100%' : 780,
+        margin: '0 auto',
+      }}
+    >
       {/* 页眉 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: isMobile ? 20 : 28 }}>
         <WalletOutlined style={{ fontSize: 22, color: '#1677ff' }} />
         <div>
           <Title level={4} style={{ margin: 0 }}>付款申请</Title>
@@ -660,7 +699,8 @@ export default function PaymentApplyPage() {
       <Steps
         current={step}
         size="small"
-        style={{ marginBottom: 32 }}
+        direction={isMobile ? 'vertical' : 'horizontal'}
+        style={{ marginBottom: isMobile ? 20 : 32 }}
         items={STEPS.map((s) => ({ title: s.title, icon: s.icon }))}
       />
 
@@ -677,6 +717,7 @@ export default function PaymentApplyPage() {
             onTypeChange={handleTypeChange}
             onProjectChange={handleProjectChange}
             onContractChange={handleContractChange}
+            isMobile={isMobile}
           />
         )}
         {step === 1 && selectedContract && selectedType && (
@@ -687,6 +728,7 @@ export default function PaymentApplyPage() {
             form={form3}
             maxAmount={maxAmount}
             paymentType={selectedType!}
+            isMobile={isMobile}
           />
         )}
         {step === 3 && selectedContract && selectedType && (
@@ -709,37 +751,74 @@ export default function PaymentApplyPage() {
       <Divider />
 
       {/* 底部按钮 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Button
-          icon={<ArrowLeftOutlined />}
-          disabled={step === 0}
-          onClick={() => setStep((s) => s - 1)}
-        >
-          上一步
-        </Button>
-        <Text type="secondary" style={{ fontSize: 12 }}>第 {step + 1} 步，共 4 步</Text>
-        {step < 3 ? (
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12, textAlign: 'center' }}>
+            第 {step + 1} 步，共 4 步
+          </Text>
+          {step < 3 ? (
+            <Button
+              type="primary"
+              size="large"
+              block
+              icon={<ArrowRightOutlined />}
+              iconPosition="end"
+              onClick={[handleStep1Next, handleStep2Next, handleStep3Next][step]}
+            >
+              下一步
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              size="large"
+              block
+              loading={submitting}
+              icon={<CheckCircleOutlined />}
+              onClick={handleSubmit}
+              style={{ background: '#52c41a', borderColor: '#52c41a' }}
+            >
+              确认提交，进入审批
+            </Button>
+          )}
+          {step > 0 && (
+            <Button block icon={<ArrowLeftOutlined />} onClick={() => setStep((s) => s - 1)}>
+              上一步
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Button
-            type="primary"
-            icon={<ArrowRightOutlined />}
-            iconPosition="end"
-            onClick={[handleStep1Next, handleStep2Next, handleStep3Next][step]}
+            icon={<ArrowLeftOutlined />}
+            disabled={step === 0}
+            onClick={() => setStep((s) => s - 1)}
           >
-            下一步
+            上一步
           </Button>
-        ) : (
-          <Button
-            type="primary"
-            size="large"
-            loading={submitting}
-            icon={<CheckCircleOutlined />}
-            onClick={handleSubmit}
-            style={{ background: '#52c41a', borderColor: '#52c41a', minWidth: 140 }}
-          >
-            确认提交，进入审批
-          </Button>
-        )}
-      </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>第 {step + 1} 步，共 4 步</Text>
+          {step < 3 ? (
+            <Button
+              type="primary"
+              icon={<ArrowRightOutlined />}
+              iconPosition="end"
+              onClick={[handleStep1Next, handleStep2Next, handleStep3Next][step]}
+            >
+              下一步
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              size="large"
+              loading={submitting}
+              icon={<CheckCircleOutlined />}
+              onClick={handleSubmit}
+              style={{ background: '#52c41a', borderColor: '#52c41a', minWidth: 140 }}
+            >
+              确认提交，进入审批
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

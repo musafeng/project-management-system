@@ -6,21 +6,21 @@ import {
   Button,
   Input,
   Space,
-  Modal,
   Form,
   message,
-  ConfigProvider,
   Popconfirm,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { EditOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
 import { requestApi } from '@/lib/client-request'
 import { getCurrentAuthUser } from '@/lib/auth-client'
 import { isSystemManagerClientUser } from '@/lib/system-manager'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
+import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
+import { EmptyHint, FilterBar, LedgerPageLayout, MobileCardList } from '@/components/ledger'
+import type { FilterValues } from '@/components/ledger'
+import { useMobile } from '@/hooks/useMobile'
 
-/**
- * 供应商数据类型
- */
 interface Supplier {
   id: string
   code: string
@@ -31,12 +31,10 @@ interface Supplier {
   bankAccount?: string | null
   bankName?: string | null
   attachmentUrl?: string | null
+  remark?: string | null
   createdAt: string
 }
 
-/**
- * 供应商详情类型（包含更多字段）
- */
 interface SupplierDetail extends Supplier {
   email?: string | null
   taxId?: string | null
@@ -47,9 +45,6 @@ interface SupplierDetail extends Supplier {
   updatedAt?: string
 }
 
-/**
- * 格式化日期
- */
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -62,19 +57,18 @@ function formatDate(dateString: string): string {
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
-  const [keyword, setKeyword] = useState('')
+  const [lastFilter, setLastFilter] = useState<FilterValues>({})
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [canDelete, setCanDelete] = useState(false)
   const [form] = Form.useForm()
+  const isMobile = useMobile()
 
-  /**
-   * 加载供应商列表
-   */
-  const loadSuppliers = async (searchKeyword?: string) => {
+  const loadSuppliers = async (filters: FilterValues = {}) => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (searchKeyword) params.append('keyword', searchKeyword)
+    const keyword = (filters.keyword as string)?.trim()
+    if (keyword) params.append('keyword', keyword)
 
     const url = `/api/suppliers${params.toString() ? `?${params.toString()}` : ''}`
     const result = await requestApi<Supplier[]>(url, {
@@ -84,47 +78,33 @@ export default function SuppliersPage() {
     if (result.success && result.data) {
       setSuppliers(result.data)
     } else {
-      message.error(result.error || '加载供应商列表失败，请稍后重试')
       setSuppliers([])
+      message.error(result.error || '加载供应商列表失败，请稍后重试')
     }
     setLoading(false)
   }
 
-  /**
-   * 初次加载数据
-   */
   useEffect(() => {
     loadSuppliers()
     getCurrentAuthUser().then((user) => setCanDelete(isSystemManagerClientUser(user)))
   }, [])
 
-  /**
-   * 查询处理
-   */
-  const handleSearch = () => {
-    loadSuppliers(keyword)
+  const handleSearch = (filters: FilterValues) => {
+    setLastFilter(filters)
+    loadSuppliers(filters)
   }
 
-  /**
-   * 重置处理
-   */
   const handleReset = () => {
-    setKeyword('')
-    loadSuppliers('')
+    setLastFilter({})
+    loadSuppliers({})
   }
 
-  /**
-   * 打开新增弹窗
-   */
   const handleAddClick = () => {
     setEditingId(null)
     form.resetFields()
     setIsModalVisible(true)
   }
 
-  /**
-   * 打开编辑弹窗
-   */
   const handleEditClick = async (id: string) => {
     const result = await requestApi<SupplierDetail>(`/api/suppliers/${id}`, {
       fallbackError: '获取供应商信息失败，请稍后重试',
@@ -148,9 +128,6 @@ export default function SuppliersPage() {
     }
   }
 
-  /**
-   * 删除供应商
-   */
   const handleDelete = async (id: string) => {
     const result = await requestApi(`/api/suppliers/${id}`, {
       method: 'DELETE',
@@ -159,15 +136,12 @@ export default function SuppliersPage() {
 
     if (result.success) {
       message.success('供应商已删除')
-      loadSuppliers(keyword)
+      loadSuppliers(lastFilter)
     } else {
       message.error(result.error || '删除供应商失败，请稍后重试')
     }
   }
 
-  /**
-   * 提交表单
-   */
   const handleSubmit = async (values: any) => {
     const url = editingId ? `/api/suppliers/${editingId}` : '/api/suppliers'
     const method = editingId ? 'PUT' : 'POST'
@@ -185,15 +159,16 @@ export default function SuppliersPage() {
       message.success(editingId ? '供应商已更新' : '供应商已创建')
       setIsModalVisible(false)
       form.resetFields()
-      loadSuppliers(keyword)
+      loadSuppliers(lastFilter)
     } else {
       message.error(result.error || (editingId ? '更新供应商失败，请稍后重试' : '创建供应商失败，请稍后重试'))
     }
   }
 
-  /**
-   * 表格列定义
-   */
+  const handleFinishFailed = () => {
+    message.error('请先完善表单必填项后再提交')
+  }
+
   const columns: ColumnsType<Supplier> = [
     {
       title: '供应商名称',
@@ -277,109 +252,87 @@ export default function SuppliersPage() {
     },
   ]
 
-  return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 6,
-          fontSize: 14,
-        },
-      }}
-    >
-      <div
-        style={{
-          minHeight: '100vh',
-          background: '#f5f5f5',
-          padding: '16px',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '100%',
-            margin: '0 auto',
-            background: '#fff',
-            borderRadius: 8,
-            padding: '20px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          }}
-        >
-          {/* 标题 */}
-          <div style={{ marginBottom: 24 }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 20,
-                fontWeight: 600,
-                color: '#1d1d1f',
-              }}
-            >
-              供应商管理
-            </h1>
-          </div>
+  const filterBar = (
+    <FilterBar
+      fields={[{ type: 'input', key: 'keyword', placeholder: '搜索供应商名称' }]}
+      onSearch={handleSearch}
+      onReset={handleReset}
+      loading={loading}
+    />
+  )
 
-          {/* 查询区 */}
-          <div
-            style={{
-              marginBottom: 20,
-              padding: '12px',
-              background: '#fafafa',
-              borderRadius: 6,
-              border: '1px solid #f0f0f0',
-            }}
-          >
-            <Space wrap style={{ width: '100%' }}>
-              <Input
-                placeholder="输入供应商名称搜索"
-                prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                style={{ width: 200 }}
-                onPressEnter={handleSearch}
-              />
-
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-                loading={loading}
-              >
-                查询
-              </Button>
-
-              <Button onClick={handleReset} loading={loading}>
-                重置
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddClick}
-                style={{ marginLeft: 'auto' }}
-              >
-                新增供应商
-              </Button>
-            </Space>
-          </div>
-
-          {/* 表格 */}
-          <Table<Supplier>
-            rowKey="id"
-            columns={columns}
-            dataSource={suppliers}
-            loading={loading}
-            pagination={false}
-            scroll={{ x: 1000 }}
-            size="small"
-            locale={{
-              emptyText: '暂无供应商数据',
-            }}
+  const table = (
+    <Table<Supplier>
+      rowKey="id"
+      columns={columns}
+      dataSource={suppliers}
+      loading={loading}
+      pagination={false}
+      scroll={{ x: 1000 }}
+      size="small"
+      locale={{
+        emptyText: (
+          <EmptyHint
+            icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+            title="暂无供应商数据"
+            desc="新增供应商后，可在此管理联系方式与开户信息。"
+            action={<Button type="primary" onClick={handleAddClick}>新增供应商</Button>}
           />
-        </div>
-      </div>
+        ),
+      }}
+    />
+  )
 
-      {/* 新增/编辑弹窗 */}
-      <Modal
+  const mobileCards = (
+    <MobileCardList<Supplier>
+      data={suppliers}
+      loading={loading}
+      getKey={(item) => item.id}
+      getTitle={(item) => item.name}
+      fields={[
+        { key: 'contact', label: '联系人', render: (item) => item.contact || '-' },
+        { key: 'phone', label: '联系电话', render: (item) => item.phone || '-' },
+        { key: 'bankAccount', label: '银行账号', render: (item) => item.bankAccount || '-', fullWidth: true },
+        { key: 'bankName', label: '开户银行', render: (item) => item.bankName || '-', fullWidth: true },
+        { key: 'address', label: '地址', render: (item) => item.address || '-', fullWidth: true },
+        { key: 'remark', label: '备注', render: (item) => item.remark || '-', fullWidth: true },
+        { key: 'createdAt', label: '创建时间', render: (item) => formatDate(item.createdAt) },
+      ]}
+      actions={(record) => (
+        <Space size="small" wrap>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditClick(record.id)}>编辑</Button>
+          {canDelete ? (
+            <Popconfirm title="删除供应商" description="确定删除该供应商吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+      )}
+      empty={(
+        <EmptyHint
+          icon={<FileTextOutlined style={{ fontSize: 40, color: '#d9d9d9' }} />}
+          title="暂无供应商数据"
+          desc="新增供应商后，可在此管理联系方式与开户信息。"
+          action={<Button type="primary" onClick={handleAddClick}>新增供应商</Button>}
+        />
+      )}
+    />
+  )
+
+  return (
+    <>
+      <LedgerPageLayout
+        title="供应商管理"
+        desc="维护供应商档案，跟踪联系方式与开户信息"
+        createLabel="新增供应商"
+        onCreate={handleAddClick}
+        total={suppliers.length}
+        filterBar={filterBar}
+        table={table}
+        mobileTable={mobileCards}
+      />
+
+      <ResponsiveModalDrawer
         title={editingId ? '编辑供应商' : '新增供应商'}
         open={isModalVisible}
         onOk={() => form.submit()}
@@ -395,7 +348,9 @@ export default function SuppliersPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          style={{ marginTop: 20 }}
+          onFinishFailed={handleFinishFailed}
+          validateMessages={DEFAULT_FORM_VALIDATE_MESSAGES}
+          style={{ marginTop: 16 }}
         >
           <Form.Item
             label="供应商名称"
@@ -444,7 +399,7 @@ export default function SuppliersPage() {
             <Input.TextArea placeholder="请输入备注" rows={3} />
           </Form.Item>
         </Form>
-      </Modal>
-    </ConfigProvider>
+      </ResponsiveModalDrawer>
+    </>
   )
 }

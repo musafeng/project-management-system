@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Table, Modal, Form, message, Popconfirm, Pagination,
+  Table, Form, message, Popconfirm, Pagination,
   DatePicker, InputNumber, Input, Select, Button, Space, Tooltip, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -19,6 +19,7 @@ import type { FilterValues } from '@/components/ledger'
 import { ApprovalActions } from '@/components/ApprovalActions'
 import AttachmentUploadField from '@/components/AttachmentUploadField'
 import ViewRecordButton from '@/components/ViewRecordButton'
+import ResponsiveModalDrawer from '@/components/ResponsiveModalDrawer'
 import { fmtMoney, fmtDate } from '@/lib/utils/format'
 import { DEFAULT_FORM_VALIDATE_MESSAGES } from '@/lib/form'
 import { requestApi } from '@/lib/client-request'
@@ -116,6 +117,7 @@ export default function ProjectContractsPage() {
   const watchedContractAmount = Form.useWatch('contractAmount', form)
   const watchedHasRetention = Form.useWatch('hasRetention', form)
   const watchedRetentionRate = Form.useWatch('retentionRate', form)
+  const watchedReceivedAmount = Form.useWatch('receivedAmount', form)
   const isMobile = useMobile()
 
   const openCreateModal = () => {
@@ -176,6 +178,13 @@ export default function ProjectContractsPage() {
   }, [watchedContractAmount, watchedHasRetention, watchedRetentionRate, form])
 
   useEffect(() => {
+    const contractAmount = Number(watchedContractAmount || 0)
+    const receivedAmount = Number(watchedReceivedAmount || 0)
+    const unreceivedAmount = Number((contractAmount - receivedAmount).toFixed(2))
+    form.setFieldValue('unreceivedAmount', unreceivedAmount)
+  }, [watchedContractAmount, watchedReceivedAmount, form])
+
+  useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(contracts.length / MOBILE_PAGE_SIZE))
     if (mobilePage > maxPage) setMobilePage(maxPage)
   }, [contracts.length, mobilePage])
@@ -205,6 +214,8 @@ export default function ProjectContractsPage() {
         hasRetention: Boolean(result.data.hasRetention),
         retentionRate: result.data.retentionRate ?? undefined,
         retentionAmount: result.data.retentionAmount ?? undefined,
+        receivedAmount: result.data.receivedAmount ?? 0,
+        unreceivedAmount: result.data.unreceivedAmount ?? 0,
         attachmentUrl: result.data.attachmentUrl || null,
         remark: result.data.remark || undefined,
       })
@@ -586,13 +597,13 @@ export default function ProjectContractsPage() {
         }
       />
 
-      <Modal
+      <ResponsiveModalDrawer
         title={editingId ? '编辑合同' : '新增合同'}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => { setModalOpen(false); form.resetFields() }}
         okText="保存" cancelText="取消"
-        width={isMobile ? '95vw' : 560}
+        width={560}
       >
         <Form
           form={form}
@@ -676,6 +687,23 @@ export default function ProjectContractsPage() {
               </Form.Item>
             </>
           ) : null}
+          <Form.Item name="receivedAmount" label="已收款金额（元）">
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              precision={2}
+              prefix="¥"
+              placeholder="请输入已收款金额"
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v) => {
+                const normalized = v?.replace(/,/g, '') || ''
+                return (normalized ? Number(normalized) : undefined) as any
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="unreceivedAmount" label="未收款金额（元）">
+            <InputNumber style={{ width: '100%' }} precision={2} prefix="¥" disabled />
+          </Form.Item>
           <Form.Item name="attachmentUrl" label="合同附件">
             <AttachmentUploadField />
           </Form.Item>
@@ -683,7 +711,7 @@ export default function ProjectContractsPage() {
             <Input.TextArea rows={3} placeholder="选填" />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResponsiveModalDrawer>
     </>
   )
 }

@@ -160,7 +160,11 @@ const handler = apiHandlerWithMethod({
         ? Number(existingContract.changedAmount)
         : Number(body.changedAmount)
     const payableAmount = contractAmount + changedAmount
-    const unpaidAmount = payableAmount - Number(existingContract.paidAmount)
+    const paidAmount =
+      body.paidAmount !== undefined
+        ? Number(body.paidAmount)
+        : Number(existingContract.paidAmount)
+    const unpaidAmount = Number((payableAmount - paidAmount).toFixed(2))
 
     const updateData: any = {
       projectId,
@@ -169,6 +173,7 @@ const handler = apiHandlerWithMethod({
       contractAmount,
       changedAmount,
       payableAmount,
+      paidAmount,
       unpaidAmount,
       updatedAt: new Date(),
     }
